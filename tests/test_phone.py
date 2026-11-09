@@ -74,8 +74,30 @@ class Adb(unittest.TestCase):
         run_tool("phone", {"action": "type", "text": "hi there$", "enter": True})
         self.assertIn(["input", "text", "hi"], self.calls)
         self.assertIn(["input", "text", "there\\$"], self.calls)
+
+    def test_russian_without_keyboard_explained(self):
         out, _, _ = run_tool("phone", {"action": "type", "text": "привет"})
-        self.assertIn("по-русски", out)
+        self.assertIn("ADBKeyBoard", out)
+
+    def test_russian_through_adb_keyboard_and_back(self):
+        import base64
+        answers = {"pm list packages com.android.adbkeyboard": "package:com.android.adbkeyboard\n",
+                   "settings get secure default_input_method": "com.google.android.inputmethod.latin/.LatinIME\n"}
+        base = self.shell
+
+        def shell(cmd, timeout=15, binary=False):
+            c = cmd if isinstance(cmd, str) else " ".join(cmd)
+            if c in answers:
+                self.calls.append(cmd)
+                return answers[c]
+            return base(cmd, timeout, binary)
+
+        with mock.patch.object(android, "shell", side_effect=shell), mock.patch("time.sleep"):
+            out, _, _ = run_tool("phone", {"action": "type", "text": "Привет, мама 👋"})
+        sent = [c for c in self.calls if isinstance(c, list) and "ADB_INPUT_B64" in c][0]
+        self.assertEqual(base64.b64decode(sent[-1]).decode(), "Привет, мама 👋")
+        self.assertEqual(self.calls[-1], ["ime", "set", "com.google.android.inputmethod.latin/.LatinIME"])   # клавиатура вернулась
+        self.assertIn("Напечатала", out)
 
     def test_made_up_url_is_refused(self):
         out, _, _ = run_tool("phone", {"action": "open_url", "url": "https://kino.kz/search?q=film"})

@@ -173,10 +173,37 @@ def key(name):
     shell(["input", "keyevent", str(code)])
 
 
+ADB_IME = "com.android.adbkeyboard/.AdbIME"   # ADBKeyBoard: печатает любой текст, в том числе по-русски
+
+
+def adb_keyboard_installed():
+    return "com.android.adbkeyboard" in shell("pm list packages com.android.adbkeyboard")
+
+
+def _type_unicode(text):
+    """Кириллица и эмодзи — через ADBKeyBoard. Клавиатура включается только на время печати, потом — прежняя."""
+    import base64
+
+    if not adb_keyboard_installed():
+        raise PhoneError("печатать по-русски на телефоне нужна клавиатура ADBKeyBoard — она не установлена")
+    before = shell("settings get secure default_input_method").strip()
+    shell(["ime", "enable", ADB_IME])
+    shell(["ime", "set", ADB_IME])
+    try:
+        import time
+        time.sleep(0.4)   # клавиатура успевает подключиться к полю ввода
+        msg = base64.b64encode(text.encode("utf-8")).decode()
+        shell(["am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", msg])
+        time.sleep(0.3)
+    finally:
+        if before and before != "null" and before != ADB_IME:
+            shell(["ime", "set", before])   # клавиатура пользователя — на место
+
+
 def type_text(text):
-    """adb печатает только латиницу, цифры и знаки (кириллицу — пока нет)."""
+    """Латиница — встроенной командой input; всё остальное (русский, эмодзи) — через ADBKeyBoard."""
     if not text.isascii():
-        raise PhoneError("печатать по-русски на телефоне я пока не умею — только латиницей и цифрами")
+        return _type_unicode(text)
     for i, chunk in enumerate(text.split(" ")):
         if i:
             shell(["input", "keyevent", "62"])   # пробел
