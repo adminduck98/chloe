@@ -233,6 +233,24 @@
   #accessPanel .seg button.on { color: var(--ink); border-color: var(--bone); position: relative; z-index: 1; }
   #accessPanel .seg button.on.block { color: var(--coral); border-color: var(--coral); }
   #accessPanel .vault input { width: 100%; box-sizing: border-box; margin: 6px 0; }
+  /* проекты: список и задачи */
+  #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
+  #projectsPanel .back:hover { color: var(--coral); }
+  #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  #projectsPanel .prow:hover .t { color: var(--coral); }
+  #projectsPanel .prow .t { color: var(--ink); }
+  #projectsPanel .prow .d { color: var(--iron); font-size: 12px; white-space: nowrap; }
+  #projectsPanel .task { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #161616; }
+  #projectsPanel .task .tt { flex: 1; color: var(--ink); }
+  #projectsPanel .task .tt i { color: var(--coral); font-style: normal; font-size: 11px; }
+  #projectsPanel .task.done .tt { color: var(--iron); text-decoration: line-through; }
+  #projectsPanel .task .st { background: transparent; border: 1px solid var(--line); color: var(--iron); font: inherit; font-size: 11px;
+    padding: 3px 8px; cursor: pointer; min-width: 70px; }
+  #projectsPanel .task.doing .st { color: var(--ink); border-color: var(--bone); }
+  #projectsPanel .task .st:hover { color: var(--coral); border-color: var(--coral); }
+  #projectsPanel input { width: 100%; box-sizing: border-box; margin: 8px 0 4px; }
+  #projectsPanel .del { background: transparent; border: 0; color: var(--iron); font: inherit; font-size: 16px; cursor: pointer; padding: 0 2px; }
+  #projectsPanel .del:hover, #projectsPanel .del[data-armed] { color: var(--coral); font-size: 12px; }
 
   /* чистый вид: только мозг, имя и ответ; всё остальное — по кнопке «Все функции» */
   body.clean #stats, body.clean #filters, body.clean #search, body.clean #zoom,
@@ -312,6 +330,7 @@
     <div id="filesPanel" class="panel"></div>
     <div id="phonePanel" class="panel"></div>
     <div id="accessPanel" class="panel"></div>
+    <div id="projectsPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -330,6 +349,7 @@
       <button id="memoryBtn">Память</button>
       <button id="filesBtn">Файлы</button>
       <button id="phoneBtn">Телефон</button>
+      <button id="projectsBtn">Проекты</button>
       <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
@@ -2196,7 +2216,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2332,7 +2352,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2471,7 +2491,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2543,7 +2563,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2618,12 +2638,117 @@
     if (!api) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects();
     accessOpen = true; accessBtn.classList.add("on");
     accessPanel.style.display = "block";
     accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
     document.getElementById("aClose").onclick = window.closeAccess;
     api.permissions_get().then(renderAccess).catch(function () { renderAccess(null); });
+  };
+
+  // =======================================================
+  // 14¹¹. ПРОЕКТЫ — PROJECT INTELLIGENCE: задачи, решения, цели каждого проекта
+  // Список проектов → проект: задачи (сделать → в работе → готово), новая задача, решения и цели.
+  // Голосом то же: «Хлоя, продолжим проект…» — она соберёт картину и предложит следующий шаг.
+  // =======================================================
+  var projPanel = document.getElementById("projectsPanel"), projBtn = document.getElementById("projectsBtn"), projOpen = false, projName = null;
+  window.closeProjects = function () { projOpen = false; projBtn.classList.remove("on"); projPanel.style.display = "none"; };
+  function pApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.projects_list ? window.pywebview.api : null; }
+  var P_STATUS = { todo: "сделать", doing: "в работе", done: "готово" }, P_NEXT = { todo: "doing", doing: "done", done: "todo" };
+  var P_KIND = { decision: "решение", idea: "идея", goal: "цель" }, P_PRIO = { 1: "важно", 2: "", 3: "потом" };
+  function pHead(title, back) {
+    return "<span class='close' id='prClose'>✕</span>" + (back ? "<span class='back' id='prBack'>← проекты</span><br>" : "") + "<b>" + escapeHtml(title) + "</b>";
+  }
+  function pWire() {
+    document.getElementById("prClose").onclick = window.closeProjects;
+    var back = document.getElementById("prBack");
+    if (back) back.onclick = function () { projName = null; loadProjects(); };
+  }
+  function loadProjects() {
+    var api = pApi(); if (!api) return;
+    if (projName) { api.project_get(projName).then(renderProject); return; }
+    api.projects_list().then(function (list) {
+      if (!projOpen) return;
+      var h = [pHead("Проекты", false), "<div style='color:#8A8A8A'>Задачи, решения и цели. Голосом: «Хлоя, продолжим проект…» — " +
+               "она соберёт картину (с git и документами) и предложит следующий шаг.</div>"];
+      list.forEach(function (p) {
+        h.push("<div class='prow' data-p='" + escapeHtml(p.name) + "'><span class='t'>" + escapeHtml(p.name) + "</span><span class='d'>" +
+               (p.doing ? p.doing + " в работе · " : "") + p.todo + " сделать · " + p.done + " готово</span></div>");
+      });
+      if (!list.length) h.push("<div class='row'><span style='color:#8A8A8A'>пока нет — создайте первый ниже или скажите «Хлоя, добавь задачу в проект…»</span></div>");
+      h.push("<h4>Новый проект</h4><input id='prNew' placeholder='название проекта'><input id='prNewTask' placeholder='первая задача'>" +
+             "<button class='small' id='prCreate'>создать</button>");
+      projPanel.innerHTML = h.join("");
+      pWire();
+      projPanel.querySelectorAll(".prow").forEach(function (r) {
+        r.onclick = function () { projName = r.getAttribute("data-p"); loadProjects(); };
+      });
+      document.getElementById("prCreate").onclick = function () {
+        var n = document.getElementById("prNew").value.trim(), t = document.getElementById("prNewTask").value.trim();
+        if (!n || !t) return;
+        projName = n; api.project_task_add(n, t, 2).then(renderProject);
+      };
+    });
+  }
+  function renderProject(p) {
+    if (!projOpen || !p || p.error) return;
+    projName = p.name;
+    var api = pApi();
+    var h = [pHead(p.name, true)];
+    var open = p.tasks.filter(function (t) { return t.status !== "done"; }), done = p.tasks.filter(function (t) { return t.status === "done"; });
+    h.push("<h4>Задачи · " + open.length + " открыто</h4>");
+    open.concat(done.slice(0, 8)).forEach(function (t) {
+      h.push("<div class='task " + t.status + "'><button class='st' data-id='" + t.id + "' data-s='" + P_NEXT[t.status] + "' title='дальше: " +
+             P_STATUS[P_NEXT[t.status]] + "'>" + P_STATUS[t.status] + "</button><span class='tt'>" + escapeHtml(t.title) +
+             (P_PRIO[t.priority] ? " <i>" + P_PRIO[t.priority] + "</i>" : "") + "</span><button class='del' data-del='" + t.id + "' title='удалить задачу'>×</button></div>");
+    });
+    if (done.length > 8) h.push("<div style='color:#8A8A8A'>и ещё сделано: " + (done.length - 8) + "</div>");
+    h.push("<input id='prTask' placeholder='новая задача'><button class='small' id='prAdd'>добавить</button>" +
+           " <button class='small' id='prAddHi'>добавить как важную</button>");
+    h.push("<h4>Решения, идеи, цели</h4>");
+    p.notes.forEach(function (n) {
+      h.push("<div class='row'><span title='" + escapeHtml(n.text) + "'><i style='color:#8A8A8A;font-style:normal'>" + P_KIND[n.kind] + ":</i> " + escapeHtml(n.text) + "</span></div>");
+    });
+    if (!p.notes.length) h.push("<div class='row'><span style='color:#8A8A8A'>пока нет — «Хлоя, запиши, что мы решили…»</span></div>");
+    h.push("<input id='prNote' placeholder='что решили, идея или цель'>" +
+           "<button class='small' data-k='decision'>решение</button> <button class='small' data-k='idea'>идея</button> <button class='small' data-k='goal'>цель</button>");
+    projPanel.innerHTML = h.join("");
+    pWire();
+    projPanel.querySelectorAll(".st").forEach(function (b) {
+      b.onclick = function () { api.project_task_status(+b.getAttribute("data-id"), b.getAttribute("data-s")).then(renderProject); };
+    });
+    projPanel.querySelectorAll("[data-del]").forEach(function (b) {
+      b.onclick = function () {
+        if (b.getAttribute("data-armed")) { api.project_task_delete(+b.getAttribute("data-del")).then(renderProject); return; }
+        b.setAttribute("data-armed", "1"); b.textContent = "удалить?";   // второе нажатие — удалить
+      };
+    });
+    function add(prio) {
+      var t = document.getElementById("prTask").value.trim();
+      if (t) api.project_task_add(p.name, t, prio).then(renderProject);
+    }
+    document.getElementById("prAdd").onclick = function () { add(2); };
+    document.getElementById("prAddHi").onclick = function () { add(1); };
+    document.getElementById("prTask").onkeydown = function (e) { if (e.key === "Enter") add(2); };
+    projPanel.querySelectorAll("[data-k]").forEach(function (b) {
+      b.onclick = function () {
+        var t = document.getElementById("prNote").value.trim();
+        if (t) api.project_note_add(p.name, b.getAttribute("data-k"), t).then(renderProject);
+      };
+    });
+  }
+  projBtn.onclick = function () {
+    touch();
+    if (projOpen) { window.closeProjects(); return; }
+    if (!pApi()) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
+    projOpen = true; projBtn.classList.add("on");
+    projPanel.style.display = "block";
+    projPanel.innerHTML = "<span class='close' id='prClose'>✕</span><b>Проекты</b><br>Загружаю…";
+    document.getElementById("prClose").onclick = window.closeProjects;
+    loadProjects();
   };
 
   // =======================================================
@@ -2635,7 +2760,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -3569,7 +3694,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

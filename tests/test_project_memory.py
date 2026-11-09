@@ -65,6 +65,23 @@ class ProjectMemory(unittest.TestCase):
         out, _, _ = run_tool("project_task", {"action": "done", "id": 99999})
         self.assertIn("Нет задачи", out)
 
+    def test_window_panel_api(self):
+        from chloe import remote
+        from chloe.app import Api
+
+        api = Api()
+        p = api.project_task_add("Chloe", "Панель проектов", 1)
+        self.assertEqual(p["name"], "chloe")
+        tid = p["tasks"][0]["id"]
+        self.assertEqual(api.project_task_status(tid, "doing")["tasks"][0]["status"], "doing")
+        api.project_note_add("chloe", "decision", "Панель — как «Доступ»")
+        self.assertEqual(api.project_get("chloe")["notes"][0]["text"], "Панель — как «Доступ»")
+        lst = api.projects_list()
+        self.assertEqual((lst[0]["name"], lst[0]["doing"]), ("chloe", 1))
+        self.assertEqual(api.project_task_delete(tid)["tasks"], [])
+        for name in ("projects_list", "project_get", "project_task_add", "project_task_status", "project_task_delete", "project_note_add"):
+            self.assertNotIn(name, remote.ALLOWED)                     # с телефона проекты не меняются
+
     def test_projects_category_in_permission_map(self):
         from chloe.permissions import permissions
         permissions.set_level("projects", "block")

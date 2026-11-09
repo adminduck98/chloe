@@ -259,6 +259,62 @@ class Api:
             return {"error": "Голос Светланы сейчас недоступен"}
         return {"audio": base64.b64encode(data).decode()}
 
+    # проекты: задачи, решения, цели — панель «Проекты» в окне (на телефоне этих методов нет)
+    def projects_list(self):
+        from .project_memory import project_memory
+
+        out = []
+        for name in project_memory.projects():
+            tasks = project_memory.tasks(name)
+            out.append({"name": name, "todo": sum(t["status"] == "todo" for t in tasks),
+                        "doing": sum(t["status"] == "doing" for t in tasks), "done": sum(t["status"] == "done" for t in tasks),
+                        "updated": max([t["updated"] or 0 for t in tasks] + [n["ts"] or 0 for n in project_memory.notes(name, 1)] or [0])})
+        return sorted(out, key=lambda p: -p["updated"])
+
+    def project_get(self, name):
+        from .project_memory import project_memory
+
+        key = project_memory.resolve(name)
+        return {"name": key, "tasks": project_memory.tasks(key), "notes": project_memory.notes(key, 50)}
+
+    def project_task_add(self, name, title, priority=2):
+        from .project_memory import project_memory
+
+        if str(title).strip():
+            first = project_memory.resolve(name) not in project_memory.projects()
+            project_memory.add_task(name, str(title), int(priority or 2))
+            if first:
+                brain.remember(project_memory.resolve(name), "Проекты")
+        return self.project_get(name)
+
+    def project_task_status(self, tid, status):
+        from .project_memory import project_memory
+
+        t = project_memory.task(int(tid))
+        if t:
+            project_memory.set_status(t["id"], status)
+            return self.project_get(t["project"])
+        return {"error": "нет такой задачи"}
+
+    def project_task_delete(self, tid):
+        from .project_memory import project_memory
+
+        t = project_memory.task(int(tid))
+        if not t:
+            return {"error": "нет такой задачи"}
+        project_memory.delete_task(t["id"])   # кнопка в окне — уже согласие пользователя
+        return self.project_get(t["project"])
+
+    def project_note_add(self, name, kind, text):
+        from .project_memory import project_memory
+
+        if str(text).strip():
+            first = project_memory.resolve(name) not in project_memory.projects()
+            project_memory.add_note(name, kind, str(text))
+            if first:
+                brain.remember(project_memory.resolve(name), "Проекты")
+        return self.project_get(name)
+
     # карта прав и Private Vault — только в окне на компьютере (телефону эти методы не доступны: менять права — за компьютером)
     def permissions_get(self):
         from .permissions import permissions, usage
