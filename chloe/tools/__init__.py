@@ -9,13 +9,13 @@ from ..experience import things_of
 from .. import skillbook
 from ..journal import journal
 from ..signals import state
-from . import controls, desktop, files, learn, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
+from . import controls, desktop, files, kb, learn, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
 from ..secret import redact
 from .. import usage as usage_mod
 from .. import vision as vision_mod
 
 HANDLERS = {name[5:]: getattr(mod, name)
-            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod) for name in dir(mod) if name.startswith("tool_")}
+            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod, kb) for name in dir(mod) if name.startswith("tool_")}
 
 
 # Навыки в мозге для каждого инструмента: (имя, описание, зона)
@@ -41,6 +41,10 @@ SKILLS = {
     "delete_path": ("Управление файлами", "", "Компьютер"),
     "download_file": ("Загрузки", "Скачивает файлы из интернета", "Интернет"),
     "web_search": ("Поиск в интернете", "Ищет информацию и ссылки в интернете", "Интернет"),
+    "learn_document": ("База знаний", "Изучает документы пользователя и отвечает по ним со ссылкой на источник", "Знания"),
+    "ask_knowledge": ("База знаний", "", "Знания"),
+    "list_knowledge": ("База знаний", "", "Знания"),
+    "forget_document": ("База знаний", "", "Знания"),
     "read_web_page": ("Поиск в интернете", "", "Интернет"),
     "volume": ("Громкость", "Делает громче, тише, выключает звук", "Компьютер"),
     "brightness": ("Яркость", "Меняет яркость экрана", "Компьютер"),
@@ -118,6 +122,17 @@ TOOLS = [
     {"name": "web_search", "description": "Поиск в интернете: заголовки, ссылки, краткое описание.",
      "input_schema": schema({"query": S, "count": {"type": "integer"}}, ["query"])},
     {"name": "read_web_page", "description": "Прочитать текст веб-страницы по ссылке.", "input_schema": schema({"url": S}, ["url"])},
+    {"name": "learn_document", "description": "Изучить документы пользователя в базу знаний: файл или целую папку "
+                                              "(PDF, Word .docx, .txt, .md, .html). «Изучи этот файл», «запомни документы с рабочего стола». "
+                                              "Файлы только читаются. path — путь к файлу или папке.",
+     "input_schema": schema({"path": S}, ["path"])},
+    {"name": "ask_knowledge", "description": "Найти ответ в изученных документах пользователя: «что мы решили про…», «что написано в моих "
+                                             "документах о…», «найди в моих файлах…». Возвращает фрагменты с названием документа и страницей. "
+                                             "Отвечай только по ним и называй источник; нет ответа — честно скажи.",
+     "input_schema": schema({"question": S, "count": {"type": "integer"}}, ["question"])},
+    {"name": "list_knowledge", "description": "Какие документы изучены (номер, название, страниц).", "input_schema": schema({})},
+    {"name": "forget_document", "description": "Убрать документ из базы знаний по номеру (с подтверждением). Сам файл не удаляется.",
+     "input_schema": schema({"id": {"type": "integer"}}, ["id"])},
     {"name": "volume", "description": "Громкость звука компьютера. Без параметров — узнать текущую. "
                                       "«Погромче/потише» — change ±10 (если «намного» — ±20). Для звука используй его, а не клавиши.",
      "input_schema": schema({"level": {"type": "integer", "description": "Точный уровень 0–100"},
