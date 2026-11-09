@@ -1,5 +1,6 @@
 """Qwen и DeepSeek: цикл инструментов, раздумья, картинки, запасная модель. Сеть и ключи не нужны — клиенты поддельные."""
 import json
+import os
 import unittest
 from types import SimpleNamespace as NS
 from unittest import mock
@@ -118,6 +119,14 @@ class OpenAIStyle(unittest.TestCase):
         mock.patch.object(config, "QWEN_KEY", None).start()
         mock.patch.object(config, "PROVIDER", "deepseek").start()
         self.assertEqual(oc.backups("deepseek-flash"), ["deepseek-flash", "deepseek-v4-pro"])
+
+    def test_token_plan_key_uses_its_own_address(self):
+        with mock.patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("QWEN_BASE_URL", None)
+            self.assertEqual(oc.qwen_base_url("sk-sp-abc"), oc.QWEN_TOKEN_PLAN_URL)
+            self.assertEqual(oc.qwen_base_url("sk-abc"), oc.QWEN_PAYG_URL)
+            os.environ["QWEN_BASE_URL"] = "https://example.test/v1"
+            self.assertEqual(oc.qwen_base_url("sk-sp-abc"), "https://example.test/v1")
 
     def test_real_error_is_not_hidden(self):
         qwen = FakeClient([busy(401)])   # неверный ключ — не «занято», запасная не поможет скрыть проблему

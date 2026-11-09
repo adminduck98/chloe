@@ -21,10 +21,21 @@ from .prompt import start_thinking, system_prompt
 from ..vision import vision, wants_frame
 from .router import NUDGE
 
+QWEN_PAYG_URL = "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1"
+QWEN_TOKEN_PLAN_URL = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+
+
+def qwen_base_url(key=None):
+    """Ключи QwenCloud привязаны к региону и к способу оплаты: обычный ключ (sk-…) — по факту, Сингапур;
+    ключ подписки Token Plan (sk-sp-…) работает только через свой адрес. Другой регион — QWEN_BASE_URL."""
+    if os.environ.get("QWEN_BASE_URL"):
+        return os.environ["QWEN_BASE_URL"]
+    key = config.QWEN_KEY if key is None else key
+    return QWEN_TOKEN_PLAN_URL if (key or "").startswith("sk-sp-") else QWEN_PAYG_URL
+
+
 PROVIDERS = {
-    # ключи QwenCloud привязаны к региону: Сингапур по умолчанию, другой регион — QWEN_BASE_URL
-    "qwen": {"base_url": os.environ.get("QWEN_BASE_URL", "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1"),
-             "key": lambda: config.QWEN_KEY, "images": True},
+    "qwen": {"base_url": qwen_base_url(), "key": lambda: config.QWEN_KEY, "images": True},
     "deepseek": {"base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
                  "key": lambda: config.DEEPSEEK_KEY, "images": False},
     "anthropic": {"key": lambda: config.ANTHROPIC_KEY, "images": True},   # официальная библиотека Anthropic

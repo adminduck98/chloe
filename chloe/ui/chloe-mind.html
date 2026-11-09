@@ -3474,7 +3474,8 @@
       var usd = Number(st.today.usd) || 0;
       spendBtn.textContent = "сегодня $" + (usd < 1 ? usd.toFixed(3) : usd.toFixed(2));
       spendBtn.title = "Сегодня " + st.today.calls + " запросов к моделям ≈ $" + usd.toFixed(4) +
-        " (оценка по прайсу; точный счёт — в кабинетах Anthropic и DeepSeek). Нажмите — подробнее в ядре.";
+        " (оценка по прайсу; точный счёт — в кабинетах Anthropic и DeepSeek; Qwen по подписке Token Plan в сумму не входит —" +
+        " его кредиты видны в консоли Alibaba). Нажмите — подробнее в ядре.";
       spendBtn.hidden = false;
     }).catch(function () {});
   }
