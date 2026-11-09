@@ -43,8 +43,11 @@ def parse_keys(text):
             line = line[7:].strip()
         name, sep, value = line.partition("=")
         name, value = name.strip(), value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
+        if value[:1] in ("\"", "'"):             # "ключ"   # комментарий — берём только то, что в кавычках
+            end = value.find(value[0], 1)
+            value = value[1:end] if end > 0 else ""
+        else:
+            value = value.split(" #", 1)[0].split("\t#", 1)[0].strip()
         if sep and name in KEY_NAMES and value:
             out[name] = value
     return out

@@ -20,6 +20,11 @@ class KeysFile(unittest.TestCase):
                                  'ANTHROPIC_API_KEY=sk-ant-c\nPATH=/evil\nQWEN_API_KEY=\n')
         self.assertEqual(keys, {"DEEPSEEK_API_KEY": "sk-a", "GEMINI_API_KEY": "g-b", "ANTHROPIC_API_KEY": "sk-ant-c"})
 
+    def test_comment_after_value(self):
+        keys = config.parse_keys('export DASHSCOPE_API_KEY="sk-sp-x.y-z_1"   # Qwen (Token Plan)\n'
+                                 'GEMINI_API_KEY=g-b  # gemini\nDEEPSEEK_API_KEY="unclosed\n')
+        self.assertEqual(keys, {"DASHSCOPE_API_KEY": "sk-sp-x.y-z_1", "GEMINI_API_KEY": "g-b"})
+
     def test_file_wins_and_gets_private(self):
         self.file.write_text('export DEEPSEEK_API_KEY="sk-new"\n', encoding="utf-8")
         self.file.chmod(0o644)
