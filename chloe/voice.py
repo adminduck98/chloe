@@ -231,7 +231,8 @@ class Voice:
             try:
                 if speech_stream.speak(parts, VOICES[0], interrupt):
                     return True
-                self.voice_down_until = time.time() + 60
+                if speech_stream.no_connection(speech_stream.last_problem):
+                    self.voice_down_until = time.time() + 60   # нет связи — минуту не ждём Светлану зря
                 return False
             except Exception as e:   # звуковое устройство и т.п. — говорим по-старому, целым файлом
                 print("[потоковый голос: " + str(e)[:80] + " — говорю целым файлом]")
@@ -354,7 +355,7 @@ def voice_mp3(text, timeout=60):
         return bytes(buf)
 
     problem = None
-    for _ in range(3):
+    for _ in range(5):   # сервер иногда отвечает без звука (NoAudioReceived) — следующий запрос обычно проходит
         started = time.time()
         try:
             data = asyncio.run(asyncio.wait_for(go(), timeout))

@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from chloe import speech_stream as ss
+RealDownload = ss.Download   # Speak подменяет Download поддельной; тест повторов берёт настоящую
 from chloe import voice as voice_mod
 from chloe.voice import Voice
 
@@ -89,9 +90,39 @@ class Speak(unittest.TestCase):
             self.assertTrue(v._say_edge("Привет. Как дела?"))
         with mock.patch.object(voice_mod, "STREAMING", True), \
              mock.patch.object(ss, "available", lambda: True), \
+             mock.patch.object(ss, "last_problem", "NoAudioReceived"), \
              mock.patch.object(ss, "speak", lambda parts, name, stop: False):
-            self.assertFalse(v._say_edge("Привет."))          # Светлана недоступна — запасной голос
+            self.assertFalse(v._say_edge("Привет."))          # пустой ответ сервера — запасной голос на эту фразу,
+            self.assertEqual(v.voice_down_until, 0)            # но следующую Светлана попробует снова
+        with mock.patch.object(voice_mod, "STREAMING", True), \
+             mock.patch.object(ss, "available", lambda: True), \
+             mock.patch.object(ss, "last_problem", "ClientConnectorError"), \
+             mock.patch.object(ss, "speak", lambda parts, name, stop: False):
+            self.assertFalse(v._say_edge("Привет."))          # нет связи — минуту не ждём Светлану зря
             self.assertGreater(v.voice_down_until, time.time())
+
+    def test_lost_piece_is_spoken_by_sentences(self):
+        """Сервер потерял кусок целиком — он придёт по предложениям, а не пропадёт молча."""
+        calls = []
+
+        class Comm:
+            def __init__(self, text, voice_name):
+                self.text = text
+
+            async def stream(self):
+                calls.append(self.text)
+                if "." in self.text[:-1]:                    # кусок из двух предложений сервер «теряет»
+                    raise NoAudioReceived("пустой ответ")
+                yield {"type": "audio", "data": self.text.encode()}
+
+        import edge_tts
+        from edge_tts.exceptions import NoAudioReceived
+        with mock.patch.object(edge_tts, "Communicate", Comm), mock.patch.object(ss.time, "sleep", lambda s: None):
+            d = RealDownload("Первое. Второе.", "ru-RU-SvetlanaNeural")
+            while not d.done:
+                time.sleep(0.01)
+        self.assertEqual(bytes(d.buf), "Первое.Второе.".encode())
+        self.assertEqual(calls.count("Первое. Второе."), ss.TRIES)
 
     def test_generator_pads_silence_and_ends(self):
         stop = threading.Event()

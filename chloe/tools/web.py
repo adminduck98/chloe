@@ -44,10 +44,21 @@ def tool_web_search(a):
         from ddgs import DDGS
     except ImportError:
         from duckduckgo_search import DDGS
-    with DDGS() as d:
-        res = list(d.text(a["query"], max_results=int(a.get("count", 6))))
+    # поисковик иногда отвечает «No results found» ошибкой на запрос, который через секунду находит всё:
+    # одна повторная попытка, а пустой результат — обычный ответ, а не сбой шага (иначе задача уходит сильному мозгу)
+    res = []
+    for _ in range(2):
+        try:
+            with DDGS() as d:
+                res = list(d.text(a["query"], max_results=int(a.get("count", 6))))
+        except Exception as e:
+            if "no results" not in str(e).lower():
+                raise
+            res = []
+        if res:
+            break
     if not res:
-        return "Ничего не найдено."
+        return "Ничего не найдено по этому запросу. Можно попробовать другие слова."
     return "\n\n".join("{}\n{}\n{}".format(r.get("title", ""), r.get("href", ""), r.get("body", "")[:300]) for r in res)
 
 
