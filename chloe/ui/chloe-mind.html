@@ -1,0 +1,3625 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<title>Chloe</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500&family=Inter:wght@400;500&display=swap">
+<style>
+  /* Chloe · стиль Channel Studio: монохромная «тёмная студия» + один коралловый акцент.
+     Мозг — на весь экран, всё остальное лежит поверх него тонкими слоями. */
+  :root {
+    --bg: #0A0A0A;      /* угольный чёрный */
+    --ink: #F2F2F2;     /* главный текст */
+    --bone: #CACACA;    /* текст, тонкие линии */
+    --iron: #8A8A8A;    /* подписи (светлее #727272 — читается мелким текстом) */
+    --line: #2A2A2A;    /* волосяные линии */
+    --coral: #FF7777;   /* единственный цвет: мысль, внимание, «сейчас» */
+    --err: #E05555;
+    --font: "Inter Tight", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--bone); font-family: var(--font);
+    -webkit-font-smoothing: antialiased; overflow: hidden; }
+  button { font-family: var(--font); }
+  ::selection { background: var(--coral); color: var(--bg); }
+
+  #app { position: fixed; inset: 0; }
+
+  /* --- мозг: весь экран --- */
+  #core { position: absolute; inset: 0; cursor: grab; touch-action: none; overflow: hidden; }
+  #core.drag { cursor: grabbing; }
+  #core canvas { display: block; width: 100%; height: 100%; }
+
+  /* --- шапка --- */
+  header { position: absolute; left: 0; right: 0; top: 0; height: 64px; z-index: 5; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 40px; border-bottom: 1px solid var(--line); background: rgba(10,10,10,.82);
+    backdrop-filter: blur(8px); font-size: 14px; pointer-events: auto; }
+  header b { color: var(--ink); font-weight: 500; font-size: 20px; letter-spacing: -.03em; }
+  header > span { display: flex; align-items: center; gap: 10px; color: var(--bone); }
+  #dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); transition: background .8s; }
+  #statusTxt { letter-spacing: -.01em; }
+  /* постоянное зрение: что Chloe сейчас видит на экране */
+  #seeBtn { display: inline-flex; align-items: center; gap: 8px; max-width: 320px; background: transparent; border: 0; border-left: 1px solid var(--line);
+    margin-left: 18px; padding: 0 0 0 18px; min-height: 36px; color: var(--iron); font-size: 14px; letter-spacing: -.01em; cursor: pointer; }
+  #seeBtn[hidden] { display: none; }
+  #seeBtn:hover { color: var(--ink); }
+  #seeTxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #seeEye { flex: none; width: 14px; height: 9px; border: 1px solid currentColor; border-radius: 50% / 60%; position: relative; }
+  #seeEye::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: currentColor; }
+  #seeBtn.on { color: var(--bone); }
+  #seeBtn.on #seeEye { color: var(--coral); }
+  #seeBtn.private #seeEye::before { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 1px; background: currentColor; transform: rotate(-20deg); }
+  #seeBtn.off { color: var(--iron); }
+  #seeBtn.off #seeEye::before { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 1px; background: currentColor; transform: rotate(-20deg); }
+  #moreBtn { background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--bone); font-size: 14px;
+    padding: 6px 0; margin-left: 28px; min-height: 36px; cursor: pointer; letter-spacing: -.01em; }
+  #moreBtn::after { content: " →"; }
+  #moreBtn:hover, #moreBtn.on { color: var(--coral); border-color: var(--coral); }
+
+  /* --- цифры и фильтры: левый верх --- */
+  #stats { position: absolute; left: 40px; top: 88px; z-index: 4; font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--iron); pointer-events: none; }
+  #stats span { color: var(--ink); letter-spacing: -.01em; font-size: 13px; font-variant-numeric: tabular-nums; }
+  #filters { position: absolute; left: 40px; top: 116px; right: 480px; z-index: 4; display: flex; flex-wrap: wrap; gap: 4px 22px; }
+  .chip { flex: none; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--iron);
+    padding: 4px 0; font-size: 14px; letter-spacing: -.01em; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s; }
+  .chip:hover { color: var(--ink); }
+  .chip.on { color: var(--ink); border-bottom-color: var(--coral); }
+
+  #search { position: absolute; left: 40px; top: 160px; z-index: 4; display: flex; align-items: center; gap: 10px; }
+  #search input { width: 220px; padding: 8px 0; font-size: 14px; }
+  #searchCount { font-size: 12px; color: var(--iron); }
+
+  /* --- масштаб: справа по центру --- */
+  #zoom { position: absolute; right: 40px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 0;
+    border: 1px solid var(--line); background: rgba(10,10,10,.6); }
+  #zoom button { width: 44px; height: 44px; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--bone);
+    font-size: 18px; line-height: 1; cursor: pointer; padding: 0; }
+  #zoom button:hover { color: var(--coral); }
+  #zoomLvl { font-size: 11px; text-align: center; color: var(--iron); padding: 8px 0; font-variant-numeric: tabular-nums; }
+
+  /* --- подписи нейронов и зон в 3D --- */
+  .label { position: absolute; transform: translate(-50%, -170%); font-size: 12px; letter-spacing: -.01em; color: var(--ink);
+    text-shadow: 0 0 3px var(--bg), 0 0 8px var(--bg); white-space: nowrap; pointer-events: none; transition: opacity .8s; }
+  .label.mem { color: var(--bone); }
+  .label.err { color: var(--err); }
+  .label.recall { color: #FFC2C2; }
+  .label.think { color: var(--coral); }
+  .zone, .region { position: absolute; transform: translate(-50%, -50%); font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+    color: rgba(202,202,202,.42); white-space: nowrap; pointer-events: none; }
+  .region { font-size: 9px; color: rgba(202,202,202,.32); }
+  /* центр управления: отделы мозга, слои и ядро — кнопки, открывают слой системы */
+  .region, .layer, #coreLabel { pointer-events: auto; cursor: pointer; background: transparent; border: 0; padding: 8px 10px;
+    font-family: var(--font); transition: color .15s, opacity .4s; }
+  .region:hover, .region:focus-visible { color: var(--ink); outline: none; }
+  .layer { position: absolute; transform: translate(-50%, -50%); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(202,202,202,.55); white-space: nowrap; }
+  .layer:hover, .layer:focus-visible { color: var(--coral); outline: none; }
+  .layer.hot { color: var(--coral); }
+  #coreLabel { position: absolute; transform: translate(-50%, 0); font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--coral); white-space: nowrap; }
+  #coreLabel:hover, #coreLabel:focus-visible { color: var(--ink); outline: none; }
+  body.wall .layer, body.wall #coreLabel, body.wall .region { display: none; }
+  /* панель ядра */
+  .cRow { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #161616; }
+  .cRow span:first-child { color: var(--iron); }
+  .cRow span:last-child { color: var(--ink); text-align: right; overflow-wrap: anywhere; }
+  .cLayer { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 10px; padding: 7px 0; }
+  .cLayer button { background: transparent; border: 0; color: var(--bone); font: 400 14px var(--font); text-align: left; padding: 0; cursor: pointer; }
+  .cLayer button:hover { color: var(--coral); }
+  .cLayer .track { height: 2px; background: var(--line); position: relative; }
+  .cLayer .track i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bone); transition: width .4s; }
+  .cLayer.hot .track i { background: var(--coral); }
+  .cLayer small { color: var(--iron); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .cMuted { color: var(--iron); }
+  .cState { font-size: 28px; line-height: 1.05; letter-spacing: -.035em; color: var(--ink); margin: 6px 0 2px; }
+
+  /* --- ответ Chloe: крупный заголовок, как в студийной вёрстке --- */
+  #reply { position: absolute; left: 40px; bottom: 120px; z-index: 4; max-width: min(760px, calc(100% - 520px)); min-height: 0;
+    font-size: 45px; line-height: .98; letter-spacing: -.045em; font-weight: 400; color: var(--ink); text-align: left;
+    transition: opacity .6s; pointer-events: none; text-shadow: 0 0 24px var(--bg); }
+  #reply.heard { color: var(--iron); font-style: normal; }
+  #reply.heard::before { content: "Вы: "; color: var(--coral); }
+
+  /* --- ЭЭГ и машина времени: правый низ --- */
+  #eeg { position: absolute; right: 40px; bottom: 132px; width: 400px; z-index: 4; display: flex; flex-direction: column; gap: 6px;
+    padding-top: 12px; border-top: 1px solid var(--line); }
+  #eegCanvas { width: 100%; height: 40px; display: block; }
+  #eegInfo { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; letter-spacing: .04em; color: var(--iron); }
+  #eegInfo b { color: var(--bone); font-weight: 400; }
+
+  #timeRow { position: absolute; right: 40px; bottom: 84px; width: 400px; z-index: 4; display: flex; align-items: center; gap: 14px;
+    font-size: 12px; color: var(--iron); }
+  #timeRow input[type=range] { flex: 1; accent-color: var(--bone); padding: 0; border: none; background: none; height: 20px; }
+  #timePlay { background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--bone); padding: 4px 0;
+    font-size: 13px; cursor: pointer; white-space: nowrap; }
+  #timePlay:hover { color: var(--coral); border-color: var(--coral); }
+  #timeLabel { min-width: 74px; text-align: right; color: var(--bone); font-variant-numeric: tabular-nums; }
+
+  /* --- низ: команда слева, разделы справа --- */
+  #cmd { position: absolute; left: 40px; bottom: 32px; z-index: 4; width: min(560px, calc(100% - 560px)); box-sizing: border-box; }
+  #bottom { position: absolute; right: 40px; bottom: 28px; z-index: 4; display: flex; align-items: center; gap: 28px; }
+  #legend { display: flex; gap: 16px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--iron); }
+  #legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  #toggles { display: flex; gap: 4px 20px; flex-wrap: wrap; justify-content: flex-end; }
+  #toggles button { background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--iron); padding: 8px 0;
+    font-size: 14px; letter-spacing: -.01em; cursor: pointer; transition: color .15s, border-color .15s; }
+  #toggles button:hover { color: var(--ink); }
+  #toggles button.on { color: var(--ink); border-bottom-color: var(--coral); }
+
+  input { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0;
+    font: 400 16px var(--font); letter-spacing: -.01em; color: var(--ink); outline: none; transition: border-color .15s; }
+  input::placeholder { color: var(--iron); }
+  input:focus { border-bottom-color: var(--coral); }
+
+  /* --- панели: выезжают справа на всю высоту --- */
+  .panel { position: absolute; top: 64px; right: 0; bottom: 0; width: 440px; max-width: 100%; z-index: 6; display: none;
+    background: var(--bg); border-left: 1px solid var(--line); padding: 32px 40px 40px; font-size: 14px; line-height: 1.55;
+    color: var(--bone); overflow-y: auto; box-sizing: border-box; cursor: default; }
+  .panel b { color: var(--ink); font-weight: 400; font-size: 28px; line-height: 1; letter-spacing: -.035em; display: inline-block; margin-bottom: 6px; }
+  .panel h4 { margin: 24px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 11px; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--iron); }
+  .panel .close { float: right; cursor: pointer; color: var(--iron); font-size: 22px; line-height: 1; padding: 4px 0 4px 12px; }
+  .panel .close:hover { color: var(--coral); }
+  .bar { display: inline-block; width: 90px; height: 2px; background: var(--line); vertical-align: middle; margin-left: 8px; }
+  .bar i { display: block; height: 100%; background: var(--bone); }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #161616; }
+  .row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel button.small { background: transparent; border: 0; border-bottom: 1px solid var(--bone); color: var(--bone); border-radius: 0;
+    padding: 6px 0; font-size: 14px; cursor: pointer; margin: 8px 22px 4px 0; letter-spacing: -.01em; }
+  .panel button.small::after { content: " →"; }
+  .panel button.small:hover { color: var(--ink); border-color: var(--ink); }
+  .panel button.small.on { color: var(--coral); border-color: var(--coral); }
+  .panel button.danger { color: var(--coral); border-color: var(--coral); }
+  .panel button.danger::after { content: " ×"; }
+  .panel input { font-size: 14px; padding: 8px 0; }
+
+  /* журнал */
+  .jTop { display: flex; gap: 16px; align-items: center; margin: 10px 0 14px; }
+  .jTop input { flex: 1; min-width: 0; }
+  .jItem { display: flex; gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid #161616; cursor: pointer; }
+  .jItem:hover .x { color: var(--coral); }
+  .jItem .t { color: var(--iron); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
+  .jItem .k { flex: none; width: 14px; text-align: center; }
+  .jItem .x { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .15s; }
+  .jItem.heard { margin-top: 14px; }
+  .jItem.heard .x { color: var(--ink); }
+  .jItem.said .x { color: var(--bone); }
+  .jItem.step { padding-left: 26px; }
+  .jItem.fail .x, .jItem.fail .k { color: var(--err); }
+  .jItem .shot { flex: none; font-size: 11px; color: var(--iron); }
+  .jDetail pre { white-space: pre-wrap; word-break: break-word; background: transparent; border: 1px solid var(--line); padding: 10px 12px;
+    margin: 8px 0; font-size: 12px; max-height: 240px; overflow-y: auto; color: var(--bone); }
+  .jDetail img { width: 100%; border: 1px solid var(--bone); margin: 8px 0; }
+  /* память и файлы */
+  .mItem { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; }
+  .mItem:hover .x { color: var(--coral); }
+  .mItem .x { color: var(--ink); font-size: 16px; letter-spacing: -.015em; transition: color .15s; }
+  .mItem .t { color: var(--iron); font-size: 12px; }
+  .mEdit textarea { width: 100%; box-sizing: border-box; min-height: 72px; background: transparent; border: 1px solid var(--line);
+    color: var(--ink); padding: 10px 12px; font: 400 15px var(--font); resize: vertical; outline: none; }
+  .mEdit textarea:focus { border-color: var(--coral); }
+  .fItem { padding: 10px 0; border-bottom: 1px solid #161616; }
+  .fItem .x { color: var(--ink); word-break: break-word; }
+  .fItem.undone .x { color: var(--iron); text-decoration: line-through; }
+  .fItem .t { color: var(--iron); font-size: 12px; }
+
+  /* живые обои: только мозг */
+  body.wall header, body.wall #stats, body.wall #filters, body.wall #reply,
+  body.wall #timeRow, body.wall #eeg, body.wall #bottom, body.wall #cmd, body.wall #zoom, body.wall #search { display: none; }
+  body.wall #core { cursor: default; }
+  /* в программе микрофон и голос ведёт Python */
+  body.app #micBtn, body.app #soundBtn { display: none; }
+  #phoneBtn { display: none; } body.app #phoneBtn { display: inline-block; } html.phone #phoneBtn { display: none !important; }
+  #phonePanel .qr { background: #fff; padding: 10px; width: 220px; height: 220px; margin: 12px 0; }
+  #phonePanel .qr svg { width: 100%; height: 100%; display: block; }
+  #phonePanel ol { margin: 8px 0; padding-left: 18px; }
+  #phonePanel code { color: var(--ink); word-break: break-all; font-size: 12px; }
+
+  /* чистый вид: только мозг, имя и ответ; всё остальное — по кнопке «Все функции» */
+  body.clean #stats, body.clean #filters, body.clean #search, body.clean #zoom,
+  body.clean #eeg, body.clean #timeRow, body.clean #bottom, body.clean #cmd,
+  body.clean .zone { display: none !important; }
+  body.clean .region { opacity: .7; }
+  body.clean #core { cursor: default; }
+  body.clean #reply { bottom: 56px; max-width: min(900px, calc(100% - 80px)); font-size: 56px; }
+
+  /* ===== мобильная версия: телефон-пульт и узкое окно =====
+     Снизу вверх: панель ввода → разделы → активность → ответ Chloe. Мозг — за всем этим, на весь экран. */
+  @media (max-width: 900px) {
+    :root { --sa: env(safe-area-inset-bottom, 0px); }
+    header { height: calc(56px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 20px 0; box-sizing: border-box; }
+    header b { font-size: 18px; }
+    header > span { gap: 8px; font-size: 13px; }
+    #moreBtn { margin-left: 14px; font-size: 13px; min-height: 44px; }
+    #seeBtn { margin-left: 12px; padding-left: 12px; max-width: 34vw; font-size: 13px; min-height: 44px; }
+    #statusTxt { display: none; }
+
+    #stats { left: 20px; top: calc(72px + env(safe-area-inset-top, 0px)); font-size: 10px; letter-spacing: .12em; }
+    #stats span { font-size: 12px; }
+    #filters { left: 0; right: 0; top: calc(94px + env(safe-area-inset-top, 0px)); padding: 0 20px; flex-wrap: nowrap;
+      overflow-x: auto; scrollbar-width: none; gap: 0 20px; }
+    #filters::-webkit-scrollbar { display: none; }
+    .chip { min-height: 40px; }
+    #search { left: 20px; right: 20px; top: calc(140px + env(safe-area-inset-top, 0px)); }
+    #search input { flex: 1; width: auto; }
+    #zoom, #legend, #timeRow { display: none; }        /* на телефоне масштаб — двумя пальцами */
+
+    /* панель ввода: на телефоне — #phoneBar из remote.js, в узком окне — #cmd */
+    #cmd { left: 20px; right: 20px; width: auto; bottom: calc(var(--sa) + 16px); }
+    #bottom { left: 0; right: 0; bottom: calc(var(--sa) + 80px); padding: 0 20px; }
+    #toggles { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; justify-content: flex-start; gap: 0 20px; width: 100%; }
+    #toggles::-webkit-scrollbar { display: none; }
+    #toggles button { flex: none; min-height: 44px; font-size: 15px; }
+    #eeg { left: 20px; right: 20px; width: auto; bottom: calc(var(--sa) + 132px); gap: 4px; padding-top: 8px; }
+    #eegCanvas { height: 28px; }
+    #eegInfo { font-size: 10px; }
+    #reply, body.clean #reply { left: 20px; right: 20px; max-width: none; bottom: calc(var(--sa) + 200px); font-size: 30px; line-height: 1.02; }
+    body.clean #reply { bottom: calc(var(--sa) + 104px); font-size: 34px; }
+
+    /* разделы открываются на весь экран */
+    .panel { top: calc(56px + env(safe-area-inset-top, 0px)); width: 100%; border-left: 0; z-index: 7;
+      padding: 24px 20px calc(40px + var(--sa)); font-size: 15px; -webkit-overflow-scrolling: touch; }
+    .panel b { font-size: 26px; }
+    .panel .close { font-size: 26px; padding: 6px 0 10px 16px; }
+    .panel button.small { min-height: 44px; font-size: 15px; }
+    .jItem, .mItem, .fItem { padding: 12px 0; }
+    .jItem .x { white-space: normal; }
+    .label { font-size: 11px; }
+  }
+  @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+    #eeg, #stats, #search { display: none; }
+    #reply, body.clean #reply { bottom: calc(var(--sa) + 132px); font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><b>Chloe</b><span><i id="dot"></i><span id="statusTxt">онлайн</span><button id="seeBtn" title="Постоянное зрение: Chloe видит экран. Нажмите, чтобы выключить или включить." hidden><i id="seeEye"></i><span id="seeTxt">Вижу экран</span></button><button id="moreBtn">Все функции</button></span></header>
+  <div id="stats">нейронов <span id="sN">0</span> · связей <span id="sL">0</span> · зон <span id="sZ">0</span> · сигналов <span id="sS">0</span></div>
+  <div id="filters"></div>
+  <div id="core">
+    <div id="search"><input id="searchInput" placeholder="Поиск в мозге" autocomplete="off"><span id="searchCount"></span></div>
+    <div id="zoom">
+      <button id="zIn" title="Приблизить (+)">+</button>
+      <button id="zOut" title="Отдалить (−)">−</button>
+      <button id="zReset" title="Сбросить вид (0)">⟲</button>
+      <div id="zoomLvl">100%</div>
+    </div>
+    <div id="info" class="panel"></div>
+    <div id="statsPanel" class="panel"></div>
+    <div id="corePanel" class="panel"></div>
+    <div id="journalPanel" class="panel"></div>
+    <div id="memoryPanel" class="panel"></div>
+    <div id="filesPanel" class="panel"></div>
+    <div id="phonePanel" class="panel"></div>
+  </div>
+  <div id="eeg">
+    <canvas id="eegCanvas"></canvas>
+    <div id="eegInfo"><span>Активность · <b id="eegRhythm">спокойна</b></span><span>сосредоточенность <b id="focusTxt">0%</b> · усталость <b id="tiredTxt">0%</b></span></div>
+  </div>
+  <div id="reply"></div>
+  <div id="timeRow">
+    <button id="timePlay" title="Проиграть рост мозга">▶ Рост</button>
+    <input id="timeSlider" type="range" min="0" max="1000" value="1000">
+    <span id="timeLabel">сейчас</span>
+  </div>
+  <div id="bottom">
+    <div id="legend"><span><i style="background:#D6D6D6"></i>навык</span><span><i style="background:#8F8F8F"></i>память</span><span><i style="background:#FF7777"></i>мысль</span></div>
+    <div id="toggles">
+      <button id="journalBtn">Журнал</button>
+      <button id="memoryBtn">Память</button>
+      <button id="filesBtn">Файлы</button>
+      <button id="phoneBtn">Телефон</button>
+      <button id="statsBtn">Статистика</button>
+      <button id="wallBtn">Обои</button>
+      <button id="micBtn">Микрофон</button>
+      <button id="soundBtn">Звук</button>
+    </div>
+  </div>
+  <input id="cmd" placeholder="Команда или «запомни …» — Chloe вырастит нейрон" autocomplete="off">
+</div>
+
+<script src="remote.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // =======================================================
+  // 0. ОСНОВА
+  // =======================================================
+  var params = new URLSearchParams(location.search);
+  var APP = params.has("app");   // открыт внутри программы Chloe (Python): голос и действия идут оттуда
+  if (APP) document.body.classList.add("app");
+  var wrap = document.getElementById("core");
+  var info = document.getElementById("info");
+  var statsPanel = document.getElementById("statsPanel");
+  var replyEl = document.getElementById("reply");
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  var DEVICE_DPR = window.devicePixelRatio || 1;
+  var DPR = Math.min(DEVICE_DPR, 2);
+  renderer.setPixelRatio(DPR);
+  renderer.setClearColor(0x000000, 0);
+  wrap.insertBefore(renderer.domElement, wrap.firstChild);
+
+  var scene = new THREE.Scene();
+  var FOV = 40;
+  var camera = new THREE.PerspectiveCamera(FOV, 1, 0.02, 100);
+  var BASE_Z = 4.9;
+  camera.position.set(0, 0, BASE_Z);
+
+  var group = new THREE.Group();
+  scene.add(group);
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function clamp(x, a, b) { return Math.min(Math.max(x, a), b); }
+  function randDir(rng) {
+    rng = rng || Math.random;
+    var v = new THREE.Vector3(rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1);
+    if (v.lengthSq() < 1e-4) v.set(1, 0, 0);
+    return v.normalize();
+  }
+  function gauss() { return (Math.random() + Math.random() + Math.random() - 1.5) / 1.5; }
+  // предсказуемый генератор: один и тот же нейрон всегда растёт одинаково
+  function seeded(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  var clock = new THREE.Clock();
+  function now() { return clock.getElapsedTime(); }
+  function approach(cur, target, rate, dt) { return cur + (target - cur) * Math.min(1, rate * dt); }
+  function approachAngle(cur, target, rate, dt) {
+    var d = target - cur;
+    d = ((d + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    return cur + d * Math.min(1, rate * dt);
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
+  }
+
+  var COLOR_SKILL = new THREE.Color(0xd6d6d6);   // стиль Channel Studio: монохром + коралл
+  var COLOR_MEM = new THREE.Color(0x8f8f8f);
+  var COLOR_HOT = new THREE.Color(0xffffff);
+  var COLOR_ERR = new THREE.Color(0xe05555);
+  var COLOR_GOLD = new THREE.Color(0xff7777);   // ход мысли — единственный цвет
+  var COLOR_DREAM = new THREE.Color(0x9a9a9a);
+  var COLOR_INH = new THREE.Color(0x5e5e5e);
+  var SIG_SKILL = new THREE.Color(0xd6d6d6).lerp(new THREE.Color(0xffffff), 0.4);
+  var SIG_MEM = new THREE.Color(0x8f8f8f).lerp(new THREE.Color(0xffffff), 0.4);
+  var SIG_RECALL = new THREE.Color(0xffc2c2);   // вспомнила: светлый коралл
+  var SHELL_BASE = new THREE.Color(0xb4b4b4);
+  var SHELL_WARM = new THREE.Color(0xff7777);
+  var SHELL_COLD = new THREE.Color(0xe05555);
+  var SHELL_SLEEP = new THREE.Color(0x3a3a3a);
+
+  var MAX_N = 16384, MAX_L = 49152, AX = 12, DEND_MAX = 64, GROW = 2.6;   // максимум мозга
+
+  function hash(x) { var s = Math.sin(x) * 43758.5453; return (s - Math.floor(s)) * 6.2831853; }
+  function phases(id) { return [hash(id * 12.9898 + 1.0), hash(id * 78.233 + 2.0), hash(id * 39.425 + 3.0)]; }
+  var GLSL_COMMON = [
+    "float hsh(float x){ return fract(sin(x) * 43758.5453) * 6.2831853; }",
+    "vec3 driftOf(float id, float t, float amp){",
+    "  vec3 ph = vec3(hsh(id*12.9898+1.0), hsh(id*78.233+2.0), hsh(id*39.425+3.0));",
+    "  return amp * vec3(sin(t*0.31+ph.x), sin(t*0.27+ph.y), sin(t*0.35+ph.z));",
+    "}",
+    "vec4 texAt(sampler2D tex, float id, float size){",
+    "  vec2 uv = vec2(mod(id, size) + 0.5, floor(id / size) + 0.5) / size;",
+    "  return texture2D(tex, uv);",
+    "}",
+    "float easeOut(float x){ x = clamp(x, 0.0, 1.0); return 1.0 - pow(1.0 - x, 3.0); }",
+    // приглушение в толпе, которое исчезает при приближении
+    "uniform float uCrowdK;",
+    // при приближении на экран попадает меньше клеток — их можно делать ярче (пропорционально площади)
+    "float crowdF(float lo, float dens, float zoom){ return min(1.0, mix(lo * uCrowdK, 1.0, smoothstep(0.3, 0.8, dens)) * (1.0 + (max(zoom, 1.0) - 1.0) * 0.6 * uCrowdK)); }",
+    // поиск: найденные ярче, остальные гаснут
+    "float searchF(float on, float hl){ return mix(1.0, mix(0.1, 1.5, hl), on); }"
+  ].join("\n");
+  var drift = { amp: 0.035 };
+  function driftOf(id, t, out) {
+    var ph = phases(id), a = drift.amp;
+    return out.set(a * Math.sin(t * 0.31 + ph[0]), a * Math.sin(t * 0.27 + ph[1]), a * Math.sin(t * 0.35 + ph[2]));
+  }
+
+  // Состояние нейронов и связей хранится в текстурах, их читает видеокарта
+  var NT = 128, LT = 256;   // 128×128 = 16384 нейрона, 256×256 = 65536 связей
+  var neurData = new Float32Array(NT * NT * 4);   // сила, жар, рождение, тип
+  var neur2Data = new Float32Array(NT * NT * 4);  // ошибка, найден, видимость, —
+  var linkData = new Float32Array(LT * LT * 4);   // вес, свечение, рождение, мысль
+  var link2Data = new Float32Array(LT * LT * 4);  // миелин, тормозящая, след активности, награда (дофамин)
+  function dataTex(arr, size) {
+    var t = new THREE.DataTexture(arr, size, size, THREE.RGBAFormat, THREE.FloatType);
+    t.minFilter = t.magFilter = THREE.NearestFilter;
+    t.needsUpdate = true;
+    return t;
+  }
+  var neurTex = dataTex(neurData, NT), neur2Tex = dataTex(neur2Data, NT), linkTex = dataTex(linkData, LT), link2Tex = dataTex(link2Data, LT);
+  // мембранный потенциал: покой 0, порог 1, после импульса — ниже покоя
+  var vPot = new Float32Array(MAX_N), refUntil = new Float32Array(MAX_N);
+  var NEURO = {
+    threshold: 1.0,     // порог импульса
+    reset: -0.35,       // гиперполяризация после импульса
+    refractory: 0.5,    // секунд «отдыха» после импульса
+    leak: 2.5,          // как быстро заряд стекает к покою
+    synapse: 0.75,      // сколько заряда передаёт связь весом 1
+    maxDepth: 3,        // как далеко расходится цепная реакция
+    traceTau: 8         // сколько секунд связь «помнит», что работала (для дофамина)
+  };
+
+  var common = {
+    uTime: { value: 0 }, uPixel: { value: DPR }, uProj: { value: 500 }, uScaleW: { value: 1 },
+    uDens: { value: 1 }, uZoom: { value: 1 }, uDrift: { value: 0.035 },
+    uSpeak: { value: 0 }, uChloe: { value: 0 }, uThink: { value: 0 }, uSleep: { value: 0 },
+    uSearchOn: { value: 0 }, uBright: { value: 1 }, uCrowdK: { value: 1 }, uDeep: { value: 0 },
+    uNeur: { value: neurTex }, uNeur2: { value: neur2Tex }, uLink: { value: linkTex }, uLink2: { value: link2Tex },
+    uInh: { value: new THREE.Color(0x5e5e5e) }, uWarm: { value: new THREE.Color(0xff9a9a) },
+    uSkill: { value: COLOR_SKILL }, uMem: { value: COLOR_MEM }, uHotC: { value: COLOR_HOT },
+    uErrC: { value: COLOR_ERR }, uGold: { value: COLOR_GOLD }
+  };
+
+  // =======================================================
+  // 1. СОСТОЯНИЯ И НАСТРОЕНИЕ
+  // =======================================================
+  var STATE = { name: "idle", since: 0 };
+  var mood = { think: 0, speak: 0, listen: 0, sleep: 0 };
+  var feel = { valence: 0, fatigue: 0 };   // + тепло (успех), − холод (ошибка); усталость 0..1
+  var voice = { user: 0, chloe: 0 };
+  var lastActivity = 0;
+  var dot = document.getElementById("dot"), statusTxt = document.getElementById("statusTxt");
+  function setState(name) {
+    if (STATE.name === name) return;
+    STATE.name = name;
+    STATE.since = now();
+    sound.state(name);
+    statusTxt.textContent = name === "sleeping" ? "спит" : "онлайн";
+    dot.style.background = name === "sleeping" ? "#3a3a3a" : "#FF7777";
+  }
+  function touch() {
+    lastActivity = now();
+    sensory = Math.min(1, sensory + 0.6);
+    if (STATE.name === "sleeping") setState("idle");
+  }
+
+  // =======================================================
+  // 2. ОБОЛОЧКА, ДЫМКА, ПЫЛИНКИ
+  // =======================================================
+  var SPH = 1.25, SN = 16000;
+  var shellPos = new Float32Array(SN * 3), shellBr = new Float32Array(SN), shellSeed = new Float32Array(SN);
+  var golden = Math.PI * (3 - Math.sqrt(5));
+  (function () {
+    // перемешанный порядок, чтобы при снижении качества точки редели равномерно
+    var order = []; for (var i = 0; i < SN; i++) order.push(i);
+    for (var k = SN - 1; k > 0; k--) { var j = Math.floor(Math.random() * (k + 1)); var tmp = order[k]; order[k] = order[j]; order[j] = tmp; }
+    for (var m = 0; m < SN; m++) {
+      var i2 = order[m];
+      var y = 1 - (i2 / (SN - 1)) * 2, r = Math.sqrt(1 - y * y), th = golden * i2, R = SPH + rnd(-0.015, 0.015);
+      shellPos[m * 3] = Math.cos(th) * r * R; shellPos[m * 3 + 1] = y * R; shellPos[m * 3 + 2] = Math.sin(th) * r * R;
+      shellBr[m] = 0.4 + 0.35 * Math.abs(Math.sin(y * 9));
+      shellSeed[m] = Math.random();
+    }
+  })();
+  // точка на поверхности сферы в направлении dir — для вспышек и импульсов от ядра
+  function surfaceToward(dir, out) {
+    return (out || new THREE.Vector3()).copy(dir).normalize().multiplyScalar(SPH);
+  }
+  var shellGeo = new THREE.BufferGeometry();
+  shellGeo.setAttribute("position", new THREE.BufferAttribute(shellPos, 3));
+  shellGeo.setAttribute("aBright", new THREE.BufferAttribute(shellBr, 1));
+  shellGeo.setAttribute("aSeed", new THREE.BufferAttribute(shellSeed, 1));
+
+  var FLASHES = 6, flashData = [], flashIndex = 0;
+  for (var f = 0; f < FLASHES; f++) flashData.push(new THREE.Vector4(0, 0, 0, -100));
+  function shellFlash(p) {
+    var d = p.clone().normalize().multiplyScalar(SPH);
+    flashData[flashIndex].set(d.x, d.y, d.z, now());
+    flashIndex = (flashIndex + 1) % FLASHES;
+  }
+  var WAVES = 4, waveData = [], waveIndex = 0, nextWave = 0, WAVE_SPEED = "1.10";
+  for (var wv = 0; wv < WAVES; wv++) waveData.push(-100);
+  function emitWave(t) { waveData[waveIndex] = t; waveIndex = (waveIndex + 1) % WAVES; }
+
+  var shellUniforms = {
+    uTime: common.uTime, uPixel: common.uPixel, uBright: common.uBright,
+    uTw: { value: 0 }, uEnergy: { value: 0.3 }, uListen: { value: 0 },
+    uFlash: { value: flashData }, uWave: { value: waveData },
+    uBase: { value: SHELL_BASE.clone() }, uHot: { value: new THREE.Color(0xe6e6e6) }
+  };
+  var shell = new THREE.Points(shellGeo, new THREE.ShaderMaterial({
+    uniforms: shellUniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime; uniform float uTw; uniform float uEnergy; uniform float uListen; uniform float uPixel;",
+      "uniform vec4 uFlash[" + FLASHES + "];",
+      "uniform float uWave[" + WAVES + "];",
+      "attribute float aBright; attribute float aSeed;",
+      "varying float vBright; varying float vHot;",
+      "void main() {",
+      "  vec3 n = normalize(position);",
+      "  float w = sin(n.x*3.1+uTime*0.9)+sin(n.y*4.3-uTime*0.7)+sin(n.z*3.7+uTime*1.1)+0.5*sin((n.x+n.y)*6.0-uTime*1.6);",
+      "  float ripple = sin(n.x*11.0+uTime*9.0)*sin(n.y*9.0-uTime*7.0)*sin(n.z*10.0+uTime*8.0);",
+      "  vec3 p = position + n * (w * 0.09 * uEnergy + ripple * 0.11 * uListen);",
+      "  float hot = 0.0;",
+      "  for (int i = 0; i < " + FLASHES + "; i++) {",
+      "    float age = uTime - uFlash[i].w;",
+      "    if (age > 0.0 && age < 2.4) {",
+      "      float d = distance(position, uFlash[i].xyz);",
+      "      float front = age * 0.7;",
+      "      float fade = pow(1.0 - age / 2.4, 2.0);",
+      "      float ring = exp(-pow((d - front) / 0.16, 2.0));",
+      "      float tail = d < front ? 0.35 * exp(-(front - d) / 0.25) : 0.0;",   // мягкий след позади фронта
+      "      hot += (ring + tail) * fade * 0.6;",
+      "    }",
+      "  }",
+      "  for (int i = 0; i < " + WAVES + "; i++) {",
+      "    float age = uTime - uWave[i];",
+      "    float front = age * " + WAVE_SPEED + ";",
+      "    if (age > 0.0 && front < 1.9) {",
+      "      float k = exp(-pow((front - 1.25) / 0.22, 2.0)) * (1.0 - front / 1.9);",
+      "      p += n * k * 0.05;",
+      "      hot += k * 0.25;",
+      "    }",
+      "  }",
+      "  vBright = aBright * (0.94 + 0.06 * sin(uTw*(1.0+aSeed*2.0)+aSeed*40.0)) * (1.0 + uListen * 0.6);",
+      "  vHot = clamp(hot, 0.0, 0.8);",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  gl_PointSize = min((2.0 + 1.2 * vHot) * uPixel * (4.5 / -mv.z), 12.0 * uPixel);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uBase; uniform vec3 uHot; uniform float uBright;",
+      "varying float vBright; varying float vHot;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5);",
+      "  if (r > 0.5) discard;",
+      "  float a = smoothstep(0.5, 0.0, r) * (vBright * 0.9 * uBright + vHot * 0.55);",
+      "  gl_FragColor = vec4(mix(uBase, uHot, vHot * 0.8) * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  shell.frustumCulled = false;
+  group.add(shell);
+  var cortexUniforms = { uBreath: { value: 0 } };   // сетки мозга нет — сфера дышит через shell.scale
+
+  var glowTex = (function () {
+    var c = document.createElement("canvas");
+    c.width = c.height = 128;
+    var g = c.getContext("2d");
+    var grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, "rgba(255,255,255,1)");
+    grd.addColorStop(0.18, "rgba(255,255,255,0.75)");
+    grd.addColorStop(0.45, "rgba(255,255,255,0.22)");
+    grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  })();
+  var haze = [];
+  for (var hz = 0; hz < 7; hz++) {
+    var hs = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, color: (hz % 3 === 0 ? COLOR_MEM : COLOR_SKILL).clone(), transparent: true, opacity: 0.05,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    hs.position.copy(randDir().multiplyScalar(rnd(0.1, 0.7)));
+    hs.scale.setScalar(rnd(1.1, 1.8));
+    hs.userData = { base: hs.position.clone(), ph: rnd(0, 6.28), op: rnd(0.035, 0.06) };
+    group.add(hs);
+    haze.push(hs);
+  }
+
+
+  // =======================================================
+  // 2б. ЯДРО CHLOE И ВНУТРЕННИЕ СЛОИ
+  // Между полушариями — живое ядро: источник активности. Вокруг — четыре слоя-орбиты:
+  // Мышление, Память, Процессы, Данные. Каждый крутится и светится тем сильнее, чем больше сейчас работает.
+  // От ядра к коре летят импульсы; на коре они расходятся кольцом.
+  // =======================================================
+  var CORE_POS = new THREE.Vector3(0, -0.04, 0);
+  var coreGroup = new THREE.Group();
+  coreGroup.position.copy(CORE_POS);
+  group.add(coreGroup);
+  var coreGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(0xff9a9a), transparent: true,
+    opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+  var coreHeart = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(0xffffff), transparent: true,
+    opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  coreGlow.scale.setScalar(0.6); coreHeart.scale.setScalar(0.14);
+  coreGroup.add(coreGlow); coreGroup.add(coreHeart);
+
+  var LAYERS = [
+    { key: "think", name: "Мышление", r: 0.25, tilt: [0.35, 0, 0.1],  color: 0xff7777, n: 120, act: 0, phase: 0, opens: "core" },
+    { key: "mem",   name: "Память",   r: 0.34, tilt: [1.2, 0.4, 0],  color: 0xe6e6e6, n: 150, act: 0, phase: 1, opens: "memory" },
+    { key: "proc",  name: "Процессы", r: 0.43, tilt: [-0.5, 0.9, 0.3], color: 0xcacaca, n: 180, act: 0, phase: 2, opens: "journal" },
+    { key: "data",  name: "Данные",   r: 0.52, tilt: [0.9, -0.7, 0.5], color: 0x9a9a9a, n: 210, act: 0, phase: 3, opens: "files" }
+  ];
+  LAYERS.forEach(function (L) {
+    var holder = new THREE.Object3D();
+    holder.rotation.set(L.tilt[0], L.tilt[1], L.tilt[2]);
+    coreGroup.add(holder);
+    // тонкая орбита
+    var circ = [];
+    for (var i = 0; i <= 96; i++) { var a = i / 96 * Math.PI * 2; circ.push(new THREE.Vector3(Math.cos(a) * L.r, 0, Math.sin(a) * L.r)); }
+    var line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(circ), new THREE.LineBasicMaterial({
+      color: L.color, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false }));
+    holder.add(line);
+    // частицы, бегущие по орбите
+    var ang = new Float32Array(L.n), off = new Float32Array(L.n), pos = new Float32Array(L.n * 3);
+    for (var j = 0; j < L.n; j++) { ang[j] = Math.random() * Math.PI * 2; off[j] = Math.random(); }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("aAng", new THREE.BufferAttribute(ang, 1));
+    g.setAttribute("aOff", new THREE.BufferAttribute(off, 1));
+    L.uni = { uR: { value: L.r }, uPhase: { value: 0 }, uAct: { value: 0 }, uColor: { value: new THREE.Color(L.color) },
+              uPixel: common.uPixel, uBright: common.uBright, uTime: common.uTime };
+    var pts = new THREE.Points(g, new THREE.ShaderMaterial({
+      uniforms: L.uni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: [
+        "uniform float uR; uniform float uPhase; uniform float uAct; uniform float uPixel; uniform float uTime;",
+        "attribute float aAng; attribute float aOff; varying float vA;",
+        "void main() {",
+        "  float a = aAng + uPhase * (0.8 + 0.4 * aOff);",
+        "  float r = uR * (1.0 + (aOff - 0.5) * 0.08);",
+        "  vec3 p = vec3(cos(a) * r, (aOff - 0.5) * 0.02 + 0.006 * sin(uTime * 2.0 + aOff * 30.0), sin(a) * r);",
+        // яркие «пакеты» — сгустки частиц, бегущие по кругу; при работе их больше
+        "  float packet = pow(0.5 + 0.5 * sin(a * 3.0 - uPhase * 2.0), 6.0);",
+        "  vA = (0.22 + 0.7 * uAct) * (0.35 + 0.65 * packet);",
+        "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+        "  gl_PointSize = min((1.4 + 1.6 * packet * (0.4 + uAct)) * uPixel * (4.5 / -mv.z), 9.0 * uPixel);",
+        "  gl_Position = projectionMatrix * mv;",
+        "}"
+      ].join("\n"),
+      fragmentShader: [
+        "uniform vec3 uColor; uniform float uBright; varying float vA;",
+        "void main() {",
+        "  float r = length(gl_PointCoord - 0.5); if (r > 0.5) discard;",
+        "  float a = smoothstep(0.5, 0.0, r) * vA * uBright;",
+        "  gl_FragColor = vec4(uColor * a, a);",
+        "}"
+      ].join("\n")
+    }));
+    pts.frustumCulled = false;
+    holder.add(pts);
+    L.holder = holder; L.line = line; L.anchor = new THREE.Vector3(L.r, 0, 0);   // где подписан слой
+  });
+  var layerByKey = {}; LAYERS.forEach(function (L) { layerByKey[L.key] = L; });
+  function coreKick(key, amount) { var L = layerByKey[key]; if (L) L.act = Math.min(1, L.act + amount); }
+
+  // импульсы: ядро → кора
+  var SPARKS = 28, sparkPos = new Float32Array(SPARKS * 3), sparkA = new Float32Array(SPARKS), sparks = [], nextSpark = 0;
+  for (var sk = 0; sk < SPARKS; sk++) sparks.push({ on: false });
+  var sparkGeo = new THREE.BufferGeometry();
+  sparkGeo.setAttribute("position", new THREE.BufferAttribute(sparkPos, 3));
+  sparkGeo.setAttribute("aA", new THREE.BufferAttribute(sparkA, 1));
+  var sparkPts = new THREE.Points(sparkGeo, new THREE.ShaderMaterial({
+    uniforms: { uPixel: common.uPixel, uColor: { value: new THREE.Color(0xffb0b0) } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: "uniform float uPixel; attribute float aA; varying float vA; void main(){ vA = aA; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = min(5.0 * uPixel * (4.5 / -mv.z), 14.0 * uPixel) * step(0.01, aA); gl_Position = projectionMatrix * mv; }",
+    fragmentShader: "uniform vec3 uColor; varying float vA; void main(){ float r = length(gl_PointCoord-0.5); if (r>0.5) discard; float a = smoothstep(0.5,0.0,r)*vA; gl_FragColor = vec4(uColor*a, a); }"
+  }));
+  sparkPts.frustumCulled = false;
+  group.add(sparkPts);
+  function launchSpark(t) {
+    var sp = sparks.find(function (x) { return !x.on; });
+    if (!sp) return;
+    sp.on = true; sp.t0 = t; sp.dur = rnd(0.7, 1.2);
+    sp.from = CORE_POS.clone();
+    sp.to = surfaceToward(randDir());
+  }
+  var breath = { ph: 0 };
+  function coreUpdate(t, dt) {
+    // активность слоёв: мышление — пока думает; остальное — затухает после событий
+    layerByKey.think.act = Math.max(layerByKey.think.act * Math.exp(-dt * 0.8), mood.think * 0.9, mood.speak * 0.5);
+    ["mem", "proc", "data"].forEach(function (k) { layerByKey[k].act *= Math.exp(-dt * 0.45); });
+    var awake = 1 - 0.7 * mood.sleep;
+    LAYERS.forEach(function (L, i) {
+      L.phase += dt * (0.12 + 1.6 * L.act) * awake * (i % 2 ? -1 : 1);
+      L.uni.uPhase.value = L.phase;
+      L.uni.uAct.value = approach(L.uni.uAct.value, L.act, 4, dt);
+      L.line.material.opacity = 0.12 + 0.3 * L.uni.uAct.value;
+      L.holder.rotation.y += dt * 0.05 * (i + 1) * awake;
+    });
+    // сердцебиение ядра: два удара и пауза; при работе — чаще
+    var bpm = 48 + 50 * mood.think + 25 * mood.speak - 20 * mood.sleep, per = 60 / bpm, ph = (t % per) / per;
+    var beat = Math.exp(-Math.pow((ph - 0.08) / 0.035, 2)) + 0.6 * Math.exp(-Math.pow((ph - 0.24) / 0.04, 2));
+    var act = 0.3 + 0.7 * Math.max(layerByKey.think.uni.uAct.value, layerByKey.proc.uni.uAct.value * 0.8);
+    coreGlow.scale.setScalar((0.5 + 0.14 * beat + 0.16 * act) * (1 - 0.3 * mood.sleep));
+    coreGlow.material.opacity = (0.28 + 0.22 * beat + 0.25 * act) * common.uBright.value;
+    coreHeart.scale.setScalar(0.12 + 0.04 * beat);
+    coreHeart.material.opacity = (0.65 + 0.35 * beat) * common.uBright.value;
+    // импульсы к коре: в покое редко, когда думает или говорит — часто
+    if (t > nextSpark && !document.hidden) {
+      launchSpark(t);
+      nextSpark = t + (mood.sleep > 0.5 ? rnd(3, 6) : 0.25 + rnd(1.4, 2.8) * (1 - 0.8 * Math.max(mood.think, mood.speak * 0.7)));
+    }
+    var tmpV = launchSpark.tmp || (launchSpark.tmp = new THREE.Vector3());
+    for (var i2 = 0; i2 < SPARKS; i2++) {
+      var sp2 = sparks[i2];
+      if (!sp2.on) { sparkA[i2] = 0; continue; }
+      var k = (t - sp2.t0) / sp2.dur;
+      if (k >= 1) { sp2.on = false; sparkA[i2] = 0; shellFlash(sp2.to); continue; }
+      var e = k * k * (3 - 2 * k);
+      tmpV.copy(sp2.from).lerp(sp2.to, e);
+      sparkPos[i2 * 3] = tmpV.x; sparkPos[i2 * 3 + 1] = tmpV.y; sparkPos[i2 * 3 + 2] = tmpV.z;
+      sparkA[i2] = Math.sin(Math.PI * k) * 0.9;
+    }
+    sparkGeo.attributes.position.needsUpdate = true;
+    sparkGeo.attributes.aA.needsUpdate = true;
+    // дыхание: мозг медленно расширяется и сжимается; во сне — медленнее и глубже
+    breath.ph += dt * (0.55 + 0.25 * mood.think - 0.25 * mood.sleep) * Math.PI * 2 / 4;
+    var b = Math.sin(breath.ph) * (0.011 + 0.006 * mood.sleep);
+    cortexUniforms.uBreath.value = b;
+    shell.scale.setScalar(1 + b);
+  }
+
+  var DUST = 500;
+  var dustPos = new Float32Array(DUST * 3), dustSeed = new Float32Array(DUST);
+  for (var dI = 0; dI < DUST; dI++) {
+    var dp = randDir().multiplyScalar(Math.cbrt(Math.random()) * 1.15);
+    dustPos.set([dp.x, dp.y, dp.z], dI * 3);
+    dustSeed[dI] = Math.random();
+  }
+  var dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+  dustGeo.setAttribute("aSeed", new THREE.BufferAttribute(dustSeed, 1));
+  var dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({
+    uniforms: { uTime: common.uTime, uPixel: common.uPixel, uWave: { value: waveData }, uThink: common.uThink, uBright: common.uBright },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime; uniform float uPixel; uniform float uThink; uniform float uBright;",
+      "uniform float uWave[" + WAVES + "];",
+      "attribute float aSeed;",
+      "varying float vA;",
+      "void main() {",
+      "  float sp = 0.15 + uThink * 0.35;",
+      "  vec3 p = position + 0.08 * vec3(sin(uTime*sp + aSeed*20.0), sin(uTime*sp*0.8 + aSeed*31.0), sin(uTime*sp*1.2 + aSeed*47.0));",
+      "  float lit = 0.0;",
+      "  for (int i = 0; i < " + WAVES + "; i++) {",
+      "    float age = uTime - uWave[i];",
+      "    if (age > 0.0 && age < 2.0) lit += exp(-pow((length(p) - age * " + WAVE_SPEED + ") / 0.16, 2.0)) * (1.0 - age / 2.0);",
+      "  }",
+      "  vA = (0.2 + 0.03 * sin(uTime * 1.5 + aSeed * 60.0)) * uBright + lit * 0.35;",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  gl_PointSize = min((1.6 + 0.8 * lit) * uPixel * (4.5 / -mv.z), 12.0 * uPixel);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "varying float vA;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5);",
+      "  if (r > 0.5) discard;",
+      "  float a = smoothstep(0.5, 0.0, r) * vA;",
+      "  gl_FragColor = vec4(vec3(0.42, 0.6, 0.78) * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  dust.frustumCulled = false;
+  group.add(dust);
+
+  // =======================================================
+  // 3. ЗВУК (выключен по умолчанию)
+  // =======================================================
+  var sound = (function () {
+    var ctx = null, on = false, hum = null, lastClick = 0;
+    function ensure() {
+      if (ctx) return;
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var g = ctx.createGain(); g.gain.value = 0;
+      var lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 320;
+      [55, 82.5, 110.3].forEach(function (fr, k) {
+        var o = ctx.createOscillator();
+        o.type = k === 0 ? "sine" : "triangle";
+        o.frequency.value = fr;
+        var og = ctx.createGain(); og.gain.value = k === 0 ? 1 : 0.35;
+        o.connect(og); og.connect(lp);
+        o.start();
+      });
+      lp.connect(g); g.connect(ctx.destination);
+      hum = g;
+    }
+    function level(name) { return { idle: 0.006, listening: 0.012, thinking: 0.035, speaking: 0.018, sleeping: 0.003 }[name] || 0; }
+    function tone(f0, f1, dur, vol) {
+      if (!on || !ctx) return;
+      var t = ctx.currentTime;
+      if (t - lastClick < 0.06) return;
+      lastClick = t;
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.7);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    }
+    return {
+      toggle: function () {
+        on = !on;
+        if (on) { ensure(); ctx.resume(); }
+        if (hum) hum.gain.setTargetAtTime(on ? level(STATE.name) : 0, ctx.currentTime, 0.3);
+        return on;
+      },
+      isOn: function () { return on; },
+      state: function (name) { if (on && hum) hum.gain.setTargetAtTime(level(name), ctx.currentTime, 0.4); },
+      click: function (pitch) { tone(pitch || 880, (pitch || 880) / 2, 0.18, 0.06); },
+      error: function () { tone(220, 140, 0.4, 0.07); },
+      success: function () { tone(660, 990, 0.25, 0.04); }
+    };
+  })();
+
+  // =======================================================
+  // 4. ЗОНЫ — доли мозга
+  // =======================================================
+  var zones = [], zoneIndex = {}, ZONE_SLOTS = 14, zoneDirs = [];
+  for (var zs = 0; zs < ZONE_SLOTS; zs++) {
+    var zy = 1 - (zs + 0.5) / ZONE_SLOTS * 2, zr = Math.sqrt(1 - zy * zy), zth = golden * zs * 5;
+    zoneDirs.push(new THREE.Vector3(Math.cos(zth) * zr, zy, Math.sin(zth) * zr));
+  }
+  zoneDirs = [0, 7, 3, 10, 5, 12, 1, 8, 4, 11, 2, 9, 6, 13].map(function (k) { return zoneDirs[k]; });
+  function getZone(name) {
+    if (zoneIndex[name] !== undefined) return zones[zoneIndex[name]];
+    var first = zones.length === 0;   // первая зона (базовые навыки) — ядро в центре
+    var dir = zoneDirs[(zones.length - 1 + ZONE_SLOTS) % ZONE_SLOTS];
+    var el = document.createElement("div");
+    el.className = "zone";
+    el.textContent = name;
+    wrap.appendChild(el);
+    var z = { name: name, center: first ? new THREE.Vector3() : dir.clone().multiplyScalar(0.62), spread: first ? 0.4 : 0.24, el: el, count: 0 };
+    zoneIndex[name] = zones.length;
+    zones.push(z);
+    rebuildFilters();
+    dirty = true;
+    return z;
+  }
+
+  // =======================================================
+  // 5. НЕЙРОНЫ НА ВИДЕОКАРТЕ: тела, дендриты, аксоны, сигналы
+  // =======================================================
+  var neurons = [], links = [], nCount = 0, lCount = 0, dirty = false;
+  var HEBB = {
+    start: 0.55, gain: 0.18, max: 2.0, min: 0.25, decay: 0.006,
+    linkStart: 0.3, linkGain: 0.12, linkMax: 1.6, linkMin: 0.08, linkDecay: 0.004
+  };
+
+  function markRange(geo, name, offset, count) {
+    var attr = geo.attributes[name];
+    if (attr.updateRange.count === -1 || attr.updateRange.count === 0) {
+      attr.updateRange.offset = offset;
+      attr.updateRange.count = count;
+    } else {
+      var a0 = Math.min(attr.updateRange.offset, offset);
+      var a1 = Math.max(attr.updateRange.offset + attr.updateRange.count, offset + count);
+      attr.updateRange.offset = a0;
+      attr.updateRange.count = a1 - a0;
+    }
+    attr.needsUpdate = true;
+  }
+
+  // --- тела ---
+  var somaGeo = new THREE.BufferGeometry();
+  var somaPos = new Float32Array(MAX_N * 3), somaId = new Float32Array(MAX_N);
+  somaGeo.setAttribute("position", new THREE.BufferAttribute(somaPos, 3));
+  somaGeo.setAttribute("aId", new THREE.BufferAttribute(somaId, 1));
+  somaGeo.setDrawRange(0, 0);
+  var somaPoints = new THREE.Points(somaGeo, new THREE.ShaderMaterial({
+    uniforms: common, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime; uniform float uPixel; uniform float uProj; uniform float uScaleW; uniform float uDens; uniform float uZoom;",
+      "uniform float uDrift; uniform float uSpeak; uniform float uChloe; uniform float uThink; uniform float uSleep; uniform float uSearchOn; uniform float uDeep;",
+      "uniform sampler2D uNeur; uniform sampler2D uNeur2;",
+      "attribute float aId;",
+      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
+      GLSL_COMMON,
+      "void main() {",
+      "  vec4 s = texAt(uNeur, aId, " + NT + ".0);",
+      "  vec4 e = texAt(uNeur2, aId, " + NT + ".0);",
+      "  float strength = s.x, heat = s.y, born = s.z;",
+      "  vType = s.w; vErr = e.x;",
+      "  float g = easeOut((uTime - born) / " + (GROW * 0.35).toFixed(2) + ");",
+      "  float pot = e.w;",
+      "  vGlow = max(heat, 0.3 * max(pot, 0.0));",   // светится работающая клетка; накопленный заряд — едва заметно
+      // глубокий сон: медленная волна синхронно прокатывается по коре спереди назад (около 1 раза в секунду)
+      "  float front = 1.3 - fract(uTime * 0.7) * 2.6;",
+      "  vGlow = max(vGlow, uDeep * 0.35 * exp(-pow((position.z - front) / 0.16, 2.0)) * smoothstep(0.45, 0.75, length(position)));",
+      "  vDim = clamp(0.35 + 0.45 * strength, 0.35, 1.0) * (1.0 + 0.5 * min(pot, 0.0));",   // после импульса — чуть темнее
+      "  float typeScale = s.w > 0.5 ? 0.75 : 1.0;",
+      "  float breath = 1.0 + (0.12 + 0.1 * uSleep) * sin(uTime * (1.4 - 0.9 * uSleep) + aId * 2.3);",
+      "  float found = uSearchOn * e.y;",
+      // много клеток — каждая мельче, но ярче: свет тот же, а закрашивать видеокарте в разы меньше
+      "  float tight = mix(0.55, 1.0, uCrowdK) + 0.45 * clamp(vGlow + vErr + found, 0.0, 1.0);",
+      "  float size = 0.42 * typeScale * g * breath * (0.55 + 0.6 * strength) * (1.0 + vGlow + 0.8 * vErr + 0.5 * found) * uDens * tight;",
+      "  vMul = e.z * crowdF(0.3, uDens, uZoom) * searchF(uSearchOn, e.y) * (1.0 - 0.35 * uSleep) * min(2.2, 1.0 / (tight * tight));",
+      "  vec3 p = position + driftOf(aId, uTime, uDrift);",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  gl_PointSize = e.z < 0.01 ? 0.0 : min(size * uScaleW * uProj / -mv.z, 140.0 * uPixel);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uHotC; uniform vec3 uErrC;",
+      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5) * 2.0;",
+      "  if (r > 1.0) discard;",
+      "  vec3 base = mix(vType > 0.5 ? uMem : uSkill, uErrC, vErr);",
+      "  float halo = exp(-r * r * 6.0) * (0.18 + 0.3 * vGlow + 0.4 * vErr);",
+      "  float body = exp(-pow(r / 0.34, 2.0) * 2.2) * 0.95;",
+      "  float core = exp(-pow(r / 0.13, 2.0) * 2.2);",
+      "  vec3 lite = mix(base, vec3(1.0), 0.22);",
+      "  vec3 bodyCol = mix(base, lite, vGlow * 0.8);",
+      "  vec3 col = (base * halo + bodyCol * body + mix(base, vec3(1.0), 0.3) * core * 0.6) * vDim * vMul;",
+      "  float a = max(max(halo, body), core) * vDim * vMul;",
+      "  gl_FragColor = vec4(col, a);",
+      "}"
+    ].join("\n")
+  }));
+  somaPoints.frustumCulled = false;
+
+  // --- дендриты ---
+  var DV = MAX_N * DEND_MAX * 2;
+  var dendGeo = new THREE.BufferGeometry();
+  var dendPos = new Float32Array(DV * 3), dendId = new Float32Array(DV), dendDist = new Float32Array(DV);
+  dendGeo.setAttribute("position", new THREE.BufferAttribute(dendPos, 3));
+  dendGeo.setAttribute("aId", new THREE.BufferAttribute(dendId, 1));
+  dendGeo.setAttribute("aDist", new THREE.BufferAttribute(dendDist, 1));
+  dendGeo.setDrawRange(0, 0);
+  var dendUsed = 0;
+  var dendLines = new THREE.LineSegments(dendGeo, new THREE.ShaderMaterial({
+    uniforms: common, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime; uniform float uDrift; uniform float uSpeak; uniform float uChloe; uniform float uDens; uniform float uZoom;",
+      "uniform float uSearchOn; uniform float uSleep;",
+      "uniform sampler2D uNeur; uniform sampler2D uNeur2;",
+      "attribute float aId; attribute float aDist;",
+      "varying float vA; varying float vType; varying float vGlow; varying float vErr;",
+      GLSL_COMMON,
+      "void main() {",
+      "  vec4 s = texAt(uNeur, aId, " + NT + ".0);",
+      "  vec4 e = texAt(uNeur2, aId, " + NT + ".0);",
+      "  float dg = easeOut((uTime - s.z - " + (GROW * 0.15).toFixed(2) + ") / " + (GROW * 0.7).toFixed(2) + ");",
+      "  float grown = 1.0 - smoothstep(dg - 0.08, dg, aDist);",
+      "  vGlow = s.y;",
+      "  vErr = e.x;",
+      "  float dim = clamp(0.35 + 0.45 * s.x, 0.35, 1.0);",
+      "  vA = grown * (1.0 - 0.88 * aDist) * (0.4 + 0.4 * clamp(s.x, 0.0, 1.4) + 0.3 * vGlow) * dim",
+      "       * crowdF(0.22, uDens, uZoom) * searchF(uSearchOn, e.y) * e.z * (1.0 - 0.35 * uSleep);",
+      "  vType = s.w;",
+      "  vec3 p = position + driftOf(aId, uTime, uDrift);",
+      "  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uHotC; uniform vec3 uErrC;",
+      "varying float vA; varying float vType; varying float vGlow; varying float vErr;",
+      "void main() {",
+      "  vec3 t = vType > 0.5 ? uMem : uSkill;",
+      "  vec3 c = mix(mix(t, mix(t, vec3(1.0), 0.3), vGlow * 0.6), uErrC, vErr);",
+      "  gl_FragColor = vec4(c * vA, vA);",
+      "}"
+    ].join("\n")
+  }));
+  dendLines.frustumCulled = false;
+
+  // --- аксоны: ленты к камере, толщина = сила связи, золото = ход мысли ---
+  var AV = MAX_L * AX * 2;
+  var axGeo = new THREE.BufferGeometry();
+  var axPos = new Float32Array(AV * 3), axTan = new Float32Array(AV * 3);
+  var axT = new Float32Array(AV), axSide = new Float32Array(AV), axLink = new Float32Array(AV);
+  var axA = new Float32Array(AV), axB = new Float32Array(AV), axType = new Float32Array(AV);
+  [["position", axPos, 3], ["aTan", axTan, 3], ["aT", axT, 1], ["aSide", axSide, 1], ["aLink", axLink, 1],
+   ["aA", axA, 1], ["aB", axB, 1], ["aType", axType, 1]].forEach(function (a) {
+    axGeo.setAttribute(a[0], new THREE.BufferAttribute(a[1], a[2]));
+  });
+  // кривая аксона: 12 точек при высоком качестве, 7 — при среднем, 5 — при низком (меньше работы видеокарте)
+  var AX_LOD = [[0, 3, 6, 9, 11], [0, 2, 4, 6, 8, 10, 11], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]], axIdxCache = {}, axSegs = AX - 1;
+  function axIndex(level) {
+    if (axIdxCache[level]) return axIdxCache[level];
+    var ks = AX_LOD[level], segs = ks.length - 1, idx = new Uint32Array(MAX_L * segs * 6);
+    for (var L = 0; L < MAX_L; L++) {
+      for (var k = 0; k < segs; k++) {
+        var a0 = (L * AX + ks[k]) * 2, b0 = (L * AX + ks[k + 1]) * 2, o = (L * segs + k) * 6;
+        idx[o] = a0; idx[o + 1] = b0; idx[o + 2] = a0 + 1;
+        idx[o + 3] = a0 + 1; idx[o + 4] = b0; idx[o + 5] = b0 + 1;
+      }
+    }
+    return (axIdxCache[level] = new THREE.BufferAttribute(idx, 1));
+  }
+  function axLod(level) {
+    axSegs = AX_LOD[level].length - 1;
+    axGeo.setIndex(axIndex(level));
+    axGeo.setDrawRange(0, lCount * axSegs * 6);
+  }
+  axGeo.setIndex(axIndex(2));
+  axGeo.setDrawRange(0, 0);
+  var axMesh = new THREE.Mesh(axGeo, new THREE.ShaderMaterial({
+    uniforms: common, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime; uniform float uDrift; uniform float uScaleW; uniform float uDens; uniform float uSpeak; uniform float uZoom;",
+      "uniform float uSearchOn; uniform float uSleep;",
+      "uniform sampler2D uLink; uniform sampler2D uLink2; uniform sampler2D uNeur2;",
+      "attribute vec3 aTan; attribute float aT; attribute float aSide; attribute float aLink;",
+      "attribute float aA; attribute float aB; attribute float aType;",
+      "varying float vA; varying float vSide; varying float vType; varying float vHot; varying float vGold;",
+      "varying float vT; varying float vMy; varying float vInh; varying float vRew;",
+      GLSL_COMMON,
+      "void main() {",
+      "  vec4 s = texAt(uLink, aLink, " + LT + ".0);",
+      "  vec4 ea = texAt(uNeur2, aA, " + NT + ".0);",
+      "  vec4 eb = texAt(uNeur2, aB, " + NT + ".0);",
+      "  float weight = s.x, glow = s.y, born = s.z, thought = s.w;",
+      "  vec4 s2 = texAt(uLink2, aLink, " + LT + ".0);",
+      "  float myelin = s2.x;",
+      "  float vis = min(ea.z, eb.z);",
+      "  float g = easeOut((uTime - born - " + (GROW * 0.3).toFixed(2) + ") / " + (GROW * 0.7).toFixed(2) + ");",
+      "  float grown = 1.0 - smoothstep(g - 0.06, g, aT);",
+      "  vec3 p = position + mix(driftOf(aA, uTime, uDrift), driftOf(aB, uTime, uDrift), aT);",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  vec3 tv = normalize((modelViewMatrix * vec4(aTan, 0.0)).xyz);",
+      "  vec3 sd = normalize(cross(tv, normalize(-mv.xyz)));",
+      "  float ends = pow(abs(aT - 0.5) * 2.0, 2.0);",
+      "  float width = (0.004 + 0.012 * weight + 0.004 * thought) * (0.55 + 0.45 * ends) * (1.0 + 0.6 * myelin) * uDens;",
+      "  mv.xyz += sd * aSide * width * uScaleW;",
+      "  gl_Position = projectionMatrix * mv;",
+      "  float bright = (0.35 + 0.45 * weight + 0.45 * glow + 0.5 * thought + 0.5 * s2.w);",
+      "  float found = min(ea.y, eb.y);",
+      "  vA = grown * (0.3 + 0.35 * ends) * bright * crowdF(0.25, uDens, uZoom) * searchF(uSearchOn, found) * vis * (1.0 - 0.35 * uSleep);",
+      "  vSide = aSide; vType = aType; vHot = glow; vGold = thought;",
+      "  vT = aT; vMy = myelin; vInh = s2.y; vRew = s2.w;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uHotC; uniform vec3 uGold; uniform vec3 uInh; uniform vec3 uWarm;",
+      "varying float vA; varying float vSide; varying float vType; varying float vHot; varying float vGold;",
+      "varying float vT; varying float vMy; varying float vInh; varying float vRew;",
+      "void main() {",
+      "  float edge = 1.0 - vSide * vSide;",
+      "  vec3 t = mix(vType > 0.5 ? uMem : uSkill, uInh, vInh);",   // тормозящая связь — фиолетовая
+      "  vec3 c = mix(mix(t, mix(t, vec3(1.0), 0.3), vHot * 0.6), uGold, clamp(vGold, 0.0, 1.0));",
+      "  c = mix(c, uWarm, clamp(vRew, 0.0, 1.0) * 0.6);",   // дофамин после успеха — тёплый
+      // миелин: светлые сегменты с тёмными перехватами Ранвье
+      "  float f = fract(vT * 14.0);",
+      "  float seg = smoothstep(0.0, 0.07, f) * smoothstep(1.0, 0.93, f);",
+      "  float myel = mix(1.0, 0.35 + 0.9 * seg, vMy);",
+      "  float a = vA * (0.35 + 0.65 * edge) * myel;",
+      "  gl_FragColor = vec4(c * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  axMesh.frustumCulled = false;
+  group.add(axMesh);
+  group.add(dendLines);
+  group.add(somaPoints);
+
+  // --- сигналы: цветные огоньки со шлейфом ---
+  var MAX_S = 800, TRAIL = 4;
+  var sigGeo = new THREE.BufferGeometry();
+  var sigPos = new Float32Array(MAX_S * TRAIL * 3), sigA = new Float32Array(MAX_S * TRAIL), sigCol = new Float32Array(MAX_S * TRAIL * 3);
+  sigGeo.setAttribute("position", new THREE.BufferAttribute(sigPos, 3));
+  sigGeo.setAttribute("aA", new THREE.BufferAttribute(sigA, 1));
+  sigGeo.setAttribute("aCol", new THREE.BufferAttribute(sigCol, 3));
+  sigGeo.setDrawRange(0, 0);
+  var sigPoints = new THREE.Points(sigGeo, new THREE.ShaderMaterial({
+    uniforms: common, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uProj; uniform float uScaleW; uniform float uDens;",
+      "attribute float aA; attribute vec3 aCol; varying float vA; varying vec3 vCol;",
+      "void main() {",
+      "  vA = aA; vCol = aCol;",
+      "  vec4 mv = modelViewMatrix * vec4(position, 1.0);",
+      "  gl_PointSize = min(0.1 * (0.5 + 0.5 * aA) * (0.5 + 0.5 * uDens) * uScaleW * uProj / -mv.z, 40.0);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "varying float vA; varying vec3 vCol;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5) * 2.0;",
+      "  if (r > 1.0) discard;",
+      "  float a = (0.75 * exp(-r * r * 8.0) + 0.3 * exp(-r * r * 2.5)) * vA;",
+      "  gl_FragColor = vec4(vCol * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  sigPoints.frustumCulled = false;
+  group.add(sigPoints);
+  var signals = [];
+
+  function density() { return clamp(1 / Math.cbrt(1 + nCount / 25), 0.2, 1); }
+  function brainScale() { return 1 + 0.09 * Math.log2(1 + nCount / 40); }
+
+  function growDendrites(id, base, scale) {
+    var rng = seeded(id * 7919 + 13);
+    var segs = [];
+    function branch(start, dir, len, depth, dist) {
+      var p = start.clone(), d = dir.clone(), steps = 3;
+      for (var s = 0; s < steps; s++) {
+        d.add(randDir(rng).multiplyScalar(0.4)).normalize();
+        var q = p.clone().add(d.clone().multiplyScalar(len / steps));
+        segs.push([p, q, dist + s / steps * len, dist + (s + 1) / steps * len]);
+        p = q;
+      }
+      if (depth < 2) {
+        var kids = depth === 0 ? 2 : (rng() < 0.7 ? 2 : 1);
+        for (var c = 0; c < kids; c++) {
+          branch(p, d.clone().add(randDir(rng).multiplyScalar(0.8)).normalize(), len * (0.5 + 0.2 * rng()), depth + 1, dist + len);
+        }
+      }
+    }
+    var roots = 4 + Math.floor(rng() * 2);
+    for (var r2 = 0; r2 < roots; r2++) {
+      var dir = randDir(rng);
+      branch(dir.clone().multiplyScalar(0.015 * scale), dir, (0.09 + 0.06 * rng()) * scale, 0, 0);
+    }
+    var maxDist = 0;
+    segs.forEach(function (s) { maxDist = Math.max(maxDist, s[3]); });
+    var n = Math.min(segs.length, DEND_MAX);
+    if (dendUsed + n * 2 > DV) return;
+    for (var i = 0; i < n; i++) {
+      var s = segs[i], v = dendUsed + i * 2;
+      dendPos[v * 3] = base.x + s[0].x; dendPos[v * 3 + 1] = base.y + s[0].y; dendPos[v * 3 + 2] = base.z + s[0].z;
+      dendPos[v * 3 + 3] = base.x + s[1].x; dendPos[v * 3 + 4] = base.y + s[1].y; dendPos[v * 3 + 5] = base.z + s[1].z;
+      dendId[v] = dendId[v + 1] = id;
+      dendDist[v] = s[2] / maxDist; dendDist[v + 1] = s[3] / maxDist;
+    }
+    var start = dendUsed;
+    dendUsed += n * 2;
+    markRange(dendGeo, "position", start * 3, n * 6);
+    markRange(dendGeo, "aId", start, n * 2);
+    markRange(dendGeo, "aDist", start, n * 2);
+    dendGeo.setDrawRange(0, dendUsed);
+  }
+
+  // пространственная сетка: соседей ищем только в ближних ячейках, а не среди всех тысяч нейронов
+  var CELL = 0.1, grid = {};
+  function cellKey(ix, iy, iz) { return ((ix + 64) * 128 + (iy + 64)) * 128 + (iz + 64); }
+  function gridAdd(n) {
+    var k = cellKey(Math.floor(n.base.x / CELL), Math.floor(n.base.y / CELL), Math.floor(n.base.z / CELL));
+    (grid[k] || (grid[k] = [])).push(n);
+  }
+  function around(p, r, out) {
+    var cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), cz = Math.floor(p.z / CELL);
+    for (var x = cx - r; x <= cx + r; x++)
+      for (var y = cy - r; y <= cy + r; y++)
+        for (var z = cz - r; z <= cz + r; z++) {
+          var c = grid[cellKey(x, y, z)];
+          if (c) for (var i = 0; i < c.length; i++) out.push(c[i]);
+        }
+    return out;
+  }
+  function nearest(p, k, skip) {
+    var list = [];
+    for (var r = 1; r <= 12; r++) {
+      list = around(p, r, []);
+      if (list.length > k + 1) break;
+    }
+    return list.filter(function (n) { return n !== skip; })
+      .sort(function (u, v) { return u.base.distanceToSquared(p) - v.base.distanceToSquared(p); })
+      .slice(0, k);
+  }
+
+  // Отделы мозга (расположены как в анатомии: ствол, таламус, гиппокамп, кора), но подписаны понятными словами:
+  // Система, Слух и зрение, Память, Действия, Мышь и клавиатура, Интернет, Темы.
+  var REGIONS = {
+    stem:      { label: "Система",         center: new THREE.Vector3(0, -0.6, -0.15), spread: 0.11 },
+    thal:      { label: "Слух и зрение",   center: new THREE.Vector3(0, -0.08, 0),    spread: 0.12 },
+    hippo:     { label: "Память",          center: new THREE.Vector3(0, -0.32, 0.12), spread: 0.17 },
+    frontal:   { label: "Действия",        dir: new THREE.Vector3(0, 0.25, 1) },
+    motor:     { label: "Мышь и клавиатура", dir: new THREE.Vector3(0, 1, 0.15) },
+    temporalL: { label: "Интернет",        dir: new THREE.Vector3(-1, -0.25, 0.15) },
+    temporalR: { label: "Темы",            dir: new THREE.Vector3(1, -0.25, 0.15) },
+    parietal:  { label: "Темы",            dir: new THREE.Vector3(0, 0.65, -0.75) },
+    occipital: { label: "Темы",            dir: new THREE.Vector3(0, 0.05, -1) }
+  };
+  var SKILL_REGION = {
+    "Система": "stem",
+    "Голос": "thal", "Экран": "thal",                                   // органы чувств — через таламус
+    "Мышь": "motor", "Клавиатура": "motor", "Горячие клавиши": "motor", "Прокрутка": "motor",
+    "Программы": "frontal", "Команды": "frontal", "Файлы": "frontal", "Управление файлами": "frontal",
+    "Сайты": "temporalL", "Загрузки": "temporalL", "Поиск в интернете": "temporalL",
+    "Память": "hippo"
+  };
+  var CORTEX_FOR_ZONES = ["parietal", "temporalR", "occipital", "frontal", "motor", "temporalL"];
+  function regionOf(name, type, zoneName) {
+    if (SKILL_REGION[name]) return SKILL_REGION[name];
+    if (type === "memory") return (zoneName === "Память" || !zoneName) ? "hippo" : CORTEX_FOR_ZONES[(zoneIndex[zoneName] || 0) % CORTEX_FOR_ZONES.length];
+    if (zoneName === "Интернет") return "temporalL";
+    return "frontal";                                                    // новые навыки учит лобная кора
+  }
+  // тема (зона по смыслу): своё место на коре — предметы одной темы лежат рядом
+  function pickTopic(zone) {
+    var dir = zone.center.clone().normalize(), best = null, bestD = -1;
+    for (var k = 0; k < 14; k++) {
+      var p = dir.clone().add(new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(0.16 + Math.min(0.2, zone.count / 200))).normalize()
+        .multiplyScalar(rnd(0.72, 0.9));
+      var dmin = 0.09, near = around(p, 1, []);
+      for (var i = 0; i < near.length; i++) { var dd = near[i].base.distanceToSquared(p); if (dd < dmin) dmin = dd; }
+      if (dmin > bestD) { bestD = dmin; best = p; }
+    }
+    return best;
+  }
+  function pickAnatomical(name, type, zone) {
+    var key = regionOf(name, type, zone.name), R = REGIONS[key];
+    R.count = (R.count || 0) + 1;
+    var best = null, bestD = -1;
+    for (var k = 0; k < 14; k++) {
+      var p;
+      if (R.center) {
+        p = new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(R.spread * (1 + Math.min(1.2, R.count / 150))).add(R.center);
+      } else {
+        // кора: тонкий слой у поверхности в своём секторе
+        var d = R.dir.clone().normalize().add(new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(0.42 + Math.min(0.25, R.count / 600))).normalize();
+        p = d.multiplyScalar(rnd(0.7, 0.93));
+        // кора — в полушариях, а не в щели между ними
+        if (Math.abs(p.x) < 0.12) p.x = (p.x < 0 || (p.x === 0 && Math.random() < 0.5) ? -1 : 1) * rnd(0.12, 0.24);
+      }
+      if (p.length() > 0.95) p.setLength(rnd(0.75, 0.95));
+      var dmin = 0.09, near = around(p, 1, []);
+      for (var i = 0; i < near.length; i++) { var dd = near[i].base.distanceToSquared(p); if (dd < dmin) dmin = dd; }
+      if (dmin > bestD) { bestD = dmin; best = p; }
+    }
+    regionLabel(key);
+    return best;
+  }
+  var regionEls = {};
+  // отдел мозга → какой слой системы он открывает (центр управления)
+  var REGION_OPENS = { stem: "core", thal: "core", hippo: "memory", frontal: "journal", motor: "journal",
+                       temporalL: "files", temporalR: "memory", parietal: "memory", occipital: "memory" };
+  var REGION_HINT = { core: "состояние, модели, зрение", memory: "что Chloe помнит", journal: "действия и задачи", files: "файлы и загрузки" };
+  function regionLabel(key) {
+    if (regionEls[key]) return;
+    var el = document.createElement("button");
+    el.type = "button";
+    el.className = "region";
+    el.textContent = REGIONS[key].label;
+    var opens = REGION_OPENS[key] || "core";
+    el.title = REGIONS[key].label + " — открыть: " + REGION_HINT[opens];
+    el.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+    el.addEventListener("click", function (e) { e.stopPropagation(); openLayer(opens); });
+    wrap.appendChild(el);
+    regionEls[key] = el;
+  }
+  function regionPos(key, out) {
+    var R = REGIONS[key];
+    return R.center ? out.copy(R.center) : out.copy(R.dir).normalize().multiplyScalar(1.02);
+  }
+
+  function pickPosition(zone) {
+    var best = null, bestD = -1;
+    var spread = zone.spread + 0.08 * Math.min(1, zone.count / 200);
+    for (var k = 0; k < 14; k++) {
+      var p = new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(spread).add(zone.center);
+      if (p.length() > 0.95) p.setLength(rnd(0.6, 0.95));
+      var d = 0.09;                                   // дальше двух ячеек — «свободно»
+      var near = around(p, 1, []);
+      for (var i = 0; i < near.length; i++) {
+        var dd = near[i].base.distanceToSquared(p);
+        if (dd < d) d = dd;
+      }
+      if (d > bestD) { bestD = d; best = p; }
+    }
+    return best;
+  }
+
+  function bezier(l, t, out) {
+    var u = 1 - t;
+    return out.set(0, 0, 0)
+      .addScaledVector(l.p0, u * u * u).addScaledVector(l.p1, 3 * u * u * t)
+      .addScaledVector(l.p2, 3 * u * t * t).addScaledVector(l.p3, t * t * t);
+  }
+  function bezierTan(l, t, out) {
+    var u = 1 - t;
+    return out.set(0, 0, 0)
+      .addScaledVector(l.p1.clone().sub(l.p0), 3 * u * u)
+      .addScaledVector(l.p2.clone().sub(l.p1), 6 * u * t)
+      .addScaledVector(l.p3.clone().sub(l.p2), 3 * t * t).normalize();
+  }
+  var _dA = new THREE.Vector3(), _dB = new THREE.Vector3();
+  function linkPoint(l, t, time, out) {
+    bezier(l, t, out);
+    driftOf(l.a.id, time, _dA);
+    driftOf(l.b.id, time, _dB);
+    return out.addScaledVector(_dA, 1 - t).addScaledVector(_dB, t);
+  }
+
+  // связь; p1/p2 — изгиб (если не заданы, случайный); born — когда начала расти
+  function connect(a, b, opt) {
+    if (lCount >= MAX_L || a === b) return null;
+    opt = opt || {};
+    var id = lCount++;
+    var dist = a.base.distanceTo(b.base);
+    var p0 = a.base.clone(), p3 = b.base.clone();
+    var lr = seeded(a.id * 92821 + b.id * 7 + 1);
+    var p1 = opt.p1 || p0.clone().lerp(p3, 0.33).add(randDir(lr).multiplyScalar(0.3 * dist));
+    var p2 = opt.p2 || p0.clone().lerp(p3, 0.66).add(randDir(lr).multiplyScalar(0.3 * dist));
+    var link = { id: id, a: a, b: b, p0: p0, p1: p1, p2: p2, p3: p3, len: Math.max(dist * 1.15, 0.05) };
+    links.push(link);
+    a.links.push(link);
+    b.links.push(link);
+
+    var pt = new THREE.Vector3(), tn = new THREE.Vector3();
+    for (var k = 0; k < AX; k++) {
+      var t = k / (AX - 1);
+      bezier(link, t, pt);
+      bezierTan(link, t, tn);
+      for (var sIdx = 0; sIdx < 2; sIdx++) {
+        var v = (id * AX + k) * 2 + sIdx;
+        axPos[v * 3] = pt.x; axPos[v * 3 + 1] = pt.y; axPos[v * 3 + 2] = pt.z;
+        axTan[v * 3] = tn.x; axTan[v * 3 + 1] = tn.y; axTan[v * 3 + 2] = tn.z;
+        axT[v] = t; axSide[v] = sIdx ? -1 : 1; axLink[v] = id;
+        axA[v] = a.id; axB[v] = b.id; axType[v] = b.type === "memory" ? 1 : 0;
+      }
+    }
+    var v0 = id * AX * 2, cnt = AX * 2;
+    ["aT", "aSide", "aLink", "aA", "aB", "aType"].forEach(function (nm) { markRange(axGeo, nm, v0, cnt); });
+    markRange(axGeo, "position", v0 * 3, cnt * 3);
+    markRange(axGeo, "aTan", v0 * 3, cnt * 3);
+    axGeo.setDrawRange(0, lCount * axSegs * 6);
+
+    linkData[id * 4] = opt.weight !== undefined ? opt.weight : HEBB.linkStart;
+    linkData[id * 4 + 1] = 0;
+    linkData[id * 4 + 2] = opt.born !== undefined ? opt.born : now();
+    linkData[id * 4 + 3] = 0;
+    link2Data[id * 4] = opt.myelin || 0;
+    link2Data[id * 4 + 1] = opt.inhib ? 1 : 0;
+    link2Data[id * 4 + 2] = 0;
+    link2Data[id * 4 + 3] = 0;
+    dirty = true;
+    return link;
+  }
+  function linkBetween(a, b) {
+    for (var i = 0; i < a.links.length; i++) { var l = a.links[i]; if (l.a === b || l.b === b) return l; }
+    return null;
+  }
+
+  // создать нейрон (без связей); opt: base, bornMs, uses, strength, grown
+  function createNeuron(name, type, desc, zoneName, opt) {
+    if (nCount >= MAX_N) return null;
+    opt = opt || {};
+    type = type === "memory" ? "memory" : "skill";
+    var zone = getZone(zoneName || (type === "memory" ? "Память" : "Навыки"));
+    var base = opt.base || (zone.topic ? pickTopic(zone) : pickAnatomical(name, type, zone));
+    var id = nCount++;
+    zone.count++;
+    var n = {
+      id: id, name: name, type: type, desc: desc || "", zone: zone.name,
+      base: base, bornMs: opt.bornMs || Date.now(), uses: opt.uses || 0, errors: opt.errors || 0,
+      links: [], labelUntil: opt.grown ? 0 : now() + 4.5, labelKind: "",
+      scar: opt.scar || 0,       // след частых ошибок: тусклый красный, сходит после успешной работы
+      world: opt.world || "",    // предмет из мира пользователя: «Программа», «Сайт», «Папка», «Файл», «Место», «Человек»
+      q: opt.q || "",            // что искать в журнале для истории этого предмета
+      lastMs: opt.lastMs || 0, working: 0
+    };
+    neurons.push(n);
+    gridAdd(n);
+    somaPos[id * 3] = base.x; somaPos[id * 3 + 1] = base.y; somaPos[id * 3 + 2] = base.z;
+    somaId[id] = id;
+    markRange(somaGeo, "position", id * 3, 3);
+    markRange(somaGeo, "aId", id, 1);
+    somaGeo.setDrawRange(0, nCount);
+    neurData[id * 4] = opt.strength !== undefined ? opt.strength : HEBB.start;
+    neurData[id * 4 + 1] = 0;
+    neurData[id * 4 + 2] = opt.grown ? -100 : now();
+    neurData[id * 4 + 3] = type === "memory" ? 1 : 0;
+    neur2Data[id * 4] = 0;
+    neur2Data[id * 4 + 1] = 0;
+    neur2Data[id * 4 + 2] = 0;    // проявится плавно
+    n.dendScale = opt.dendScale || density();
+    growDendrites(id, base, (type === "memory" ? 0.75 : 1) * n.dendScale);
+    dirty = true;
+    return n;
+  }
+
+  // новый нейрон: прорастает к ближайшим
+  function addNeuron(name, type, desc, zoneName) {
+    var n = createNeuron(name, type, desc, zoneName);
+    if (!n) return null;
+    var want = n.type === "memory" ? 2 : 3;
+    nearest(n.base, want, n).forEach(function (m) { connect(m, n); });
+    // редкая дальняя связь между зонами, как в настоящем мозге
+    if (nCount > 13 && Math.random() < 0.25) {
+      var far = neurons[Math.floor(Math.random() * (nCount - 1))];
+      if (far !== n && !linkBetween(far, n)) connect(far, n);
+    }
+    shellFlash(n.base);
+    sound.click(n.type === "memory" ? 1040 : 880);
+    if (searchQuery) applySearch(searchQuery, false);
+    return n;
+  }
+
+  function sendSignal(link, dir, depth, opt) {
+    if (signals.length >= MAX_S) return null;
+    opt = opt || {};
+    var my = link2Data[link.id * 4], inh = link2Data[link.id * 4 + 1] > 0.5, w = linkData[link.id * 4];
+    var s = {
+      link: link, dir: dir, t: dir > 0 ? 0 : 1, depth: depth,
+      // миелин ускоряет проведение в несколько раз
+      speed: (opt.speed || 0.55) * (1 + 3 * my),
+      color: opt.color || (inh ? COLOR_INH : (link.b.type === "memory" ? SIG_MEM : SIG_SKILL)),
+      alpha: opt.alpha || clamp(0.2 + 0.55 * w, 0.2, 1),   // слабая связь — слабый, едва видный сигнал
+      onArrive: opt.onArrive || null, gain: opt.gain === undefined ? 1 : opt.gain,
+      kind: opt.kind || "spike"
+    };
+    signals.push(s);
+    return s;
+  }
+
+  // Импульс (потенциал действия): всё или ничего. Идёт по всем отросткам клетки,
+  // но соседи вспыхнут, только если связь сильная и их заряд дойдёт до порога.
+  function spike(n, fromLink, depth) {
+    var t = now(), id = n.id;
+    if (t < refUntil[id]) return false;               // клетка отдыхает после прошлого импульса
+    neurData[id * 4 + 1] = 1;
+    vPot[id] = NEURO.reset;
+    refUntil[id] = t + NEURO.refractory;
+    eeg.kick += 0.18; eeg.spikes++;
+    if (depth >= NEURO.maxDepth) return true;
+    n.links.forEach(function (l) {
+      if (l === fromLink || t - linkData[l.id * 4 + 2] < GROW) return;
+      sendSignal(l, l.a === n ? 1 : -1, depth + 1);
+    });
+    return true;
+  }
+
+  // Синаптическая передача: сигнал дошёл до клетки
+  function deliver(sg) {
+    var l = sg.link, li = l.id * 4;
+    var target = sg.dir > 0 ? l.b : l.a, ti = target.id;
+    synFlash(l, sg.dir > 0 ? 1 : 0, sg);
+    if (sg.kind !== "spike") return;
+    var inh = link2Data[li + 1] > 0.5;
+    if (now() < refUntil[ti]) return;                 // в рефрактерности клетка не отвечает
+    vPot[ti] += (inh ? -1 : 1) * linkData[li] * NEURO.synapse;
+    if (!inh && vPot[ti] >= NEURO.threshold) {
+      // сигнал вызвал импульс — связь крепнет (правило Хебба), растёт миелин, остаётся след для дофамина
+      linkData[li] = Math.min(HEBB.linkMax, linkData[li] + HEBB.linkGain);
+      link2Data[li] = Math.min(1, link2Data[li] + 0.03);
+      link2Data[li + 2] = 1;
+      neurData[ti * 4] = Math.min(HEBB.max, neurData[ti * 4] + HEBB.gain * 0.25);
+      spike(target, l, sg.depth);
+    } else if (!inh) {
+      linkData[li] = Math.max(HEBB.linkMin, linkData[li] - 0.005);   // не вызвал — чуть слабеет
+    }
+    dirty = true;
+  }
+
+  // Навык реально используется: клетка даёт импульс
+  function fire(n, depth, quiet) {
+    if (!n) return;
+    var i = n.id * 4;
+    n.uses++;
+    neurData[i] = Math.min(HEBB.max, neurData[i] + HEBB.gain);
+    n.labelUntil = Math.max(n.labelUntil, now() + 3);
+    refUntil[n.id] = 0;
+    spike(n, null, 1);
+    if (!quiet) shellFlash(n.base);
+    dirty = true;
+    if (selected === n) showInfo(n);
+  }
+
+  // вспышка синапса на конце аксона
+  var synFlashes = [];
+  function synFlash(link, end, sg) {
+    if (synFlashes.length > 300) synFlashes.shift();
+    synFlashes.push({ link: link, end: end, born: now(), color: sg.color, alpha: sg.alpha });
+  }
+
+  // =======================================================
+  // 6. ХОД МЫСЛЕЙ: цепочка шагов загорается золотом по очереди
+  // =======================================================
+  function findPath(from, to) {
+    if (from === to) return [];
+    var prev = {}; prev[from.id] = null;
+    var queue = [from], t = now();
+    while (queue.length) {
+      var cur = queue.shift();
+      for (var i = 0; i < cur.links.length; i++) {
+        var l = cur.links[i];
+        if (t - linkData[l.id * 4 + 2] < GROW) continue;
+        var nx = l.a === cur ? l.b : l.a;
+        if (prev[nx.id] !== undefined) continue;
+        prev[nx.id] = { n: cur, l: l };
+        if (nx === to) {
+          var path = [], c = to;
+          while (prev[c.id]) { path.unshift({ link: prev[c.id].l, dir: prev[c.id].l.a === prev[c.id].n ? 1 : -1, to: c }); c = prev[c.id].n; }
+          return path;
+        }
+        queue.push(nx);
+      }
+    }
+    return null;
+  }
+
+  var episodes = [];      // реальные цепочки мыслей за день — их мозг переигрывает во сне
+  function think(steps, onDone) {
+    var list = steps.map(function (s) { return typeof s === "string" ? findSkill(s) : s; }).filter(Boolean);
+    if (!list.length) { if (onDone) onDone(); return; }
+    if (list.length > 1) { episodes.push(list.slice()); if (episodes.length > 40) episodes.shift(); }
+    var hops = [];
+    for (var i = 0; i < list.length - 1; i++) {
+      var path = findPath(list[i], list[i + 1]);
+      if (path === null) {
+        // пути нет — Chloe прокладывает новую связь
+        var l = connect(list[i], list[i + 1], { born: now() - GROW });
+        path = l ? [{ link: l, dir: l.a === list[i] ? 1 : -1, to: list[i + 1] }] : [];
+      }
+      hops = hops.concat(path);
+    }
+    function mark(n) {
+      neurData[n.id * 4 + 1] = 1;
+      neurData[n.id * 4] = Math.min(HEBB.max, neurData[n.id * 4] + HEBB.gain * 0.5);
+      vPot[n.id] = NEURO.reset;
+      refUntil[n.id] = now() + NEURO.refractory;
+      n.labelUntil = now() + 3.5;
+      n.labelKind = "think";
+      n.uses++;
+    }
+    mark(list[0]);
+    var idx = 0;
+    function nextHop() {
+      if (idx >= hops.length) { if (onDone) onDone(); return; }
+      var h = hops[idx++];
+      var hl = h.link.id * 4;
+      linkData[hl + 3] = 1;
+      sendSignal(h.link, h.dir, NEURO.maxDepth, {
+        speed: 1.3, color: COLOR_GOLD, alpha: 1, kind: "thought",
+        onArrive: function () {
+          // путь мысли — рабочий путь: связь крепнет, обрастает миелином, помнит работу
+          linkData[hl] = Math.min(HEBB.linkMax, linkData[hl] + HEBB.linkGain * 1.5);
+          link2Data[hl] = Math.min(1, link2Data[hl] + 0.05);
+          link2Data[hl + 2] = 1;
+          if (list.indexOf(h.to) >= 0) mark(h.to); else { neurData[h.to.id * 4 + 1] = Math.max(neurData[h.to.id * 4 + 1], 0.6); }
+          nextHop();
+        }
+      });
+    }
+    nextHop();
+    dirty = true;
+  }
+
+  // =======================================================
+  // 7. ОШИБКИ И НАСТРОЕНИЕ
+  // =======================================================
+  function error(n, why) {
+    if (!n) return;
+    n.errors++;
+    neur2Data[n.id * 4] = 1;
+    n.labelUntil = now() + 4;
+    n.labelKind = "err";
+    feel.valence = -1;
+    sound.error();
+    // учится на ошибке: связи, которые только что работали, слабеют,
+    // а та, что привела к ошибке, становится тормозящей — в следующий раз она гасит этот путь
+    var culprit = null;
+    for (var j = 0; j < lCount; j++) {
+      var tr = link2Data[j * 4 + 2];
+      if (tr < 0.05) continue;
+      linkData[j * 4] = Math.max(HEBB.linkMin, linkData[j * 4] - 0.3 * tr);
+    }
+    n.links.forEach(function (l) { if (!culprit || link2Data[l.id * 4 + 2] > link2Data[culprit.id * 4 + 2]) culprit = l; });
+    if (culprit && link2Data[culprit.id * 4 + 2] > 0.05) link2Data[culprit.id * 4 + 1] = 1;
+    var pool = neurons.filter(function (m) { return m !== n && m.type === "skill" && !linkBetween(n, m) && neur2Data[m.id * 4 + 2] > 0.5; });
+    if (pool.length) {
+      pool.sort(function (u, v) { return u.base.distanceToSquared(n.base) - v.base.distanceToSquared(n.base); });
+      var partner = pool[Math.floor(Math.random() * Math.min(4, pool.length))];
+      setTimeout(function () { connect(n, partner); }, 900);
+    }
+    n.lastError = why || "";
+    dirty = true;
+    if (selected === n) showInfo(n);
+  }
+  // Успех: дофамин. Связи, работавшие последние секунды (у них есть след), получают награду.
+  function success() {
+    feel.valence = Math.max(feel.valence, 0.9);
+    sound.success();
+    for (var j = 0; j < lCount; j++) {
+      var tr = link2Data[j * 4 + 2];
+      if (tr < 0.05) continue;
+      linkData[j * 4] = Math.min(HEBB.linkMax, linkData[j * 4] + 0.35 * tr);
+      link2Data[j * 4] = Math.min(1, link2Data[j * 4] + 0.05 * tr);
+      link2Data[j * 4 + 1] = 0;          // успешный путь больше не тормозящий
+      link2Data[j * 4 + 3] = tr;         // тёплое свечение награды
+    }
+    dirty = true;
+  }
+
+  // =======================================================
+  // 8. СТАРТ: сохранённый мозг или первые навыки
+  // =======================================================
+  var START = [
+    ["Голос", "Слышит речь и отвечает голосом", ["голос", "скажи", "слышишь"]],
+    ["Экран", "Делает скриншоты и видит, что на экране", ["экран", "скрин", "посмотри"]],
+    ["Мышь", "Двигает мышь и кликает", ["клик", "нажми", "мыш"]],
+    ["Клавиатура", "Печатает текст", ["напиши", "напечатай", "введи"]],
+    ["Горячие клавиши", "Нажимает сочетания клавиш: копировать, вставить, Enter", ["клавиш", "сочетан", "скопируй", "вставь", "enter"]],
+    ["Прокрутка", "Прокручивает страницу вверх и вниз", ["прокрут", "листай", "вниз", "вверх"]],
+    ["Сайты", "Открывает сайты в браузере", ["сайт", "браузер", "ссылк", "google", "youtube"]],
+    ["Программы", "Запускает приложения", ["открой", "запусти", "telegram", "программ"]],
+    ["Команды", "Выполняет команды в терминале", ["команд", "терминал", "выполни"]],
+    ["Файлы", "Ищет, читает и записывает файлы", ["файл", "найди", "папк", "документ"]],
+    ["Система", "Время, ОС, размер экрана", ["время", "который час", "система"]]
+  ];
+  var KEYWORDS = {};
+  START.forEach(function (s) { KEYWORDS[s[0]] = s[2]; });
+
+  var STORE_KEY = "chloe-brain-v1";
+  function r3(x) { return Math.round(x * 1000) / 1000; }
+  // мозг для сохранения; drop — нейрон или список нейронов, которых в нём больше не будет (забытое, объединённое во сне)
+  function serializeBrain(drop) {
+    var drops = drop ? [].concat(drop) : [];
+    var keep = neurons.filter(function (n) { return !n.gone && drops.indexOf(n) < 0; }), index = {};
+    keep.forEach(function (n, i) { index[n.id] = i; });
+    var used = [], zi = {};   // пустые зоны (тема распалась) не сохраняются
+    zones.forEach(function (z) { if (keep.some(function (n) { return n.zone === z.name; }) || !z.topic) { zi[z.name] = used.length; used.push(z); } });
+    return JSON.stringify({
+      v: 2,
+      zones: used.map(function (z) { return z.name; }),
+      topics: used.filter(function (z) { return z.topic; }).map(function (z) { return z.name; }),
+      neurons: keep.map(function (n) {
+        return [n.name, n.type === "memory" ? 1 : 0, n.desc, zi[n.zone], r3(n.base.x), r3(n.base.y), r3(n.base.z),
+          n.bornMs, n.uses, r3(neurData[n.id * 4]), n.errors, r3(n.dendScale), r3(n.scar || 0), n.world || 0, n.q || 0, n.lastMs || 0];
+      }),
+      links: links.filter(function (l) { return index[l.a.id] !== undefined && index[l.b.id] !== undefined; }).map(function (l) {
+        return [index[l.a.id], index[l.b.id], r3(linkData[l.id * 4]), r3(link2Data[l.id * 4]), link2Data[l.id * 4 + 1] > 0.5 ? 1 : 0];
+      })
+    });
+  }
+  function save() {
+    if (!dirty) return;
+    dirty = false;
+    try { storeSet(serializeBrain(null)); } catch (e) { /* хранилище недоступно — работаем без сохранения */ }
+  }
+  // в программе мозг хранится в файле через Python, в браузере — в localStorage
+  function storeSet(str) {
+    if (APP && window.pywebview && window.pywebview.api) { window.pywebview.api.save_brain(str); return; }
+    try { localStorage.setItem(STORE_KEY, str); } catch (e) {}
+  }
+  function storeGet(cb) {
+    if (!APP) { var raw = null; try { raw = localStorage.getItem(STORE_KEY); } catch (e) {} cb(raw); return; }
+    var done = false;
+    function fromApi() {
+      if (done) return; done = true;
+      window.pywebview.api.load_brain().then(function (raw) { cb(raw || null); }, function () { cb(null); });
+    }
+    if (window.pywebview && window.pywebview.api) fromApi();
+    else window.addEventListener("pywebviewready", fromApi);
+    setTimeout(function () {          // открыт с ?app=1 в обычном браузере — работаем без Python
+      if (done) return; done = true;
+      var raw = null; try { raw = localStorage.getItem(STORE_KEY); } catch (e) {} cb(raw);
+    }, 4000);
+  }
+  function load(raw) {
+    if (!raw) return false;
+    try {
+      var data = JSON.parse(raw);
+      data.zones.forEach(function (z) { getZone(z); });
+      (data.topics || []).forEach(function (z) { getZone(z).topic = true; });
+      data.neurons.forEach(function (a) {
+        createNeuron(a[0], a[1] ? "memory" : "skill", a[2], data.zones[a[3]], {
+          base: (data.v || 1) >= 2 ? new THREE.Vector3(a[4], a[5], a[6]) : null, bornMs: a[7], uses: a[8], strength: a[9], errors: a[10] || 0,
+          dendScale: a[11] || 1, grown: true, scar: a[12] || 0, world: a[13] || "", q: a[14] || "", lastMs: a[15] || 0
+        });
+      });
+      data.links.forEach(function (a) {
+        if (!neurons[a[0]] || !neurons[a[1]]) return;
+        var old = a.length === 9;   // самый старый формат хранил изгиб связи
+        var opt = { weight: old ? a[8] : a[2], born: -100, myelin: old ? 0 : (a[3] || 0), inhib: !old && a[4] === 1 };
+        if (old) { opt.p1 = new THREE.Vector3(a[2], a[3], a[4]); opt.p2 = new THREE.Vector3(a[5], a[6], a[7]); }
+        connect(neurons[a[0]], neurons[a[1]], opt);
+      });
+      dirty = false;
+      return nCount > 0;
+    } catch (e) { return false; }
+  }
+  setInterval(save, 4000);
+  window.addEventListener("beforeunload", save);
+  document.addEventListener("visibilitychange", function () { if (document.hidden) save(); });
+
+  function findSkill(text) {
+    var low = String(text).toLowerCase();
+    var i, n;
+    for (i = 0; i < nCount; i++) { n = neurons[i]; if (low === n.name.toLowerCase()) return n; }
+    for (i = 0; i < nCount; i++) {
+      n = neurons[i];
+      if (low.indexOf(n.name.toLowerCase()) >= 0) return n;
+      var kw = KEYWORDS[n.name] || [];
+      for (var k = 0; k < kw.length; k++) if (low.indexOf(kw[k]) >= 0) return n;
+    }
+    return null;
+  }
+  function shortName(s) { return s.length > 26 ? s.slice(0, 25) + "…" : s; }
+
+  // =======================================================
+  // 9. ОТВЕТ CHLOE (демонстрация, пока не подключена Python-часть)
+  // =======================================================
+  var replyTimer = null;
+  function respond(text, onThink, afterSpeak) {
+    setState("thinking");
+    replyEl.style.opacity = 0;
+    clearTimeout(replyTimer);
+    replyTimer = setTimeout(function () {
+      var go = function () { speak(text, afterSpeak); };
+      if (onThink) onThink(go); else go();
+    }, 900);
+  }
+  function speak(text, after) {
+    setState("speaking");
+    replyEl.textContent = text;
+    replyEl.style.opacity = 1;
+    var done = function () {
+      voice.chloe = 0;
+      setState("idle");
+      if (after) after();
+      setTimeout(function () { if (STATE.name !== "speaking") replyEl.style.opacity = 0; }, 2500);
+    };
+    if (sound.isOn() && window.speechSynthesis) {
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = "ru-RU";
+      u.onend = done;
+      u.onerror = done;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } else {
+      setTimeout(done, 900 + text.length * 55);
+    }
+  }
+
+  var cmd = document.getElementById("cmd");
+  cmd.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    var text = cmd.value.trim();
+    cmd.value = "";
+    if (!text) return;
+    touch();
+    if (APP && window.pywebview && window.pywebview.api) { window.pywebview.api.command(text); return; }
+    var m = text.match(/^(запомни|запомнить|помни|научись|навык)[:,\s]+(.+)$/i);
+    if (m) {
+      var isSkill = /^(научись|навык)/i.test(m[1]);
+      var n = addNeuron(shortName(m[2]), isSkill ? "skill" : "memory", (isSkill ? "Новый навык: " : "Воспоминание: ") + m[2]);
+      respond(isSkill ? "Учусь: " + m[2] : "Запомнила.", function (go) {
+        setTimeout(function () { fire(n); go(); }, 1200);
+      }, success);
+      return;
+    }
+    var hit = findSkill(text);
+    var failed = /ошибк|не получ|сломай/i.test(text);
+    if (hit) {
+      // план: посмотреть на экран → нужный навык → действие мышью
+      var plan = ["Экран", hit.name, "Мышь"].filter(function (s, i, a) { return a.indexOf(s) === i; });
+      respond(failed ? "Не получилось. Попробую по-другому." : "Готово. Использую навык «" + hit.name + "».", function (go) {
+        think(plan, function () {
+          if (failed) error(hit, text);
+          go();
+        });
+      }, failed ? null : success);
+    } else {
+      var nn = addNeuron(shortName(text), "skill", "Выучено из задачи: " + text, "Навыки");
+      respond("Это новое для меня. Учусь.", function (go) {
+        setTimeout(function () { think(["Экран", nn], go); }, 1500);
+      }, success);
+    }
+  });
+
+  // =======================================================
+  // 10. МИКРОФОН И ЗВУК
+  // =======================================================
+  var mic = { on: false, analyser: null, data: null, stream: null, lastLoud: 0 };
+  var micBtn = document.getElementById("micBtn");
+  micBtn.onclick = function () {
+    touch();
+    if (mic.on) {
+      mic.stream.getTracks().forEach(function (tr) { tr.stop(); });
+      mic.on = false; voice.user = 0;
+      micBtn.classList.remove("on");
+      if (STATE.name === "listening") setState("idle");
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      replyEl.textContent = "Микрофон недоступен в этом браузере."; replyEl.style.opacity = 1; return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var ac = new (window.AudioContext || window.webkitAudioContext)();
+      var src = ac.createMediaStreamSource(stream);
+      var an = ac.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      mic.analyser = an; mic.data = new Uint8Array(an.fftSize); mic.stream = stream; mic.on = true;
+      micBtn.classList.add("on");
+    }).catch(function () { replyEl.textContent = "Нет доступа к микрофону."; replyEl.style.opacity = 1; });
+  };
+  function readMic(t) {
+    if (!mic.on) return;
+    mic.analyser.getByteTimeDomainData(mic.data);
+    var sum = 0;
+    for (var i = 0; i < mic.data.length; i++) { var v = (mic.data[i] - 128) / 128; sum += v * v; }
+    var lvl = clamp((Math.sqrt(sum / mic.data.length) - 0.02) * 8, 0, 1);
+    voice.user += (lvl - voice.user) * 0.35;
+    if (lvl > 0.15) {
+      mic.lastLoud = t; touch();
+      if (STATE.name === "idle") setState("listening");
+    } else if (STATE.name === "listening" && t - mic.lastLoud > 1.2) setState("idle");
+  }
+  var soundBtn = document.getElementById("soundBtn");
+  soundBtn.onclick = function () { touch(); soundBtn.classList.toggle("on", sound.toggle()); };
+
+  // =======================================================
+  // 11. ВРАЩЕНИЕ, МАСШТАБ, ПОЛЁТ К НЕЙРОНУ
+  // =======================================================
+  var rot = { x: 0.62, y: 0.32, vx: 0, vy: 0 };   // сверху и чуть сбоку: видны оба полушария и щель между ними
+  var view = { zoom: 1, panX: 0, panY: 0, focus: null };
+  var ZOOM_MIN = 0.5, ZOOM_MAX = 7;
+  var dragging = false, panning = false, moved = 0, lx = 0, ly = 0;
+  var pointers = {}, pinch = null;
+  var el = renderer.domElement;
+
+  function camZ(zoom) { return BASE_Z * (0.2 + 0.8 * group.scale.x) / zoom; }
+  function halfH(zoom) { return camZ(zoom) * Math.tan(FOV * Math.PI / 360); }
+  function clampPan() {
+    var lim = SPH * group.scale.x * 1.1;
+    view.panX = clamp(view.panX, -lim, lim);
+    view.panY = clamp(view.panY, -lim, lim);
+  }
+  function zoomAt(factor, sx, sy) {
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    var nx = sx === undefined ? 0 : (sx / w) * 2 - 1;
+    var ny = sy === undefined ? 0 : 1 - (sy / h) * 2;
+    var aspect = w / h;
+    var z0 = view.zoom, z1 = clamp(z0 * factor, ZOOM_MIN, ZOOM_MAX);
+    var wx = view.panX + nx * halfH(z0) * aspect, wy = view.panY + ny * halfH(z0);
+    view.zoom = z1;
+    view.panX = wx - nx * halfH(z1) * aspect;
+    view.panY = wy - ny * halfH(z1);
+    clampPan();
+  }
+  function panBy(dxPx, dyPx) {
+    var k = 2 * halfH(view.zoom) / wrap.clientHeight;
+    view.panX -= dxPx * k;
+    view.panY += dyPx * k;
+    clampPan();
+  }
+  function resetView() { view.zoom = 1; view.panX = 0; view.panY = 0; view.focus = null; }
+
+  // Полёт: развернуть мозг так, чтобы нейроны оказались перед камерой, и приблизиться
+  function focusOn(list) {
+    if (!list || !list.length) return;
+    var c = new THREE.Vector3();
+    list.forEach(function (n) { c.add(n.base); });
+    c.multiplyScalar(1 / list.length);
+    var spread = 0;
+    list.forEach(function (n) { spread = Math.max(spread, n.base.distanceTo(c)); });
+    var yaw = Math.atan2(-c.x, c.z);
+    var r = Math.sqrt(c.x * c.x + c.z * c.z);
+    var pitch = Math.atan2(c.y, r);
+    var depth = c.length() * group.scale.x;
+    var dist = Math.max(0.9, spread * group.scale.x * 2.8);
+    view.focus = { yaw: yaw, pitch: pitch };
+    view.zoom = clamp(camZ(1) / (depth + dist), ZOOM_MIN, ZOOM_MAX);
+    view.panX = 0; view.panY = 0;
+  }
+
+  el.addEventListener("wheel", function (e) {
+    e.preventDefault(); touch();
+    var rect = el.getBoundingClientRect();
+    var d = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;
+    zoomAt(Math.exp(-d * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+  el.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  document.getElementById("zIn").onclick = function () { touch(); zoomAt(1.4); };
+  document.getElementById("zOut").onclick = function () { touch(); zoomAt(1 / 1.4); };
+  document.getElementById("zReset").onclick = function () { touch(); resetView(); };
+  window.addEventListener("keydown", function (e) {
+    touch();
+    if (e.key === "Escape") { setWall(false); clearSearch(); return; }
+    if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+    if (e.key === "+" || e.key === "=") zoomAt(1.4);
+    else if (e.key === "-" || e.key === "_") zoomAt(1 / 1.4);
+    else if (e.key === "0") resetView();
+  });
+
+  el.addEventListener("pointerdown", function (e) {
+    touch();
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    var ids = Object.keys(pointers);
+    if (ids.length === 2) {
+      var a = pointers[ids[0]], b = pointers[ids[1]];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      dragging = false; moved = 99;
+      return;
+    }
+    dragging = true; moved = 0; lx = e.clientX; ly = e.clientY; rot.vx = 0; rot.vy = 0;
+    panning = e.button === 2 || e.shiftKey;
+    wrap.classList.add("drag");
+  });
+  el.addEventListener("pointermove", function (e) {
+    if (pointers[e.pointerId]) { pointers[e.pointerId].x = e.clientX; pointers[e.pointerId].y = e.clientY; }
+    if (pinch) {
+      var ids = Object.keys(pointers);
+      if (ids.length < 2) return;
+      var a = pointers[ids[0]], b = pointers[ids[1]];
+      var d = Math.hypot(a.x - b.x, a.y - b.y);
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      var rect = el.getBoundingClientRect();
+      if (pinch.d > 0) zoomAt(d / pinch.d, mx - rect.left, my - rect.top);
+      panBy(mx - pinch.mx, my - pinch.my);
+      pinch.d = d; pinch.mx = mx; pinch.my = my;
+      return;
+    }
+    if (!dragging) return;
+    var dx = e.clientX - lx, dy = e.clientY - ly;
+    moved += Math.abs(dx) + Math.abs(dy);
+    lx = e.clientX; ly = e.clientY;
+    if (panning) { panBy(dx, dy); return; }
+    if (moved > 6) view.focus = null;          // взялись вращать — полёт отменяется
+    var rs = 0.008 / Math.sqrt(view.zoom);
+    rot.vy = dx * rs; rot.vx = dy * rs;
+    rot.y += rot.vy; rot.x += rot.vx;
+  });
+  function releasePointer(e) {
+    delete pointers[e.pointerId];
+    if (Object.keys(pointers).length < 2) pinch = null;
+  }
+  el.addEventListener("pointercancel", function (e) { releasePointer(e); dragging = false; wrap.classList.remove("drag"); });
+
+  var _pr = new THREE.Vector3(), _dr = new THREE.Vector3();
+  function screenOf(n, t, out) {
+    driftOf(n.id, t, _dr);
+    _pr.copy(n.base).add(_dr).applyMatrix4(group.matrixWorld).project(camera);
+    out.x = (_pr.x + 1) / 2 * viewW;
+    out.y = (1 - _pr.y) / 2 * viewH;
+    out.z = _pr.z;
+    return out;
+  }
+  el.addEventListener("pointerup", function (e) {
+    var wasPinch = Object.keys(pointers).length > 1 || pinch;
+    releasePointer(e);
+    dragging = false; panning = false;
+    wrap.classList.remove("drag");
+    if (wasPinch || moved > 6 || document.body.classList.contains("wall")) return;
+    var rect = el.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var best = null, bestD = 18 * 18, sp = { x: 0, y: 0, z: 0 }, t = now();
+    for (var i = 0; i < nCount; i++) {
+      if (neur2Data[i * 4 + 2] < 0.3) continue;
+      screenOf(neurons[i], t, sp);
+      if (sp.z > 1) continue;
+      var d = (sp.x - mx) * (sp.x - mx) + (sp.y - my) * (sp.y - my);
+      if (d < bestD) { bestD = d; best = neurons[i]; }
+    }
+    if (!best && typeof CORE_POS !== "undefined") {   // мимо нейронов, но по ядру — открыть ядро
+      var cp = CORE_POS.clone().applyMatrix4(group.matrixWorld).project(camera);
+      var cxp = (cp.x + 1) / 2 * rect.width, cyp = (1 - cp.y) / 2 * rect.height;
+      if ((cxp - mx) * (cxp - mx) + (cyp - my) * (cyp - my) < 34 * 34) { openLayer("core"); return; }
+    }
+    if (best) {
+      fire(best);
+      showInfo(best);
+      focusOn([best].concat(best.links.slice(0, 6).map(function (l) { return l.a === best ? l.b : l.a; })));
+    }
+  });
+
+  // =======================================================
+  // 12. КАРТОЧКА НЕЙРОНА
+  // =======================================================
+  var selected = null;
+  function fmtDate(ms) {
+    var d = new Date(ms);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return d >= today ? "сегодня в " + time : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " в " + time;
+  }
+  function showInfo(n) {
+    selected = n;
+    toggleStats(false);
+    var exc = 0, inhN = 0, my = 0;
+    n.links.forEach(function (l) { if (link2Data[l.id * 4 + 1] > 0.5) inhN++; else exc++; my += link2Data[l.id * 4]; });
+    var synInfo = "Синапсы: " + exc + " возбуждающих, " + inhN + " тормозящих · миелин " + Math.round(100 * my / Math.max(1, n.links.length)) + "%<br>";
+    var linked = n.links.slice(0, 8).map(function (l) { return (l.a === n ? l.b : l.a).name; }).join(", ") || "нет";
+    if (n.links.length > 8) linked += " и ещё " + (n.links.length - 8);
+    var pct = Math.round(neurData[n.id * 4] / HEBB.max * 100);
+    var scarPct = Math.round((n.scar || 0) * 100);
+    info.innerHTML =
+      '<span class="close" id="infoClose">✕</span>' +
+      "<b>" + escapeHtml(n.name) + "</b> · " + (n.world ? n.world.toLowerCase() + " из вашего мира" : n.type === "memory" ? "память" : "навык") +
+      " · зона «" + escapeHtml(n.zone) + "»<br>" +
+      (n.lastMs ? "Последний раз: " + fmtDate(n.lastMs) + "<br>" : "") +
+      (scarPct ? "<span style='color:#E05555'>След ошибок: " + scarPct + "% — сойдёт, когда навык снова поработает без ошибок</span><br>" : "") +
+      escapeHtml(n.desc) + "<br>" +
+      "Сила: " + pct + "%<span class='bar'><i style='width:" + pct + "%'></i></span><br>" +
+      "Появился: " + fmtDate(n.bornMs) + " · Использован: " + n.uses + " раз" + (n.errors ? " · Ошибок: " + n.errors : "") + "<br>" +
+      (n.lastError ? "Последняя ошибка: " + escapeHtml(n.lastError) + "<br>" : "") +
+      synInfo + "Связан с: " + escapeHtml(linked) +
+      (APP ? "<br><button class='small' id='infoHistory'>История действий</button>" +
+        (n.type === "memory" && !n.world ? "<button class='small' id='infoMemEdit'>Изменить</button><button class='small danger' id='infoMemForget'>Забыть</button>" : "") +
+        (FILE_SKILLS.indexOf(n.name) >= 0 ? "<button class='small' id='infoFiles'>Изменения файлов</button>" : "") : "");
+    info.style.display = "block";
+    document.getElementById("infoClose").onclick = function () { info.style.display = "none"; selected = null; };
+    if (APP) document.getElementById("infoHistory").onclick = function () { if (n.world) openJournal("", n.q || n.name); else openJournal(n.name); };
+    if (APP && FILE_SKILLS.indexOf(n.name) >= 0) document.getElementById("infoFiles").onclick = function () { openFiles(); };
+    if (APP && n.type === "memory" && !n.world) {
+      document.getElementById("infoMemEdit").onclick = function () { openMemory(memoryText(n)); };
+      document.getElementById("infoMemForget").onclick = function () { openMemory(memoryText(n), true); };
+    }
+  }
+
+  // =======================================================
+  // 13. ПОИСК
+  // =======================================================
+  var searchInput = document.getElementById("searchInput"), searchCount = document.getElementById("searchCount");
+  var searchQuery = "", searchTimer = null;
+  function applySearch(q, fly) {
+    searchQuery = q;
+    var low = q.toLowerCase(), found = [];
+    for (var i = 0; i < nCount; i++) {
+      var n = neurons[i];
+      var hit = (n.name + " " + n.desc + " " + n.zone).toLowerCase().indexOf(low) >= 0;
+      neur2Data[i * 4 + 1] = hit ? 1 : 0;
+      if (hit) found.push(n);
+    }
+    common.uSearchOn.value = 1;
+    searchCount.textContent = found.length ? "найдено " + found.length : "ничего";
+    found.slice(0, 6).forEach(function (n) { n.labelUntil = now() + 6; });
+    if (fly && found.length) focusOn(found.slice(0, 300));
+  }
+  function clearSearch() {
+    searchQuery = "";
+    searchInput.value = "";
+    searchCount.textContent = "";
+    common.uSearchOn.value = 0;
+  }
+  searchInput.addEventListener("input", function () {
+    touch();
+    clearTimeout(searchTimer);
+    var q = searchInput.value.trim();
+    searchTimer = setTimeout(function () { if (q.length >= 2) applySearch(q, true); else clearSearch(); }, 250);
+  });
+
+  // =======================================================
+  // 14. ФИЛЬТРЫ
+  // =======================================================
+  var filter = "all";
+  var filtersEl = document.getElementById("filters");
+  function rebuildFilters() {
+    var items = [["all", "Все"], ["skill", "Все навыки"], ["memory", "Все воспоминания"]].concat(zones.map(function (z) { return ["zone:" + z.name, z.name]; }));
+    filtersEl.innerHTML = "";
+    items.forEach(function (it) {
+      var b = document.createElement("button");
+      b.className = "chip" + (filter === it[0] ? " on" : "");
+      b.textContent = it[1];
+      b.onclick = function () {
+        touch();
+        filter = it[0];
+        rebuildFilters();
+        if (filter.indexOf("zone:") === 0) {
+          var zn = filter.slice(5);
+          focusOn(neurons.filter(function (n) { return n.zone === zn; }).slice(0, 300));
+        } else if (filter === "all") resetView();
+      };
+      filtersEl.appendChild(b);
+    });
+  }
+  function filterVisible(n) {
+    if (filter === "all") return true;
+    if (filter === "skill" || filter === "memory") return n.type === filter;
+    return "zone:" + n.zone === filter;
+  }
+
+  // =======================================================
+  // 14½. ЖУРНАЛ — ничего не скрыто: что услышала, сказала, сделала
+  // =======================================================
+  var journalPanel = document.getElementById("journalPanel"), journalBtn = document.getElementById("journalBtn");
+  var jState = { open: false, skill: "", query: "", items: [], detail: null, armed: 0 };
+  var J_ICON = { heard: "🎙", said: "💬", confirm: "?", tool: "•", memory: "✎", stop: "■", brain: "⚡", files: "↺" };
+  function jApi() { return APP && window.pywebview && window.pywebview.api && window.pywebview.api.journal_list ? window.pywebview.api : null; }
+  function jTime(ts) { return new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }); }
+  function jDay(ts) {
+    var d = new Date(ts * 1000), today = new Date(); today.setHours(0, 0, 0, 0);
+    return d >= today ? "Сегодня" : d >= today - 864e5 ? "Вчера" : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  }
+  function jRow(e, step) {
+    return "<div class='jItem " + e.kind + (step ? " step" : "") + (e.ok ? "" : " fail") + "' data-id='" + e.id + "'>" +
+      "<span class='t'>" + jTime(e.ts) + "</span><span class='k'>" + (e.ok ? J_ICON[e.kind] || "•" : "✕") + "</span>" +
+      "<span class='x'>" + escapeHtml(e.kind === "tool" ? e.skill + " · " + e.title : e.title) + "</span>" +
+      (e.screen ? "<span class='shot'>снимок</span>" : "") + "</div>";
+  }
+  function openJournal(skill, query) {
+    touch();
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeMemory();
+    closeFiles();
+    if (phonePanel) closePhone();
+    jState.open = true; jState.skill = skill || ""; jState.detail = null;
+    if (query !== undefined) jState.query = query;
+    journalBtn.classList.add("on");
+    journalPanel.style.display = "block";
+    loadJournal();
+  }
+  function closeJournal() {
+    jState.open = false; jState.detail = null;
+    journalBtn.classList.remove("on");
+    journalPanel.style.display = "none";
+  }
+  journalBtn.onclick = function () { if (jState.open) closeJournal(); else openJournal(""); };
+  function loadJournal() {
+    var api = jApi();
+    if (!api) { renderJournal(); return; }
+    api.journal_list(jState.query, jState.skill, 150, 0).then(function (items) { jState.items = items || []; renderJournal(); });
+  }
+  function renderJournal() {
+    if (!jState.open || jState.detail) return;
+    var h = "<span class='close' id='jClose'>✕</span><b>Журнал</b>" +
+      (jState.skill ? " · <button class='small on' id='jSkill'>" + escapeHtml(jState.skill) + " ✕</button>" : "");
+    if (!jApi()) {
+      journalPanel.innerHTML = h + "<br>Журнал хранится в программе Chloe — откройте мозг через run.py.";
+      document.getElementById("jClose").onclick = closeJournal;
+      return;
+    }
+    h += "<div class='jTop'><input id='jSearch' placeholder='Найти в журнале' value='" + escapeHtml(jState.query) + "'></div>";
+    if (!jState.items.length) h += "<div>" + (jState.query || jState.skill ? "Ничего не найдено." : "Пока пусто. Скажите «Хлоя, …» — и всё, что она сделает, появится здесь.") + "</div>";
+    // просьбы — от новых к старым, а под каждой по порядку всё, что сделано в ответ
+    var grouped = !jState.skill && !jState.query, groups = [], byTask = {};
+    jState.items.forEach(function (e) {
+      if (!grouped || e.kind === "heard" || !e.task) {
+        var g = { head: e, steps: [] };
+        groups.push(g);
+        if (e.kind === "heard") byTask[e.id] = g;
+      }
+    });
+    if (grouped) {
+      jState.items.forEach(function (e) {
+        if (e.kind === "heard" || !e.task) return;
+        if (byTask[e.task]) byTask[e.task].steps.unshift(e);
+        else groups.push({ head: e, steps: [] });
+      });
+      groups.sort(function (a, b) { return b.head.id - a.head.id; });
+    }
+    var day = "";
+    groups.forEach(function (g) {
+      var d = jDay(g.head.ts);
+      if (d !== day) { day = d; h += "<h4>" + d + "</h4>"; }
+      h += jRow(g.head, false);
+      g.steps.forEach(function (s) { h += jRow(s, true); });
+    });
+    if (jState.items.length && !jState.skill && !jState.query)
+      h += "<h4>Весь журнал</h4><button class='small danger' id='jClear'>" + (jState.armed === -1 ? "Точно стереть весь журнал?" : "Стереть журнал") + "</button>";
+    journalPanel.innerHTML = h;
+    document.getElementById("jClose").onclick = closeJournal;
+    if (jState.skill) document.getElementById("jSkill").onclick = function () { jState.skill = ""; loadJournal(); };
+    var input = document.getElementById("jSearch"), timer = null;
+    input.oninput = function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { jState.query = input.value.trim(); loadJournal(); setTimeout(function () { var i = document.getElementById("jSearch"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 50); }, 300);
+    };
+    input.onkeydown = function (ev) { ev.stopPropagation(); };
+    var clearBtn = document.getElementById("jClear");
+    if (clearBtn) clearBtn.onclick = function () {
+      if (jState.armed !== -1) { jState.armed = -1; renderJournal(); setTimeout(function () { jState.armed = 0; renderJournal(); }, 4000); return; }
+      jState.armed = 0;
+      jApi().journal_clear().then(loadJournal);
+    };
+    Array.prototype.forEach.call(journalPanel.querySelectorAll(".jItem"), function (el) {
+      el.onclick = function () { showEvent(+el.getAttribute("data-id")); };
+    });
+  }
+  function showEvent(id) {
+    jApi().journal_get(id).then(function (e) {
+      if (!e) { loadJournal(); return; }
+      jState.detail = e; jState.armed = 0;
+      renderEvent();
+    });
+  }
+  function renderEvent() {
+    var e = jState.detail, d = e.detail || {};
+    var kinds = { heard: "Просьба", said: "Ответ Chloe", tool: "Действие", confirm: "Подтверждение", memory: "Изменение памяти", stop: "Перебили", brain: "Мышление", files: "Отмена изменения" };
+    var h = "<span class='close' id='jClose'>✕</span><button class='small' id='jBack'>← Журнал</button><div class='jDetail'>" +
+      "<b>" + escapeHtml(kinds[e.kind] || e.kind) + "</b> · " + escapeHtml(e.skill || "") + " · " + jDay(e.ts).toLowerCase() + " в " + jTime(e.ts) +
+      (e.ok ? "" : " · <span style='color:#E05555'>не удалось</span>") + "<br>" + escapeHtml(e.title);
+    if (e.kind === "tool") {
+      h += "<h4>Инструмент</h4>" + escapeHtml(d.tool || "") + (d.seconds != null ? " · " + d.seconds + " с" : "");
+      h += "<h4>Что передано</h4><pre>" + escapeHtml(JSON.stringify(d.args || {}, null, 2)) + "</pre>";
+      h += "<h4>Результат</h4><pre>" + escapeHtml(d.result || "") + "</pre>";
+    }
+    if (d.typed != null) h += "<br>" + (d.typed ? "Набрано в строке ввода" : "Услышано голосом");
+    if (e.screen) h += "<h4>Что видела Chloe</h4><img src='" + e.screen + "' alt='Скриншот'>";
+    if (e.steps && e.steps.length) {
+      h += "<h4>Что было сделано</h4>";
+      e.steps.forEach(function (s) { h += jRow(s, false); });
+    }
+    if (e.task && e.kind !== "heard") h += "<br><button class='small' id='jTask'>Вся просьба целиком</button>";
+    h += "<h4>Удалить</h4><button class='small danger' id='jDel'>" +
+      (jState.armed === e.id ? "Точно удалить?" : e.kind === "heard" ? "Удалить просьбу и всё, что сделано" : "Удалить запись") + "</button></div>";
+    journalPanel.innerHTML = h;
+    journalPanel.scrollTop = 0;
+    document.getElementById("jClose").onclick = closeJournal;
+    document.getElementById("jBack").onclick = function () { jState.detail = null; loadJournal(); };
+    var task = document.getElementById("jTask");
+    if (task) task.onclick = function () { showEvent(e.task); };
+    document.getElementById("jDel").onclick = function () {
+      if (jState.armed !== e.id) { jState.armed = e.id; renderEvent(); return; }
+      jApi().journal_delete(e.id).then(function () { jState.detail = null; loadJournal(); });
+    };
+    Array.prototype.forEach.call(journalPanel.querySelectorAll(".jItem"), function (el) {
+      el.onclick = function () { showEvent(+el.getAttribute("data-id")); };
+    });
+  }
+  // новое событие из Python: в открытом списке появляется сразу
+  window.chloeEvent = function (e) {
+    if (!jState.open || jState.detail || jState.query) return;
+    if (jState.skill && e.skill !== jState.skill) return;
+    jState.items.unshift(e);
+    renderJournal();
+  };
+
+  // =======================================================
+  // 14¾. ПАМЯТЬ — что Chloe знает о вас: посмотреть, добавить, исправить, забыть
+  // =======================================================
+  var memoryPanel = document.getElementById("memoryPanel"), memoryBtn = document.getElementById("memoryBtn");
+  var mState = { open: false, items: [], query: "", editing: 0, armed: 0 };
+  var MEM_PREFIX = "Воспоминание: ";
+  function memoryText(n) { return n.desc.indexOf(MEM_PREFIX) === 0 ? n.desc.slice(MEM_PREFIX.length) : n.name; }
+  function memoryNeuron(text) {
+    for (var i = 0; i < nCount; i++) if (neurons[i].type === "memory" && !neurons[i].gone && memoryText(neurons[i]) === text) return neurons[i];
+    return null;
+  }
+  function openMemory(focusText, forget) {
+    touch();
+    if (phonePanel) closePhone();
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal();
+    closeFiles();
+    mState.open = true; mState.editing = 0; mState.armed = 0;
+    memoryBtn.classList.add("on");
+    memoryPanel.style.display = "block";
+    loadMemory(function () {
+      if (!focusText) return;
+      var m = mState.items.filter(function (x) { return x.text === focusText; })[0];
+      if (m) { mState.editing = m.id; mState.armed = forget ? m.id : 0; renderMemory(); }
+    });
+  }
+  function closeMemory() {
+    mState.open = false;
+    memoryBtn.classList.remove("on");
+    memoryPanel.style.display = "none";
+  }
+  memoryBtn.onclick = function () { if (mState.open) closeMemory(); else openMemory(); };
+  function loadMemory(then) {
+    var api = jApi();
+    if (!api) { renderMemory(); return; }
+    api.city_get().then(function (c) { mState.city = c || ""; mState.cityNote = c ? "" : "Пока не знаю — скажите «Хлоя, я живу в …» или впишите здесь"; renderMemory(); });
+    api.memory_list().then(function (items) { mState.items = items || []; renderMemory(); if (then) then(); });
+  }
+  function renderMemory() {
+    if (!mState.open) return;
+    var h = "<span class='close' id='mClose'>✕</span><b>Память</b> · что Chloe знает о вас";
+    if (!jApi()) {
+      memoryPanel.innerHTML = h + "<br>Память хранится в программе Chloe — откройте мозг через run.py.";
+      document.getElementById("mClose").onclick = closeMemory;
+      return;
+    }
+    h += "<div class='jTop'><input id='mAdd' placeholder='Добавить: например, «Я люблю чёрный кофе»'><button class='small' id='mAddBtn'>Запомнить</button></div>";
+    h += "<div class='jTop'><span style='color:#8A8A8A'>Город:</span>&nbsp;<input id='mCity' placeholder='например, Ташкент' value='" + escapeHtml(mState.city || "") + "'>" +
+      "<button class='small' id='mCityBtn'>Сохранить</button></div>" + (mState.cityNote ? "<div class='t' style='color:#8A8A8A;font-size:11px'>" + escapeHtml(mState.cityNote) + "</div>" : "");
+    var low = mState.query.toLowerCase();
+    var shown = mState.items.filter(function (m) { return !low || m.text.toLowerCase().indexOf(low) >= 0 || (m.zone || "").toLowerCase().indexOf(low) >= 0; });
+    if (mState.items.length > 6) h += "<div class='jTop'><input id='mSearch' placeholder='Найти в памяти' value='" + escapeHtml(mState.query) + "'></div>";
+    if (!mState.items.length) h += "<div>Пока ничего. Скажите «Хлоя, запомни…» или добавьте здесь.</div>";
+    else if (!shown.length) h += "<div>Ничего не найдено.</div>";
+    shown.forEach(function (m) {
+      if (mState.editing === m.id) {
+        h += "<div class='mEdit'><h4>" + escapeHtml(m.zone || "Память") + " · №" + m.id + "</h4><textarea id='mText'>" + escapeHtml(m.text) + "</textarea>" +
+          "<button class='small on' id='mSave'>Сохранить</button><button class='small' id='mCancel'>Отмена</button>" +
+          "<button class='small danger' id='mDel'>" + (mState.armed === m.id ? "Точно забыть?" : "Забыть") + "</button>" +
+          "<div class='t' style='color:#8A8A8A;font-size:11px'>Запомнено " + escapeHtml(m.time || "") + (m.edited ? " · исправлено " + escapeHtml(m.edited) : "") + "</div></div>";
+      } else {
+        h += "<div class='mItem' data-id='" + m.id + "'><span class='x'>" + escapeHtml(m.text) + "</span><br><span class='t'>" +
+          escapeHtml(m.zone || "Память") + " · " + escapeHtml(m.time || "") + (m.edited ? " · исправлено" : "") + "</span></div>";
+      }
+    });
+    memoryPanel.innerHTML = h;
+    document.getElementById("mClose").onclick = closeMemory;
+    var city = document.getElementById("mCity");
+    city.onkeydown = function (ev) { ev.stopPropagation(); if (ev.key === "Enter") document.getElementById("mCityBtn").click(); };
+    document.getElementById("mCityBtn").onclick = function () {
+      mState.cityNote = "Ищу…"; renderMemory();
+      jApi().city_set(city.value).then(function (r) {
+        if (r.ok) mState.city = r.text;
+        mState.cityNote = r.ok ? "Сохранено: погода теперь для этого города" : r.text;
+        renderMemory();
+      });
+    };
+    var add = document.getElementById("mAdd");
+    add.onkeydown = function (ev) { ev.stopPropagation(); if (ev.key === "Enter") document.getElementById("mAddBtn").click(); };
+    document.getElementById("mAddBtn").onclick = function () {
+      var t = add.value.trim();
+      if (t) jApi().memory_add(t, "Память").then(function () { loadMemory(); });
+    };
+    var search = document.getElementById("mSearch");
+    if (search) {
+      search.onkeydown = function (ev) { ev.stopPropagation(); };
+      search.oninput = function () { mState.query = search.value; renderMemory(); var s2 = document.getElementById("mSearch"); s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); };
+    }
+    Array.prototype.forEach.call(memoryPanel.querySelectorAll(".mItem"), function (el) {
+      el.onclick = function () { mState.editing = +el.getAttribute("data-id"); mState.armed = 0; renderMemory(); };
+    });
+    if (mState.editing) {
+      var id = mState.editing, ta = document.getElementById("mText");
+      if (!ta) return;
+      ta.onkeydown = function (ev) { ev.stopPropagation(); };
+      document.getElementById("mCancel").onclick = function () { mState.editing = 0; mState.armed = 0; renderMemory(); };
+      document.getElementById("mSave").onclick = function () {
+        var t = ta.value.trim();
+        if (t) jApi().memory_edit(id, t).then(function () { mState.editing = 0; loadMemory(); });
+      };
+      document.getElementById("mDel").onclick = function () {
+        if (mState.armed !== id) { mState.armed = id; renderMemory(); return; }
+        try { sessionStorage.setItem("chloe-panel", "memory"); } catch (e) {}
+        jApi().memory_delete(id);   // Python удалит нейрон и перезагрузит мозг
+      };
+    }
+  }
+  // Python изменил память (голосом или из окна)
+  window.chloeRewrite = function (oldText, newText) {
+    var n = memoryNeuron(oldText);
+    if (n) { n.name = shortName(newText); n.desc = MEM_PREFIX + newText; dirty = true; save(); }
+    if (selected === n) showInfo(n);
+    if (mState.open) loadMemory();
+  };
+  window.chloeForget = function (text) {
+    var n = memoryNeuron(text);
+    if (!n) { if (mState.open) loadMemory(); return; }
+    // нейрон удаляется вместе со связями: сохраняем мозг без него и перерисовываем окно
+    var raw = serializeBrain(n);
+    dirty = false;
+    window.removeEventListener("beforeunload", save);
+    try { if (mState.open) sessionStorage.setItem("chloe-panel", "memory"); } catch (e) {}
+    var api = jApi();
+    if (api) api.save_brain(raw).then(function () { location.reload(); });
+    else { try { localStorage.setItem(STORE_KEY, raw); } catch (e) {} location.reload(); }
+  };
+  // после перезагрузки вернуть открытую панель памяти
+  try {
+    if (sessionStorage.getItem("chloe-panel") === "memory") {
+      sessionStorage.removeItem("chloe-panel");
+      var reopen = function () { if (jApi()) openMemory(); };
+      if (jApi()) setTimeout(reopen, 300); else window.addEventListener("pywebviewready", function () { setTimeout(reopen, 300); });
+    }
+  } catch (e) {}
+
+  // мозг перерисовался во сне (темы) — продолжаем спать
+  try {
+    if (sessionStorage.getItem("chloe-asleep")) {
+      sessionStorage.removeItem("chloe-asleep");
+      setTimeout(function () { setState("sleeping"); sleepStage("N2", "отдыхает"); }, 1500);
+    }
+  } catch (e) {}
+
+  // =======================================================
+  // 14⅞. ФАЙЛЫ — что Chloe меняла на диске, и отмена
+  // =======================================================
+  var FILE_SKILLS = ["Управление файлами", "Файлы", "Загрузки", "Отмена"];
+  var filesPanel = document.getElementById("filesPanel"), filesBtn = document.getElementById("filesBtn");
+  var fState = { open: false, items: [], armed: 0, message: "" };
+  function openFiles() {
+    touch();
+    if (phonePanel) closePhone();
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory();
+    fState.open = true; fState.armed = 0; fState.message = "";
+    filesBtn.classList.add("on");
+    filesPanel.style.display = "block";
+    loadFiles();
+  }
+  function closeFiles() {
+    fState.open = false;
+    filesBtn.classList.remove("on");
+    filesPanel.style.display = "none";
+  }
+  filesBtn.onclick = function () { if (fState.open) closeFiles(); else openFiles(); };
+  function loadFiles() {
+    var api = jApi();
+    if (!api) { renderFiles(); return; }
+    api.changes_list(150).then(function (items) { fState.items = items || []; renderFiles(); });
+  }
+  function renderFiles() {
+    if (!fState.open) return;
+    var h = "<span class='close' id='fClose'>✕</span><b>Файлы</b> · что Chloe меняла на диске";
+    if (!jApi()) {
+      filesPanel.innerHTML = h + "<br>Изменения файлов хранятся в программе Chloe — откройте мозг через run.py.";
+      document.getElementById("fClose").onclick = closeFiles;
+      return;
+    }
+    h += "<div class='t' style='color:#8A8A8A;font-size:11px;margin:4px 0'>Отмена ничего не стирает насовсем: лишнее — в Корзину, заменённое — обратно.</div>";
+    if (fState.message) h += "<div style='margin:4px 0;color:#F2F2F2'>" + escapeHtml(fState.message) + "</div>";
+    if (!fState.items.length) h += "<div>Пока Chloe ничего не меняла в файлах.</div>";
+    var day = "";
+    fState.items.forEach(function (c) {
+      var d = jDay(c.ts);
+      if (d !== day) { day = d; h += "<h4>" + d + "</h4>"; }
+      h += "<div class='fItem" + (c.undone ? " undone" : "") + "'><span class='x'>" + escapeHtml(c.text) + "</span><br>" +
+        "<span class='t'>" + jTime(c.ts) + (c.undone ? " · отменено" + (c.note ? ": " + escapeHtml(c.note) : "") : "") + "</span><br>" +
+        (c.undone ? "" : "<button class='small danger' data-undo='" + c.id + "'>" + (fState.armed === c.id ? "Точно отменить?" : "Отменить") + "</button>") +
+        "<button class='small' data-open='" + c.id + "'>Открыть папку</button></div>";
+    });
+    filesPanel.innerHTML = h;
+    document.getElementById("fClose").onclick = closeFiles;
+    Array.prototype.forEach.call(filesPanel.querySelectorAll("[data-undo]"), function (el) {
+      el.onclick = function () {
+        var id = +el.getAttribute("data-undo");
+        if (fState.armed !== id) { fState.armed = id; renderFiles(); return; }
+        fState.armed = 0;
+        jApi().change_undo(id).then(function (r) { fState.message = r.message; loadFiles(); });
+      };
+    });
+    Array.prototype.forEach.call(filesPanel.querySelectorAll("[data-open]"), function (el) {
+      el.onclick = function () {
+        var c = fState.items.filter(function (x) { return x.id === +el.getAttribute("data-open"); })[0];
+        if (c) jApi().open_folder(c.folder);
+      };
+    });
+  }
+  // новое изменение из Python — в открытом списке сразу
+  window.chloeChange = function () { if (fState.open) loadFiles(); };
+
+  // =======================================================
+  // 14⁹. ТЕЛЕФОН — QR-код для входа с телефона (сам пульт — remote.js)
+  // =======================================================
+  var phonePanel = document.getElementById("phonePanel"), phoneBtn = document.getElementById("phoneBtn"), phoneOpen = false;
+  function closePhone() { phoneOpen = false; phoneBtn.classList.remove("on"); phonePanel.style.display = "none"; }
+  phoneBtn.onclick = function () {
+    touch();
+    if (phoneOpen) { closePhone(); return; }
+    var api = jApi();
+    if (!api || !api.phone_link) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles();
+    phoneOpen = true; phoneBtn.classList.add("on");
+    phonePanel.style.display = "block";
+    phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
+    document.getElementById("pClose").onclick = closePhone;
+    api.phone_link().then(function (r) {
+      if (!r || r.error) { phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b><br>" + escapeHtml((r && r.error) || "Не получилось."); document.getElementById("pClose").onclick = closePhone; return; }
+      phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои" +
+        "<div class='qr'>" + r.svg + "</div>" +
+        "<ol><li>Телефон — в той же Wi‑Fi, что и компьютер.</li>" +
+        "<li>Отсканируйте код камерой телефона.</li>" +
+        "<li>Браузер предупредит о сертификате (он свой, домашний) — «Дополнительно» → «Перейти на сайт». Это один раз.</li>" +
+        "<li>Разрешите микрофон. Добавьте на главный экран: меню браузера → «Добавить на главный экран».</li></ol>" +
+        "<span style='color:#8A8A8A'>Код в ссылке — ключ от Хлои: не пересылайте его. Новый код: <code>python run.py --new-phone-key</code></span>" +
+        "<details style='margin-top:6px'><summary style='cursor:pointer;color:#8A8A8A'>Ссылка текстом</summary><code>" + escapeHtml(r.url) + "</code></details>";
+      document.getElementById("pClose").onclick = closePhone;
+    });
+  };
+
+  // =======================================================
+  // 15. СТАТИСТИКА
+  // =======================================================
+  var statsOpen = false, clearArmed = false;
+  var statsBtn = document.getElementById("statsBtn");
+  statsBtn.onclick = function () { touch(); toggleStats(!statsOpen); };
+  function toggleStats(on) {
+    statsOpen = on;
+    statsBtn.classList.toggle("on", on);
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); renderStats(); }
+    statsPanel.style.display = on ? "block" : "none";
+  }
+  function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
+  function renderStats() {
+    if (!statsOpen) return;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var week = today.getTime() - 6 * 864e5;
+    var skills = 0, mems = 0, born = 0, bornW = 0;
+    neurons.forEach(function (n) {
+      if (n.type === "memory") mems++; else skills++;
+      if (n.bornMs >= today.getTime()) born++;
+      if (n.bornMs >= week) bornW++;
+    });
+    var byStr = neurons.slice().sort(function (a, b) { return neurData[b.id * 4] - neurData[a.id * 4]; });
+    var strongest = byStr.filter(function (n) { return n.type === "skill"; }).slice(0, 5);
+    var fading = byStr.filter(function (n) { return neurData[n.id * 4] < 0.5; }).reverse().slice(0, 5);
+    var zoneStats = zones.map(function (z) {
+      var list = neurons.filter(function (n) { return n.zone === z.name; });
+      return { name: z.name, count: list.length };
+    }).sort(function (a, b) { return b.count - a.count; });
+    var maxZone = Math.max.apply(null, zoneStats.map(function (z) { return z.count; }).concat([1]));
+    var h = '<span class="close" id="statsClose">✕</span><b>Статистика мозга</b><br>' +
+      "Нейронов: " + nCount + " (навыков " + skills + ", памяти " + mems + ") · связей " + lCount + " · зон " + zones.length + "<br>" +
+      "Выросло сегодня: " + born + " · за неделю: " + bornW;
+    h += "<h4>Сильнейшие навыки</h4>";
+    strongest.forEach(function (n) {
+      var p = neurData[n.id * 4] / HEBB.max * 100;
+      h += "<div class='row'><span>" + escapeHtml(n.name) + "</span><span>" + Math.round(p) + "%" + bar(p) + "</span></div>";
+    });
+    h += "<h4>Угасают</h4>";
+    if (!fading.length) h += "<div>Ничего не угасает</div>";
+    fading.forEach(function (n) {
+      var p = neurData[n.id * 4] / HEBB.max * 100;
+      h += "<div class='row'><span>" + escapeHtml(n.name) + "</span><span>" + Math.round(p) + "%" + bar(p, "#8A8A8A") + "</span></div>";
+    });
+    h += "<h4>Зоны</h4>";
+    zoneStats.forEach(function (z) {
+      h += "<div class='row'><span>" + escapeHtml(z.name) + "</span><span>" + z.count + bar(z.count / maxZone * 100, "#CACACA") + "</span></div>";
+    });
+    h += "<h4>Качество графики</h4>";
+    [["auto", "Авто"], ["2", "Высокое"], ["1", "Среднее"], ["0", "Низкое"]].forEach(function (q) {
+      var on = (quality.auto && q[0] === "auto") || (!quality.auto && String(quality.level) === q[0]);
+      h += "<button class='small" + (on ? " on" : "") + "' data-q='" + q[0] + "'>" + q[1] + "</button>";
+    });
+    h += " <span style='color:#8A8A8A'>сейчас: " + ["низкое", "среднее", "высокое"][quality.level] + ", " + Math.round(quality.fps) + " к/с</span>";
+    h += "<h4>Память</h4><button class='small danger' id='clearBrain'>" + (clearArmed ? "Точно стереть всё?" : "Очистить мозг") + "</button>";
+    statsPanel.innerHTML = h;
+    document.getElementById("statsClose").onclick = function () { toggleStats(false); };
+    Array.prototype.forEach.call(statsPanel.querySelectorAll("[data-q]"), function (b) {
+      b.onclick = function () {
+        var q = b.getAttribute("data-q");
+        if (q === "auto") quality.auto = true; else { quality.auto = false; setQuality(+q); }
+        renderStats();
+      };
+    });
+    document.getElementById("clearBrain").onclick = function () {
+      if (!clearArmed) { clearArmed = true; renderStats(); setTimeout(function () { clearArmed = false; renderStats(); }, 4000); return; }
+      window.chloeReset();
+    };
+  }
+  setInterval(renderStats, 1500);
+
+  // =======================================================
+  // 16. МАШИНА ВРЕМЕНИ
+  // =======================================================
+  var timeSlider = document.getElementById("timeSlider"), timeLabel = document.getElementById("timeLabel");
+  var timePlay = document.getElementById("timePlay");
+  var timeCut = Infinity, playing = null;
+  function timeRange() {
+    var t0 = Infinity;
+    for (var i = 0; i < nCount; i++) t0 = Math.min(t0, neurons[i].bornMs);
+    if (!isFinite(t0)) t0 = Date.now();
+    return [t0, Date.now()];
+  }
+  function setCutFromSlider() {
+    var v = +timeSlider.value;
+    if (v >= 1000) { timeCut = Infinity; timeLabel.textContent = "сейчас"; return; }
+    var r = timeRange();
+    timeCut = r[0] + (r[1] - r[0]) * v / 1000;
+    timeLabel.textContent = fmtDate(timeCut).replace("сегодня в ", "");
+  }
+  timeSlider.addEventListener("input", function () { touch(); playing = null; timePlay.textContent = "▶ Рост"; setCutFromSlider(); });
+  timePlay.onclick = function () {
+    touch();
+    if (playing) { playing = null; timePlay.textContent = "▶ Рост"; return; }
+    playing = { start: performance.now(), dur: 12000 };
+    timePlay.textContent = "■ Стоп";
+  };
+  function updatePlay() {
+    if (!playing) return;
+    var k = (performance.now() - playing.start) / playing.dur;
+    if (k >= 1) { playing = null; timePlay.textContent = "▶ Рост"; timeSlider.value = 1000; setCutFromSlider(); return; }
+    timeSlider.value = Math.round(k * k * 999);   // сначала медленно — первые нейроны видно лучше
+    setCutFromSlider();
+  }
+
+  // =======================================================
+  // 17. СОН: в долгом покое Chloe переигрывает воспоминания
+  // =======================================================
+  // Весы сна и бодрствования. В бодрствовании копится «давление сна» (как аденозин), работа добавляет его быстрее.
+  // Сигналы от органов чувств (голос, команды) питают центр бодрствования (глутамат).
+  // Когда давление сна перевешивает — центр сна (ГАМК) выключает бодрствование, и Chloe засыпает.
+  var SLEEP_RATE = +(params.get("sleepRate") || 1);
+  var sleepP = 0, sensory = 0.6;
+  // Стадии сна по кругу, как в лаборатории сна: дремота → лёгкий → глубокий → лёгкий → быстрый сон → …
+  var STAGE_INFO = {
+    N1:  { name: "дремота",      sec: 8 },
+    N2:  { name: "лёгкий сон",   sec: 12 },
+    N3:  { name: "глубокий сон", sec: 18 },
+    REM: { name: "быстрый сон",  sec: 12 }
+  };
+  var STAGE_ORDER = ["N1", "N2", "N3", "N2", "REM", "N2", "N3", "N2", "REM"];
+  var stage = { key: "", idx: 0, until: 0 }, nextSpindle = 0, nextReplay = 0;
+
+  function setStage(key, t) {
+    stage.key = key;
+    stage.until = t + STAGE_INFO[key].sec / Math.max(0.2, SLEEP_RATE);
+    statusTxt.textContent = "спит · " + STAGE_INFO[key].name;
+  }
+  function fallAsleep(t) {
+    setState("sleeping");
+    stage.idx = 0;
+    setStage(STAGE_ORDER[0], t);
+  }
+  function sleepTick(t, dt) {
+    if (APP) {   // в программе спит только по-настоящему (chloeSleep): никаких придуманных стадий и вспышек
+      if (STATE.name !== "sleeping") { stage.key = ""; sleepP = clamp(sleepP + dt * 0.0004, 0, 1); }
+      else sleepP = clamp(sleepP - dt * 0.002, 0, 1);
+      return;
+    }
+    var hour = new Date().getHours();
+    var night = (hour >= 1 && hour < 6) ? 2 : 1;      // ночью давление сна растёт быстрее
+    var asleep = STATE.name === "sleeping";
+    if (!asleep) {
+      var busy = STATE.name === "thinking" || STATE.name === "speaking";
+      sleepP = clamp(sleepP + dt * SLEEP_RATE * night * (0.0025 + (busy ? 0.004 : 0) + eeg.rate * 0.0003), 0, 1);
+    } else {
+      sleepP = clamp(sleepP - dt * SLEEP_RATE * (stage.key === "N3" ? 0.005 : 0.002), 0, 1);   // глубокий сон восстанавливает быстрее
+    }
+    sensory = Math.max(0, sensory - dt * 0.08);
+    var wakeDrive = 0.25 + sensory;
+    if (!asleep && STATE.name === "idle" && nCount && !playing && sleepP > wakeDrive + 0.15) fallAsleep(t);
+    // просыпается, когда к ней обратились (органы чувств) или когда полностью отдохнула
+    else if (asleep && (sensory > 0.3 || sleepP < 0.03)) { stage.key = ""; setState("idle"); }
+    if (STATE.name !== "sleeping") return;
+
+    if (t > stage.until) { stage.idx = (stage.idx + 1) % STAGE_ORDER.length; setStage(STAGE_ORDER[stage.idx], t); }
+    // лёгкий сон: «сонные веретёна» — короткие вспышки таламуса
+    if (stage.key === "N2" && t > nextSpindle) {
+      neurons.forEach(function (n) { if (regionOf(n.name, n.type, n.zone) === "thal") neurData[n.id * 4 + 1] = Math.max(neurData[n.id * 4 + 1], 0.3); });
+      eeg.spindle = 1;
+      nextSpindle = t + rnd(3, 5);
+    }
+    // быстрый сон: мозг переигрывает реальные цепочки мыслей за день и закрепляет их
+    if (stage.key === "REM" && episodes.length && t > nextReplay) {
+      replay(episodes[Math.floor(Math.random() * episodes.length)]);
+      nextReplay = t + 3.5;
+    }
+  }
+  // Настоящий сон из Python: показывает ровно то, что Chloe сделала с памятью, и переигрывает настоящие задачи дня
+  var sleepRun = 0;
+  function sleepStage(key, text) { stage.key = key; statusTxt.textContent = "спит · " + text; }
+  function dreamSignal(a, b, gain, onArrive) {
+    var l = linkBetween(a, b) || connect(a, b, { weight: HEBB.linkStart });
+    if (!l) { if (onArrive) onArrive(); return; }
+    var dir = l.a === a ? 1 : -1, li = l.id * 4;
+    sendSignal(l, dir, NEURO.maxDepth, { speed: 0.45, color: COLOR_DREAM, alpha: 0.85, kind: "dream", onArrive: function () {
+      linkData[li] = Math.min(HEBB.linkMax, linkData[li] + gain);   // консолидация: путь закрепляется
+      link2Data[li] = Math.min(1, link2Data[li] + gain * 0.5);
+      neurData[b.id * 4 + 1] = Math.max(neurData[b.id * 4 + 1], 0.4);
+      dirty = true;
+      if (onArrive) onArrive();
+    } });
+  }
+  window.chloeSleep = function (report) {
+    var run = ++sleepRun;
+    setState("sleeping");
+    sleepStage("N1", "засыпает");
+    var queue = [];
+    (report.merged || []).forEach(function (m) {
+      queue.push(function (done) {
+        var keep = memoryNeuron(m.keep), drop = memoryNeuron(m.drop);
+        sleepStage("N3", "объединяет воспоминания");
+        if (!keep || !drop) { done(); return; }
+        drop.labelUntil = now() + 3; keep.labelUntil = now() + 4; keep.labelKind = "recall";
+        neurData[drop.id * 4 + 1] = 0.6;
+        dreamSignal(drop, keep, 0.1, function () {
+          neurData[keep.id * 4] = Math.min(HEBB.max, neurData[keep.id * 4] + neurData[drop.id * 4] * 0.5);   // сила переходит в оставшееся
+          keep.uses += drop.uses;
+          drop.gone = true;                 // тает и больше не сохраняется
+          dirty = true;
+          setTimeout(done, 700);
+        });
+      });
+    });
+    (report.strong || []).forEach(function (text) {
+      queue.push(function (done) {
+        var n = memoryNeuron(text);
+        sleepStage("N3", "укрепляет важное");
+        if (!n) { done(); return; }
+        neurData[n.id * 4] = Math.min(HEBB.max, neurData[n.id * 4] + HEBB.gain * 2);
+        neurData[n.id * 4 + 1] = 0.7; n.labelUntil = now() + 3; n.labelKind = "recall";
+        n.links.forEach(function (l) { var li = l.id * 4; link2Data[li] = Math.min(1, link2Data[li] + 0.1); });
+        dirty = true;
+        setTimeout(done, 1500);
+      });
+    });
+    (report.tasks || []).forEach(function (task) {
+      queue.push(function (done) {
+        sleepStage("REM", "переигрывает: " + shortName(task.title));
+        var list = [];
+        (task.steps || []).forEach(function (s) { var n = findSkill(s.skill); if (n && list[list.length - 1] !== n) list.push(n); });
+        var i = 0;
+        if (list[0]) neurData[list[0].id * 4 + 1] = Math.max(neurData[list[0].id * 4 + 1], 0.4);
+        (function hop() {
+          if (run !== sleepRun || STATE.name !== "sleeping") return;
+          if (i >= list.length - 1) { setTimeout(done, 600); return; }
+          var a = list[i], b = list[++i];
+          if (linkBetween(a, b)) dreamSignal(a, b, 0.03, hop); else hop();   // только по настоящим тропам
+        })();
+      });
+    });
+    if (report.zones) queue.push(function (done) { sleepStage("N2", "раскладывает по темам"); setTimeout(function () { relayout(report.zones, done); }, 1200); });
+    (function next() {
+      if (run !== sleepRun || STATE.name !== "sleeping") return;   // разбудили — остальное подождёт до следующей ночи
+      var job = queue.shift();
+      if (!job) { sleepStage("N2", "отдыхает"); dirty = true; save(); return; }
+      job(next);
+    })();
+  };
+
+  // темы: нейроны переезжают в зону своей темы; распавшаяся тема возвращает предметы в их обычные зоны
+  var WORLD_ZONE = { "Программа": "Программы", "Сайт": "Сайты", "Папка": "Папки", "Файл": "Папки", "Место": "Места", "Человек": "Люди" };
+  function relayout(topics, done) {
+    var want = {}, moved = 0;
+    Object.keys(topics).forEach(function (name) {
+      topics[name].forEach(function (m) {
+        var n = null;
+        if (m.kind === "memory") n = memoryNeuron(m.text);
+        else for (var i = 0; i < nCount; i++) if (neurons[i].world && !neurons[i].gone && neurons[i].name === m.name) { n = neurons[i]; break; }
+        if (n) want[n.id] = name;
+      });
+    });
+    neurons.forEach(function (n) {
+      if (n.gone || n.type !== "memory") return;
+      var target = want[n.id];
+      if (!target && zones[zoneIndex[n.zone]] && zones[zoneIndex[n.zone]].topic) target = n.world ? WORLD_ZONE[n.world] || "Память" : "Память";
+      if (!target || target === n.zone) return;
+      var z = getZone(target);
+      if (want[n.id]) z.topic = true;
+      var old = zones[zoneIndex[n.zone]];
+      if (old) old.count = Math.max(0, old.count - 1);
+      n.zone = z.name; z.count++;
+      n.base = z.topic ? pickTopic(z) : pickAnatomical(n.name, n.type, z);
+      moved++;
+    });
+    if (!moved) { done(); return; }
+    // новые места — новая геометрия отростков: сохраняем и перерисовываем мозг, сон продолжится
+    var raw = serializeBrain(null);
+    dirty = false;
+    window.removeEventListener("beforeunload", save);
+    try { sessionStorage.setItem("chloe-asleep", "1"); } catch (e) {}
+    var api = jApi();
+    if (api) api.save_brain(raw).then(function () { location.reload(); });
+    else { try { localStorage.setItem(STORE_KEY, raw); } catch (e) {} location.reload(); }
+  }
+
+  function replay(list) {
+    var hops = [];
+    for (var i = 0; i < list.length - 1; i++) { var path = findPath(list[i], list[i + 1]); if (path) hops = hops.concat(path); }
+    var idx = 0;
+    function next() {
+      if (idx >= hops.length || STATE.name !== "sleeping") return;
+      var h = hops[idx++], hl = h.link.id * 4;
+      sendSignal(h.link, h.dir, NEURO.maxDepth, {
+        speed: 0.5, color: COLOR_DREAM, alpha: 0.7, kind: "dream",
+        onArrive: function () {
+          linkData[hl] = Math.min(HEBB.linkMax, linkData[hl] + 0.03);          // консолидация памяти
+          neurData[h.to.id * 4 + 1] = Math.max(neurData[h.to.id * 4 + 1], 0.35);
+          next();
+        }
+      });
+    }
+    if (list[0]) neurData[list[0].id * 4 + 1] = Math.max(neurData[list[0].id * 4 + 1], 0.35);
+    next();
+  }
+
+  // ЭЭГ: линия строится из настоящих импульсов мозга и его состояния, как на записи в лаборатории
+  var eeg = { buf: new Float32Array(1200), pos: 0, kick: 0, spikes: 0, rate: 0, spindle: 0, focus: 0, ph: 0, lastSec: 0, rhythm: "" };
+  var eegCanvas = document.getElementById("eegCanvas"), eegCtx = eegCanvas.getContext("2d");
+  var eegRhythm = document.getElementById("eegRhythm"), focusTxt = document.getElementById("focusTxt"), tiredTxt = document.getElementById("tiredTxt");
+  function eegTick(t, dt) {
+    if (t - eeg.lastSec >= 1) {                       // частота импульсов в секунду
+      eeg.rate = eeg.rate * 0.5 + eeg.spikes * 0.5;
+      eeg.spikes = 0; eeg.lastSec = t;
+    }
+    var asleep = STATE.name === "sleeping";
+    var working = STATE.name === "thinking" || STATE.name === "speaking";
+    var thoughtActive = signals.some(function (s) { return s.kind === "thought"; });
+    var focusT = asleep ? 0 : clamp(eeg.rate / 8 + (working ? 0.35 : 0) + (thoughtActive ? 0.35 : 0), 0, 1);
+    eeg.focus = approach(eeg.focus, focusT, 1.5, dt);
+    // амплитуды ритмов
+    var sk = stage.key;
+    var aAlpha = !asleep && !working ? 0.3 * (1 - eeg.focus) : 0;
+    var aBeta = !asleep ? 0.08 + 0.3 * eeg.focus : 0;
+    var aTheta = asleep ? (sk === "REM" ? 0.35 : sk === "N1" ? 0.3 : sk === "N2" ? 0.22 : 0.05) : 0;
+    var aDelta = asleep ? (sk === "N3" ? 0.95 : sk === "N2" ? 0.2 : 0) : 0;
+    eeg.spindle = Math.max(0, eeg.spindle - dt * 1.2);
+    var n = Math.max(1, Math.round(dt * 240));
+    for (var i = 0; i < n; i++) {
+      eeg.ph += 1 / 240;
+      var p = eeg.ph * Math.PI * 2;
+      var v = aAlpha * Math.sin(p * 10) * (0.7 + 0.3 * Math.sin(p * 0.6))
+            + aBeta * (Math.sin(p * 21) * 0.6 + Math.sin(p * 27 + 1) * 0.4)
+            + aTheta * Math.sin(p * 6)
+            + aDelta * Math.sin(p * 1.1) * (0.8 + 0.2 * Math.sin(p * 0.3))
+            + eeg.spindle * 0.4 * Math.sin(p * 13)
+            + (Math.random() - 0.5) * 0.06
+            + eeg.kick * (Math.random() - 0.3);
+      eeg.kick *= 0.9;
+      eeg.buf[eeg.pos] = v;
+      eeg.pos = (eeg.pos + 1) % eeg.buf.length;
+    }
+    var rhythm = asleep ? { N1: "дремлет", N2: "лёгкий сон", N3: "глубокий сон", REM: "видит сны" }[sk] || "спит"
+               : working || eeg.focus > 0.4 ? "работает" : "спокойна";
+    if (rhythm !== eeg.rhythm) { eeg.rhythm = rhythm; eegRhythm.textContent = rhythm; }
+    focusTxt.textContent = Math.round(eeg.focus * 100) + "%";
+    tiredTxt.textContent = Math.round(sleepP * 100) + "%";
+    drawEeg(asleep);
+  }
+  function drawEeg(asleep) {
+    var w = eegCanvas.clientWidth, h = eegCanvas.clientHeight;
+    if (!w || document.body.classList.contains("wall")) return;
+    var dpr = Math.min(DEVICE_DPR, 2);
+    if (eegCanvas.width !== Math.round(w * dpr)) { eegCanvas.width = Math.round(w * dpr); eegCanvas.height = Math.round(h * dpr); }
+    var c = eegCtx;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = "rgba(42, 42, 42, 0.9)"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(0, h / 2); c.lineTo(w, h / 2); c.stroke();
+    c.strokeStyle = asleep ? "rgba(138, 138, 138, 0.8)" : "rgba(255, 119, 119, 0.9)";
+    c.lineWidth = 1.2;
+    c.beginPath();
+    var N = eeg.buf.length;
+    for (var x = 0; x <= w; x++) {
+      var idx = (eeg.pos + Math.floor(x / w * (N - 1))) % N;
+      var y = h / 2 - clamp(eeg.buf[idx], -1.3, 1.3) * h * 0.36;
+      if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+
+  // =======================================================
+  // 18. ЖИВЫЕ ОБОИ: только мозг на весь экран
+  // =======================================================
+  var wallBtn = document.getElementById("wallBtn");
+  function setWall(on) {
+    if (on === document.body.classList.contains("wall")) return;
+    document.body.classList.toggle("wall", on);
+    wallBtn.classList.toggle("on", on);
+    try {
+      if (on && document.documentElement.requestFullscreen && !params.has("wallpaper")) document.documentElement.requestFullscreen().catch(function () {});
+      if (!on && document.fullscreenElement) document.exitFullscreen().catch(function () {});
+    } catch (e) {}
+    resetView();
+    setTimeout(resize, 50);
+  }
+  wallBtn.onclick = function () { touch(); setWall(true); };
+  wrap.addEventListener("dblclick", function () { if (document.body.classList.contains("wall")) setWall(false); });
+
+  // =======================================================
+  // 19. КАЧЕСТВО: на слабом компьютере детализация снижается сама
+  // =======================================================
+  var quality = { level: 2, auto: true, fps: 60, frames: 0, acc: 0, low: 0, high: 0 };
+  var Q_NAMES = { high: 2, medium: 1, low: 0 };
+  var qParam = params.get("quality");
+  if (qParam && Q_NAMES[qParam] !== undefined) { quality.auto = false; quality.level = Q_NAMES[qParam]; }
+  // телефон или слабый компьютер — сразу среднее качество (дальше авто-качество само поднимет, если потянет)
+  var weakDevice = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.hardwareConcurrency || 8) <= 4 ||
+                   (navigator.deviceMemory || 8) <= 4;
+  if (quality.auto && weakDevice) quality.level = 1;
+  function setQuality(level) {
+    quality.level = level;
+    DPR = [Math.min(DEVICE_DPR, 0.75), 1, Math.min(DEVICE_DPR, 2)][level];
+    renderer.setPixelRatio(DPR);
+    common.uPixel.value = DPR;
+    shellGeo.setDrawRange(0, [5000, 9000, SN][level]);
+    dustGeo.setDrawRange(0, [150, 300, DUST][level]);
+    dendLines.visible = level > 0;
+    axLod(level);
+    haze.forEach(function (h) { h.visible = level > 0; });
+    resize();
+  }
+  function trackQuality(frameMs) {
+    quality.frames++; quality.acc += frameMs;
+    if (quality.acc < 1000) return;
+    quality.fps = quality.frames * 1000 / quality.acc;
+    quality.frames = 0; quality.acc = 0;
+    if (!quality.auto || document.hidden) return;
+    if (quality.fps < 35) { quality.low++; quality.high = 0; } else if (quality.fps > 55) { quality.high++; quality.low = 0; } else { quality.low = 0; quality.high = 0; }
+    if (quality.low >= 3 && quality.level > 0) { setQuality(quality.level - 1); quality.low = 0; }
+    if (quality.high >= 8 && quality.level < 2) { setQuality(quality.level + 1); quality.high = 0; }
+  }
+
+  // =======================================================
+  // 20. ПОДПИСИ
+  // =======================================================
+  var LABELS = 14, labelPool = [];
+  for (var lb = 0; lb < LABELS; lb++) {
+    var le = document.createElement("div");
+    le.className = "label";
+    le.style.opacity = 0;
+    wrap.appendChild(le);
+    labelPool.push(le);
+  }
+  // размер окна читается один раз за кадр: чтение после записи стилей заставляло браузер пересчитывать раскладку (4 мс на кадр)
+  var viewW = 1, viewH = 1, topicPos = {}, topicAt = 0;
+  // пишет в элемент, только если значение изменилось. textContent и className — свойства самого элемента, а не стиля:
+  // раньше они уходили в el.style и терялись — счётчики стояли на нуле, а подписи мыслей и ошибок не окрашивались
+  function put(el, key, val) {
+    if (el["_" + key] === val) return;
+    el["_" + key] = val;
+    if (key === "textContent" || key === "className") el[key] = val;
+    else el.style[key] = val;
+  }
+  function updateLabels(t) {
+    viewW = wrap.clientWidth || 1; viewH = wrap.clientHeight || 1;
+    var list = [];
+    for (var i = nCount - 1; i >= 0 && list.length < LABELS; i--) {
+      var n = neurons[i];
+      if ((t < n.labelUntil || n === selected) && neur2Data[i * 4 + 2] > 0.3) list.push(n);
+    }
+    if (selected && list.indexOf(selected) < 0) list[LABELS - 1] = selected;
+    var sp = { x: 0, y: 0, z: 0 };
+    var wall = document.body.classList.contains("wall");
+    // кто важнее, тот и подписан первым: выбранный, ошибка, текущая мысль, вспомнила — потом остальные
+    function rank(n) {
+      if (n === selected) return 0;
+      if (neur2Data[n.id * 4] > 0.3) return 1;
+      if (t < n.labelUntil && n.labelKind === "think") return 2;
+      if (t < n.labelUntil && n.labelKind === "recall") return 3;
+      return 4;
+    }
+    list.sort(function (a, b) { return rank(a) - rank(b); });
+    // подписи не налезают друг на друга: каждая ищет свободное место чуть выше или ниже своего нейрона,
+    // а если места нет — прячется (её нейрон всё равно светится). Ширина — по числу букв, без чтения DOM.
+    var placed = [], LH = 16, SHIFTS = [0, -LH, LH, -2 * LH, 2 * LH];
+    function free(x0, y0, w0) {
+      for (var p = 0; p < placed.length; p++) {
+        var q = placed[p];
+        if (Math.abs(x0 - q.x) * 2 < w0 + q.w + 6 && Math.abs(y0 - q.y) < LH) return false;
+      }
+      return true;
+    }
+    for (var k = 0; k < LABELS; k++) {
+      var le2 = labelPool[k], n2 = list[k];
+      if (!n2 || wall) { put(le2, "opacity", 0); continue; }
+      screenOf(n2, t, sp);
+      if (sp.z >= 1) { put(le2, "opacity", 0); continue; }
+      var w2 = n2.name.length * 6.6 + 4, spot = null;
+      for (var s2 = 0; s2 < SHIFTS.length && spot === null; s2++) {
+        if (free(sp.x, sp.y + SHIFTS[s2], w2)) spot = SHIFTS[s2];
+      }
+      if (spot === null) { put(le2, "opacity", 0); continue; }
+      placed.push({ x: sp.x, y: sp.y + spot, w: w2 });
+      if (le2.textContent !== n2.name) le2.textContent = n2.name;
+      var kind = neur2Data[n2.id * 4] > 0.3 ? " err" : (n2.labelKind === "think" && t < n2.labelUntil ? " think" :
+        (n2.labelKind === "recall" && t < n2.labelUntil ? " recall" : (n2.type === "memory" ? " mem" : "")));
+      put(le2, "className", "label" + kind);
+      put(le2, "left", Math.round(sp.x) + "px");
+      put(le2, "top", Math.round(sp.y + spot) + "px");
+      put(le2, "opacity", 1);
+    }
+    var zp = new THREE.Vector3();
+    // подпись отдела или темы (бледная, по центру) уступает место подписи нейрона (она выше точки на ~19 px)
+    function underLabel(x0, y0, text) {
+      var w0 = String(text || "").length * 7.5;
+      for (var p = 0; p < placed.length; p++) {
+        var q = placed[p];
+        if (Math.abs(x0 - q.x) * 2 < w0 + q.w && Math.abs(y0 - (q.y - 19)) < 14) return true;
+      }
+      return false;
+    }
+    // темы (зоны по смыслу) подписаны там, где лежат их нейроны; остальные зоны — в фильтрах, в сфере подписаны отделы мозга
+    if (t - topicAt > 1) {
+      topicAt = t; topicPos = {};
+      for (var i2 = 0; i2 < nCount; i2++) {
+        var nz = neurons[i2], z0 = zones[zoneIndex[nz.zone]];
+        if (!z0 || !z0.topic || nz.gone) continue;
+        var tp = topicPos[z0.name] || (topicPos[z0.name] = { v: new THREE.Vector3(), c: 0 });
+        tp.v.add(nz.base); tp.c++;
+      }
+    }
+    zones.forEach(function (z) {
+      var tp = topicPos[z.name];
+      if (!tp || !tp.c || wall) { put(z.el, "opacity", 0); return; }
+      zp.copy(tp.v).multiplyScalar(1 / tp.c).multiplyScalar(1.12).applyMatrix4(group.matrixWorld);
+      var front = clamp((camera.position.z - zp.distanceTo(camera.position)) / 1.2 + 0.5, 0, 1);
+      zp.project(camera);
+      var zx = (zp.x + 1) / 2 * viewW, zy = (1 - zp.y) / 2 * viewH;
+      put(z.el, "left", Math.round(zx) + "px");
+      put(z.el, "top", Math.round(zy) + "px");
+      var zShow = zp.z < 1 && !underLabel(zx, zy, z.name);
+      if (zShow) placed.push({ x: zx, y: zy + 19, w: z.name.length * 7.5 });   // темы тоже не налезают друг на друга
+      put(z.el, "opacity", zShow ? (0.35 + 0.65 * front).toFixed(2) : 0);
+    });
+    placeCoreLabels(placed, wall);   // ядро и слои — до отделов: отделы уступают им место
+    Object.keys(regionEls).forEach(function (key) {
+      var el = regionEls[key];
+      regionPos(key, zp).applyMatrix4(group.matrixWorld);
+      var front = clamp((camera.position.z - zp.distanceTo(camera.position)) / 1.2 + 0.5, 0, 1);
+      zp.project(camera);
+      var rx = (zp.x + 1) / 2 * viewW, ry = (1 - zp.y) / 2 * viewH;
+      put(el, "left", Math.round(rx) + "px");
+      put(el, "top", Math.round(ry) + "px");
+      var rShow = !wall && zp.z < 1 && !underLabel(rx, ry, el.textContent);
+      if (rShow) placed.push({ x: rx, y: ry + 19, w: el.textContent.length * 7.5 });   // и подписи отделов не налезают друг на друга
+      put(el, "opacity", rShow ? (0.25 + 0.75 * front).toFixed(2) : 0);
+      put(el, "pointerEvents", rShow ? "auto" : "none");   // спрятанная подпись не ловит клики
+    });
+  }
+
+  // =======================================================
+  // 21. API ДЛЯ PYTHON-ЧАСТИ CHLOE
+  //   chloeLearn(name, type, desc, zone)     — новый навык/память
+  //   chloeRemember(text, zone)              — новое воспоминание
+  //   chloeUse(name)                         — использовать навык
+  //   chloeThink(["Экран", "Программы", "Мышь"], onDone) — показать ход мыслей
+  //   chloeError(name, why)                  — ошибка: красная вспышка, перестройка связи
+  //   chloeSuccess()                         — тёплая волна
+  //   chloeState("idle"|"listening"|"thinking"|"speaking"|"sleeping")
+  //   chloeVoice(0..1, "user"|"chloe"), chloeSay(text)
+  //   chloeFocus(text)                       — найти и подлететь
+  //   chloeDemoFill(n), chloeReset()
+  // =======================================================
+  window.chloeLearn = function (name, type, desc, zone) { touch(); var n = addNeuron(shortName(name), type || "skill", desc || "", zone); return n ? n.id : -1; };
+  window.chloeRemember = function (text, zone) { touch(); var n = addNeuron(shortName(text), "memory", "Воспоминание: " + text, zone || "Память"); return n ? n.id : -1; };
+  window.chloeUse = function (name) { touch(); var n = findSkill(name); fire(n); if (n) n.working = Date.now(); };
+
+  // ---- мозг как карта реального опыта ----
+  // связь между навыками рождается и крепнет, когда они работают в одной задаче друг за другом;
+  // программы, сайты, папки, с которыми Chloe работала, становятся нейронами и связаны с навыками, которыми она их трогала
+  var task = { prev: null, chain: [] };
+  function bond(a, b, gain) {
+    var l = linkBetween(a, b) || connect(a, b, { weight: HEBB.linkStart });
+    if (!l) return null;
+    var li = l.id * 4;
+    linkData[li] = Math.min(HEBB.linkMax, linkData[li] + gain);
+    link2Data[li] = Math.min(1, link2Data[li] + 0.06);   // миелин: часто вместе — толще и быстрее «тропа»
+    link2Data[li + 1] = 0;
+    link2Data[li + 2] = 1;                                // след — для дофамина после успеха
+    return l;
+  }
+  function stepSpeed(seconds) { return 1 / clamp(seconds || 0.5, 0.25, 6); }   // сигнал идёт по связи столько, сколько шёл шаг
+  function worldNeuron(t) {
+    for (var i = 0; i < nCount; i++) if (neurons[i].world && neurons[i].name === t.name) return neurons[i];
+    var n = createNeuron(t.name, "memory", t.desc || t.kind, t.zone || t.kind, { world: t.kind, q: t.q || t.name });
+    if (n) { shellFlash(n.base); sound.click(1040); }
+    return n;
+  }
+  window.chloeTask = function () {   // новая просьба — новая цепочка; прошлая уходит в эпизоды для повтора во сне
+    if (task.chain.length > 1) { episodes.push(task.chain.slice()); if (episodes.length > 40) episodes.shift(); }
+    task.prev = null; task.chain = [];
+  };
+  window.chloeStep = function (name, seconds, ok, things) {
+    touch();
+    var n = findSkill(name);
+    if (!n) return;
+    n.working = 0;
+    n.lastMs = Date.now();
+    if (task.prev && task.prev !== n) {
+      var l = bond(task.prev, n, 0.12);
+      if (l) sendSignal(l, l.a === task.prev ? 1 : -1, 1, { speed: stepSpeed(seconds), kind: "path", alpha: 0.95 });
+    }
+    (things || []).forEach(function (t) {
+      var w = worldNeuron(t);
+      if (!w) return;
+      w.uses++; w.lastMs = Date.now();
+      neurData[w.id * 4] = Math.min(HEBB.max, neurData[w.id * 4] + HEBB.gain * 0.5);
+      w.labelUntil = Math.max(w.labelUntil, now() + 3);
+      var lw = bond(n, w, 0.08);
+      if (lw) sendSignal(lw, lw.a === n ? 1 : -1, 1, { speed: stepSpeed(seconds), kind: "path" });
+    });
+    if (ok === false) n.scar = Math.min(1, (n.scar || 0) + 0.34);
+    else { n.scar = (n.scar || 0) * 0.75; if (n.scar < 0.03) n.scar = 0; }
+    task.prev = n;
+    if (task.chain[task.chain.length - 1] !== n) task.chain.push(n);
+    dirty = true;
+    if (selected === n) showInfo(n);
+  };
+  // вспомнила: воспоминание, которое пригодилось в ответе, загорается зелёным
+  // постоянное зрение: окно сменилось — нейрон «Экран» вздрагивает (без укрепления связей: это взгляд, а не действие)
+  window.chloeGlance = function () {
+    if (document.hidden) return;
+    for (var i = 0; i < nCount; i++) {
+      var n = neurons[i];
+      if (n.name === "Экран" && !n.gone) {
+        spike(n, null, 0.6);
+        n.labelUntil = Math.max(n.labelUntil, now() + 1.5);
+        return;
+      }
+    }
+  };
+  window.chloeRecall = function (text) {
+    touch();
+    var n = memoryNeuron(text);
+    if (!n) return;
+    n.uses++; n.lastMs = Date.now();
+    n.labelUntil = now() + 4; n.labelKind = "recall";
+    neurData[n.id * 4] = Math.min(HEBB.max, neurData[n.id * 4] + HEBB.gain);
+    neurData[n.id * 4 + 1] = 1;
+    n.links.forEach(function (l) { sendSignal(l, l.a === n ? 1 : -1, 1, { color: SIG_RECALL, kind: "recall", alpha: 0.9 }); });
+    if (task.prev) { var l = bond(n, task.prev, 0.05); if (l) sendSignal(l, l.a === n ? 1 : -1, 1, { color: SIG_RECALL, kind: "recall" }); }
+    dirty = true;
+  };
+  // «покажи, как ты это сделала»: путь прошлой задачи шаг за шагом, в настоящих пропорциях времени
+  var replaying = false;
+  window.chloeReplay = function (title, steps) {
+    touch();
+    if (replaying || !steps || !steps.length) return;
+    replaying = true;
+    replyEl.classList.add("heard"); replyEl.textContent = "Повтор: «" + title + "»"; replyEl.style.opacity = 1;
+    var total = steps.reduce(function (a, s) { return a + (s.seconds || 0.5); }, 0);
+    var k = total > 12 ? 12 / total : 1;          // длинную задачу сжимаем до ~12 секунд, пропорции сохраняются
+    var prev = null, i = 0;
+    function next() {
+      if (i >= steps.length) { replaying = false; setTimeout(function () { replyEl.style.opacity = 0; }, 2500); return; }
+      var s = steps[i++], n = findSkill(s.skill);
+      var dur = Math.max(0.35, (s.seconds || 0.5) * k);
+      if (n) {
+        neurData[n.id * 4 + 1] = 1;                 // повтор только показывает: силу и счётчик не меняет
+        n.labelUntil = now() + dur + 1.5; n.labelKind = "think";
+        if (prev && prev !== n) {
+          var l = linkBetween(prev, n);
+          if (l) sendSignal(l, l.a === prev ? 1 : -1, 1, { speed: 1 / dur, kind: "path", color: COLOR_GOLD, alpha: 1 });
+        }
+        (s.things || []).forEach(function (t) {
+          for (var j = 0; j < nCount; j++) if (neurons[j].world && neurons[j].name === t.name) {
+            neurons[j].labelUntil = now() + dur + 1.5;
+            var lw = linkBetween(n, neurons[j]);
+            if (lw) sendSignal(lw, lw.a === n ? 1 : -1, 1, { speed: 1 / dur, kind: "path" });
+          }
+        });
+        if (s.ok === false) { neur2Data[n.id * 4] = 1; n.labelKind = "err"; }
+        prev = n;
+      }
+      setTimeout(next, dur * 1000);
+    }
+    next();
+  };
+  window.chloeThink = function (steps, onDone) { touch(); think(steps, onDone); };
+  window.chloeError = function (name, why) { touch(); error(findSkill(name), why); };
+  window.chloeSuccess = function () { touch(); success(); };
+  window.chloeState = function (name) {
+    if (name !== "sleeping") touch();
+    setState(name);
+    if (name === "idle") setTimeout(function () { if (STATE.name === "idle") replyEl.style.opacity = 0; }, 3500);
+  };
+  window.chloeVoice = function (v, who) { voice[who === "chloe" ? "chloe" : "user"] = clamp(v, 0, 1); };
+  window.chloeSay = function (text) { touch(); speak(text); };
+  window.chloeReply = function (text) {         // Chloe говорит: текст под мозгом, состояние «говорит» до chloeState("idle")
+    touch(); setState("speaking");
+    replyEl.classList.remove("heard"); replyEl.textContent = text; replyEl.style.opacity = 1;
+  };
+  window.chloeHeard = function (text) {          // что Chloe услышала
+    touch();
+    replyEl.classList.add("heard"); replyEl.textContent = "«" + text + "»"; replyEl.style.opacity = 1;
+  };
+  window.chloeEnsure = function (name, type, desc, zone) {   // навык есть — ничего; нет — вырастить
+    for (var i = 0; i < nCount; i++) if (neurons[i].name === name) return neurons[i].id;
+    var n = addNeuron(name, type || "skill", desc || "", zone); return n ? n.id : -1;
+  };
+  window.chloeFocus = function (text) { touch(); searchInput.value = text; applySearch(text, true); };
+  window.chloeDemoFill = function (count) {
+    var zs = ["Компьютер", "Интернет", "Магазин", "Люди", "Личное", "Работа", "Память"];
+    for (var i = 0; i < count; i++) {
+      var mem = Math.random() < 0.6;
+      var z = zs[Math.floor(Math.random() * zs.length)];
+      var n = addNeuron((mem ? "Память " : "Навык ") + (nCount + 1), mem ? "memory" : "skill", "Тестовый нейрон", z);
+      if (!n) break;
+      n.labelUntil = 0;
+      neurData[n.id * 4] = rnd(HEBB.min, HEBB.max);
+      n.bornMs = Date.now() - Math.random() * 7 * 864e5;
+    }
+  };
+  window.chloeReset = function () {
+    try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+    if (APP && window.pywebview && window.pywebview.api) window.pywebview.api.save_brain("");
+    dirty = false;
+    window.removeEventListener("beforeunload", save);
+    location.reload();
+  };
+
+  // =======================================================
+  // 22. РАЗМЕР И АНИМАЦИЯ
+  // =======================================================
+  function resize() {
+    var w = Math.max(wrap.clientWidth, 1), h = Math.max(wrap.clientHeight, 1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    BASE_Z = w / h < 0.8 ? 6.0 : 4.9;
+    camera.updateProjectionMatrix();
+    common.uProj.value = (h * DPR) / (2 * Math.tan(FOV * Math.PI / 360));
+  }
+  window.addEventListener("resize", resize);
+
+  var nextIdle = 3, nextThink = 0, last = 0, tw = 0;
+  var tmpP = new THREE.Vector3(), tmpC = new THREE.Color();
+  var zoomLvl = document.getElementById("zoomLvl");
+  var lastFrame = performance.now();
+  var statEls = { n: document.getElementById("sN"), l: document.getElementById("sL"), z: document.getElementById("sZ"), s: document.getElementById("sS") };
+
+  var perf = { js: 0, frames: 0 };
+  // в видеокарту — только занятые строки таблиц (раньше каждый кадр уходили все 2,5 МБ, даже для 20 нейронов)
+  function uploadRows(tex, data, size, count) {
+    var p = renderer.properties.get(tex);
+    if (!p.__webglTexture || p.__version !== tex.version) { tex.needsUpdate = true; return; }   // первая загрузка — целиком
+    var gl = renderer.getContext(), rows = Math.min(size, Math.max(1, Math.ceil(count / size)));
+    renderer.state.bindTexture(gl.TEXTURE_2D, p.__webglTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, size, rows, gl.RGBA, gl.FLOAT, data.subarray(0, rows * size * 4));
+  }
+  window.chloePerf = function () {   // замер скорости: кадров в секунду, мс JS на кадр, уровень качества
+    return { fps: Math.round(quality.fps * 10) / 10, jsMs: Math.round(perf.js * 100) / 100, level: quality.level, neurons: nCount, links: lCount };
+  };
+  // самозамер: n кадров подряд, с ожиданием видеокарты (gl.finish) — честное время кадра, даже если окно не видно
+  window.chloeBench = function (n, hide, lod) {
+    if (lod !== undefined) axLod(lod);
+    var parts = { shell: shell, dust: dust, soma: somaPoints, dend: dendLines, axons: axMesh, sig: sigPoints, group: group }, was = {};
+    (hide || []).forEach(function (k) { if (parts[k]) { was[k] = parts[k].visible; parts[k].visible = false; } });
+    if ((hide || []).indexOf("haze") >= 0) haze.forEach(function (h) { h.visible = false; });
+    var gl = renderer.getContext(), t0 = performance.now();
+    for (var i = 0; i < (n || 60); i++) { frame(performance.now(), true); gl.finish(); }
+    Object.keys(was).forEach(function (k) { parts[k].visible = was[k]; });
+    if ((hide || []).indexOf("haze") >= 0) haze.forEach(function (h) { h.visible = quality.level > 0; });
+    if (lod !== undefined) axLod(quality.level);
+    return Math.round((performance.now() - t0) / (n || 60) * 100) / 100;
+  };
+  // в покое незачем 60 кадров: 30, во сне 20 — меньше нагрев и батарея; любое действие сразу возвращает полную частоту
+  var lastDraw = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    var nowMs = performance.now();
+    var calm = !signals.length && !synFlashes.length && !dragging && !playing && !replaying && now() - lastActivity > 4 &&
+               (STATE.name === "idle" || STATE.name === "sleeping");
+    var gap = calm ? (STATE.name === "sleeping" ? 50 : 33) : 0;
+    if (gap && nowMs - lastDraw < gap - 4) return;
+    lastDraw = nowMs;
+    frame(nowMs, false, calm);   // ограниченная частота — не повод менять качество
+  }
+  function frame(nowMs, bench, calm) {
+    if (!bench && !calm) trackQuality(nowMs - lastFrame);
+    lastFrame = nowMs;
+    var t = now();
+    var dt = Math.min(t - last, 0.05);
+    last = t;
+
+    readMic(t);
+    sleepTick(t, dt);
+    eegTick(t, dt);
+    updatePlay();
+
+    mood.think = approach(mood.think, STATE.name === "thinking" ? 1 : 0, 3, dt);
+    mood.speak = approach(mood.speak, STATE.name === "speaking" ? 1 : 0, 3, dt);
+    mood.listen = approach(mood.listen, STATE.name === "listening" ? 1 : 0, 4, dt);
+    mood.sleep = approach(mood.sleep, STATE.name === "sleeping" ? 1 : 0, 0.6, dt);
+    common.uDeep.value = approach(common.uDeep.value, STATE.name === "sleeping" && stage.key === "N3" ? 1 : 0, 0.8, dt);
+
+    // настроение: тепло/холод уходит, усталость копится в работе
+    feel.valence = approach(feel.valence, 0, 0.35, dt);
+    var busy = STATE.name === "thinking" || STATE.name === "speaking";
+    feel.fatigue = clamp(feel.fatigue + (busy ? 0.03 : (STATE.name === "sleeping" ? -0.05 : -0.008)) * dt + signals.length * 0.00002 * dt, 0, 1);
+    tmpC.copy(SHELL_BASE);
+    if (feel.valence > 0) tmpC.lerp(SHELL_WARM, feel.valence * 0.75);
+    else tmpC.lerp(SHELL_COLD, -feel.valence * 0.8);
+    tmpC.lerp(SHELL_SLEEP, mood.sleep * 0.7);
+    shellUniforms.uBase.value.copy(tmpC);
+    shellUniforms.uHot.value.copy(tmpC).lerp(COLOR_HOT, 0.35);   // свет волны — того же оттенка, что и сфера
+    common.uBright.value = 1 - 0.4 * feel.fatigue - 0.35 * mood.sleep;
+    tw += dt * (1 - 0.6 * feel.fatigue - 0.6 * mood.sleep);
+    shellUniforms.uTw.value = tw;
+
+    if (STATE.name === "speaking") {
+      var syl = 0.5 + 0.5 * Math.sin(t * 13) * Math.sin(t * 5.3 + 1);
+      voice.chloe = approach(voice.chloe, 0.35 + 0.65 * syl, 12, dt);
+      if (t > nextWave) { emitWave(t); nextWave = t + 0.45 - 0.2 * voice.chloe; }
+    }
+
+    // мозг растёт вместе с опытом; камера
+    var sc = approach(group.scale.x, brainScale(), 0.8, dt);
+    group.scale.setScalar(sc);
+    camera.position.z = approach(camera.position.z, camZ(view.zoom), view.focus ? 3 : 7, dt);
+    camera.position.x = approach(camera.position.x, view.panX, 7, dt);
+    camera.position.y = approach(camera.position.y, view.panY, 7, dt);
+    put(zoomLvl, "textContent", Math.round(view.zoom * 100) + "%");
+    common.uZoom.value = camZ(1) / Math.max(camera.position.z, 0.05);
+    common.uScaleW.value = sc;
+    common.uDens.value = approach(common.uDens.value, density(), 0.8, dt);
+    // чем больше клеток, тем прозрачнее каждая — чтобы тысячи не сливались в пятно
+    common.uCrowdK.value = approach(common.uCrowdK.value, Math.min(1, Math.pow(800 / Math.max(nCount, 1), 0.82)), 0.8, dt);
+
+    // вращение
+    if (view.focus) {
+      rot.y = approachAngle(rot.y, view.focus.yaw, 2.5, dt);
+      rot.x = approach(rot.x, view.focus.pitch, 2.5, dt);
+    } else if (!dragging) {
+      rot.y += rot.vy; rot.x += rot.vx; rot.vy *= 0.95; rot.vx *= 0.95;
+      rot.y += dt * (0.08 + 0.05 * mood.think) * (1 - 0.7 * mood.sleep);
+    }
+    // лёгкое покачивание — мозг живой, а не закреплён
+    group.rotation.set(rot.x + 0.035 * Math.sin(t * 0.21), rot.y, 0.02 * Math.sin(t * 0.17 + 1.3));
+    group.updateMatrixWorld();
+
+    coreUpdate(t, dt);
+    drift.amp = 0.035 * (1 + 0.6 * mood.think) * (1 - 0.5 * mood.sleep) * (0.6 + 0.4 * common.uDens.value);
+    common.uDrift.value = drift.amp;
+
+    // нейроны: угасание, остывание, видимость (фильтр + машина времени), ошибки гаснут
+    for (var i = 0; i < nCount; i++) {
+      var o4 = i * 4, n = neurons[i];
+      neurData[o4] = Math.max(HEBB.min, neurData[o4] - HEBB.decay * dt);
+      neurData[o4 + 1] = Math.max(0, neurData[o4 + 1] - dt * 0.9);
+      neur2Data[o4] = Math.max(0.28 * n.scar, neur2Data[o4] - dt * 0.25);   // шрам не гаснет до успешной работы
+      if (n.working) {
+        if (Date.now() - n.working > 120000) n.working = 0;                  // шаг пропал — не светить вечно
+        else neurData[o4 + 1] = Math.max(neurData[o4 + 1], 0.55);            // навык занят прямо сейчас
+      }
+      vPot[i] += (0 - vPot[i]) * Math.min(1, NEURO.leak * dt);      // заряд стекает к покою
+      neur2Data[o4 + 3] = vPot[i];
+      var visT = (!n.gone && filterVisible(n) && n.bornMs <= timeCut) ? 1 : 0;
+      neur2Data[o4 + 2] = approach(neur2Data[o4 + 2], visT, 4, dt);
+    }
+    for (var j = 0; j < lCount; j++) {
+      var l4 = j * 4;
+      linkData[l4] = Math.max(HEBB.linkMin, linkData[l4] - HEBB.linkDecay * dt);
+      linkData[l4 + 1] = Math.max(0, linkData[l4 + 1] - dt * 1.5);
+      linkData[l4 + 3] = Math.max(0, linkData[l4 + 3] - dt * 0.35);
+      link2Data[l4] = Math.max(0, link2Data[l4] - 0.0003 * dt);              // миелин держится долго
+      link2Data[l4 + 2] *= Math.exp(-dt / NEURO.traceTau);                    // след работы
+      link2Data[l4 + 3] = Math.max(0, link2Data[l4 + 3] - dt * 0.6);         // свечение награды
+    }
+
+    // сигналы
+    for (var s = signals.length - 1; s >= 0; s--) {
+      var sg = signals[s];
+      sg.t += sg.dir * sg.speed * dt / sg.link.len;
+      linkData[sg.link.id * 4 + 1] = Math.max(linkData[sg.link.id * 4 + 1], 0.8 * sg.alpha);
+      if (sg.t >= 1 || sg.t <= 0) {
+        signals.splice(s, 1);
+        deliver(sg);
+        if (sg.onArrive) sg.onArrive();
+      }
+    }
+    var cnt = 0;
+    for (var q = 0; q < signals.length; q++) {
+      var sq = signals[q];
+      for (var tr = 0; tr < TRAIL; tr++) {
+        var tt = clamp(sq.t - sq.dir * tr * 0.016, 0, 1);
+        linkPoint(sq.link, tt, t, tmpP);
+        sigPos[cnt * 3] = tmpP.x; sigPos[cnt * 3 + 1] = tmpP.y; sigPos[cnt * 3 + 2] = tmpP.z;
+        sigA[cnt] = 0.85 * (1 - tr / TRAIL) * sq.alpha;
+        sigCol[cnt * 3] = sq.color.r; sigCol[cnt * 3 + 1] = sq.color.g; sigCol[cnt * 3 + 2] = sq.color.b;
+        cnt++;
+      }
+    }
+    // вспышки синапсов: короткое свечение на конце аксона в момент передачи
+    for (var sf = synFlashes.length - 1; sf >= 0; sf--) {
+      var fl = synFlashes[sf], age = t - fl.born;
+      if (age > 0.45) { synFlashes.splice(sf, 1); continue; }
+      if (cnt >= MAX_S * TRAIL) break;
+      linkPoint(fl.link, fl.end ? 0.97 : 0.03, t, tmpP);
+      sigPos[cnt * 3] = tmpP.x; sigPos[cnt * 3 + 1] = tmpP.y; sigPos[cnt * 3 + 2] = tmpP.z;
+      sigA[cnt] = (1 - age / 0.45) * fl.alpha;
+      sigCol[cnt * 3] = fl.color.r; sigCol[cnt * 3 + 1] = fl.color.g; sigCol[cnt * 3 + 2] = fl.color.b;
+      cnt++;
+    }
+    sigGeo.attributes.position.needsUpdate = true;
+    sigGeo.attributes.aA.needsUpdate = true;
+    sigGeo.attributes.aCol.needsUpdate = true;
+    sigGeo.setDrawRange(0, cnt);
+
+    // Свет только от настоящей работы: случайных вспышек в покое, при размышлении и во сне нет.
+
+    uploadRows(neurTex, neurData, NT, nCount);
+    uploadRows(neur2Tex, neur2Data, NT, nCount);
+    uploadRows(linkTex, linkData, LT, lCount);
+    uploadRows(link2Tex, link2Data, LT, lCount);
+
+    haze.forEach(function (h) {
+      var u = h.userData;
+      h.position.set(
+        u.base.x + 0.12 * Math.sin(t * 0.07 + u.ph),
+        u.base.y + 0.1 * Math.sin(t * 0.05 + u.ph * 2),
+        u.base.z + 0.12 * Math.sin(t * 0.06 + u.ph * 3)
+      );
+      h.material.opacity = u.op * (1 + 0.8 * mood.think + 0.6 * mood.speak) * common.uBright.value;
+    });
+
+    updateLabels(t);
+    put(statEls.n, "textContent", nCount); put(statEls.l, "textContent", lCount);
+    put(statEls.z, "textContent", zones.length); put(statEls.s, "textContent", signals.length);
+
+    common.uTime.value = t;
+    common.uSpeak.value = mood.speak;
+    common.uChloe.value = voice.chloe;
+    common.uThink.value = mood.think;
+    common.uSleep.value = mood.sleep;
+    shellUniforms.uEnergy.value = 0.3 + 0.35 * mood.think + 0.15 * mood.speak - 0.15 * mood.sleep;
+    shellUniforms.uListen.value = voice.user * (0.4 + 0.6 * mood.listen);
+    renderer.render(scene, camera);
+    perf.js = perf.js * 0.95 + (performance.now() - nowMs) * 0.05;
+  }
+
+  // ---------- центр управления: ядро, слои и отделы открывают слои системы ----------
+  var corePanel = document.getElementById("corePanel"), coreOpen = false, coreTimer = null, coreStatus = null;
+  var STATE_RU = { idle: "Спокойна", listening: "Слушает", thinking: "Думает", speaking: "Говорит", sleeping: "Спит" };
+  function closeCore() {
+    coreOpen = false;
+    corePanel.style.display = "none";
+    if (coreTimer) { clearInterval(coreTimer); coreTimer = null; }
+  }
+  function openCore() {
+    touch();
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles();
+    if (phonePanel) closePhone();
+    coreOpen = true;
+    corePanel.style.display = "block";
+    renderCore();
+    fetchCoreStatus();
+    if (!coreTimer) coreTimer = setInterval(function () { renderCore(); }, 700);
+  }
+  function fetchCoreStatus() {
+    var api = window.pywebview && window.pywebview.api && window.pywebview.api.system_status ? window.pywebview.api : null;
+    if (!api) { coreStatus = null; return; }
+    api.system_status().then(function (st) { coreStatus = st; renderCore(); }).catch(function () {});
+  }
+  function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function renderCore() {
+    if (!coreOpen) return;
+    var st = coreStatus, h = [];
+    h.push("<span class='close' role='button' aria-label='Закрыть' data-act='close'>×</span><b>Ядро Chloe</b>");
+    h.push("<div class='cState'>" + esc(STATE_RU[STATE.name] || STATE.name) + "</div>");
+    h.push("<div class='cMuted'>сосредоточенность " + Math.round(eeg.focus * 100) + "% · усталость " + Math.round(feel.fatigue * 100) + "%</div>");
+    h.push("<h4>Слои</h4>");
+    LAYERS.forEach(function (L) {
+      var a = L.uni.uAct.value, hot = a > 0.35;
+      h.push("<div class='cLayer" + (hot ? " hot" : "") + "'><button data-open='" + L.opens + "'>" + esc(L.name) + " →</button>" +
+             "<span class='track'><i style='width:" + Math.round(8 + a * 92) + "%'></i></span><small>" + Math.round(a * 100) + "%</small></div>");
+    });
+    h.push("<h4>Мозг</h4>");
+    h.push("<div class='cRow'><span>Нейроны</span><span>" + nCount + "</span></div>");
+    h.push("<div class='cRow'><span>Связи</span><span>" + lCount + "</span></div>");
+    h.push("<div class='cRow'><span>Темы</span><span>" + zones.length + "</span></div>");
+    if (st) {
+      h.push("<h4>Подключённые модели</h4>");
+      h.push("<div class='cRow'><span>Быстрый мозг</span><span>" + esc(st.fast) + "</span></div>");
+      h.push("<div class='cRow'><span>Сильный мозг</span><span>" + esc(st.strong) + "</span></div>");
+      if (st.eyes) h.push("<div class='cRow'><span>Глаза</span><span>" + esc(st.eyes) + "</span></div>");
+      h.push("<div class='cRow'><span>Сегодня</span><span>" + st.today.calls + " запросов · ≈$" + Number(st.today.usd).toFixed(3) + "</span></div>");
+      h.push("<h4>Система</h4>");
+      h.push("<div class='cRow'><span>Зрение</span><span>" + (!st.vision.on ? "выключено" : st.vision.private ? "приватное окно — не смотрит" : esc(st.vision.title || "включено")) + "</span></div>");
+      h.push("<div class='cRow'><span>Воспоминаний</span><span>" + st.memory + "</span></div>");
+      h.push("<div class='cRow'><span>Навыков</span><span>" + st.skills + "</span></div>");
+      h.push("<div class='cRow'><span>Напоминаний</span><span>" + st.reminders + "</span></div>");
+    } else {
+      h.push("<h4>Модели и система</h4><div class='cMuted'>Подробности появятся, когда мозг открыт из программы Chloe — через run.py.</div>");
+    }
+    h.push("<h4>Открыть</h4><div>" +
+      "<button class='small' data-open='journal'>Журнал</button><button class='small' data-open='memory'>Память</button>" +
+      "<button class='small' data-open='files'>Файлы</button><button class='small' data-open='stats'>Статистика</button></div>");
+    corePanel.innerHTML = h.join("");
+  }
+  corePanel.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-open],[data-act]");
+    if (!t) return;
+    if (t.getAttribute("data-act") === "close") { closeCore(); return; }
+    openLayer(t.getAttribute("data-open"));
+  });
+  function openLayer(what) {
+    touch();
+    if (what === "core") { if (coreOpen) closeCore(); else openCore(); return; }
+    closeCore();
+    if (what === "memory") { if (!mState.open) openMemory(); }
+    else if (what === "journal") { if (!jState.open) openJournal(""); }
+    else if (what === "files") { if (!fState.open) openFiles(); }
+    else if (what === "stats") { if (!statsOpen) toggleStats(true); }
+  }
+  // любая другая панель открылась — панель ядра закрывается
+  document.getElementById("toggles").addEventListener("click", function () { closeCore(); }, true);
+  // главные отделы подписаны сразу, ещё до первых нейронов: это кнопки центра управления
+  ["stem", "thal", "hippo", "frontal", "motor", "temporalL"].forEach(regionLabel);
+
+  // подписи слоёв и ядра — кнопки поверх мозга
+  var layerEls = LAYERS.map(function (L) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "layer"; b.textContent = L.name;
+    b.title = L.name + " — открыть: " + REGION_HINT[L.opens];
+    b.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+    b.addEventListener("click", function (e) { e.stopPropagation(); openLayer(L.opens); });
+    wrap.appendChild(b);
+    return b;
+  });
+  var coreLabel = document.createElement("button");
+  coreLabel.type = "button"; coreLabel.id = "coreLabel"; coreLabel.textContent = "Ядро";
+  coreLabel.title = "Ядро Chloe — состояние, модели, слои";
+  coreLabel.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+  coreLabel.addEventListener("click", function (e) { e.stopPropagation(); openLayer("core"); });
+  wrap.appendChild(coreLabel);
+  var _lp = new THREE.Vector3();
+  function placeCoreLabels(placed, wall) {
+    var clean = document.body.classList.contains("clean");
+    _lp.copy(CORE_POS).applyMatrix4(group.matrixWorld).project(camera);
+    var cx = (_lp.x + 1) / 2 * viewW, cy = (1 - _lp.y) / 2 * viewH;
+    put(coreLabel, "left", Math.round(cx) + "px");
+    put(coreLabel, "top", Math.round(cy + 18) + "px");
+    put(coreLabel, "opacity", wall ? 0 : 1);
+    placed.push({ x: cx, y: cy + 46, w: 50 });
+    LAYERS.forEach(function (L, i) {
+      var b = layerEls[i];
+      if (wall || clean) { put(b, "opacity", 0); put(b, "pointerEvents", "none"); return; }
+      L.holder.updateMatrixWorld();
+      _lp.copy(L.anchor); L.holder.localToWorld(_lp); _lp.project(camera);
+      var x = (_lp.x + 1) / 2 * viewW, y = (1 - _lp.y) / 2 * viewH, w = L.name.length * 8;
+      var hidden = _lp.z > 1 || placed.some(function (q) { return Math.abs(x - q.x) * 2 < w + q.w && Math.abs(y - (q.y - 19)) < 14; });
+      put(b, "left", Math.round(x) + "px");
+      put(b, "top", Math.round(y) + "px");
+      put(b, "opacity", hidden ? 0 : 1);
+      put(b, "pointerEvents", hidden ? "none" : "auto");
+      put(b, "className", "layer" + (L.uni.uAct.value > 0.35 ? " hot" : ""));
+      if (!hidden) placed.push({ x: x, y: y + 19, w: w });
+    });
+  }
+
+  // ---------- слои ядра оживают от событий Chloe ----------
+  (function () {
+    var DATA_SKILLS = { "Файлы": 1, "Управление файлами": 1, "Загрузки": 1, "Сайты": 1, "Поиск в интернете": 1, "Буфер обмена": 1, "Telegram": 1 };
+    function wrapFn(name, before) {
+      var orig = window[name];
+      if (typeof orig !== "function") return;
+      window[name] = function () { try { before.apply(null, arguments); } catch (e) {} return orig.apply(this, arguments); };
+    }
+    wrapFn("chloeUse", function (skill) { coreKick("proc", 0.35); if (DATA_SKILLS[skill]) coreKick("data", 0.45); });
+    wrapFn("chloeStep", function (skill, sec, ok) { coreKick("proc", 0.2); if (DATA_SKILLS[skill]) coreKick("data", 0.25); });
+    wrapFn("chloeRemember", function () { coreKick("mem", 0.6); });
+    wrapFn("chloeRecall", function () { coreKick("mem", 0.7); });
+    wrapFn("chloeHeard", function () { coreKick("think", 0.4); });
+    wrapFn("chloeReply", function () { coreKick("think", 0.25); });
+  })();
+
+  // ---------- запуск ----------
+  rebuildFilters();
+  if (quality.auto && !weakDevice) resize(); else setQuality(quality.level);
+  if (params.has("wallpaper")) setWall(true);
+  animate();
+  storeGet(function (raw) {
+    var loaded = load(raw);
+    var missing = START.filter(function (s) { return !neurons.some(function (n) { return n.name === s[0]; }); });
+    missing.forEach(function (s, i) {
+      setTimeout(function () { addNeuron(s[0], "skill", s[1], "Компьютер"); }, 300 + i * (loaded ? 900 : 700));
+    });
+    window.chloeReady = true;
+  });
+})();
+</script>
+
+<script>
+(function () {
+  var KEY = "chloe-clean-view", btn = document.getElementById("moreBtn");
+  function get() { try { return localStorage.getItem(KEY) !== "0"; } catch (e) { return true; } }
+  function set(on) {
+    document.body.classList.toggle("clean", on);
+    btn.classList.toggle("on", !on);
+    btn.title = on ? "Показать все функции" : "Скрыть лишнее";
+    btn.textContent = on ? "Все функции" : "Скрыть лишнее";
+    try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e) {}
+    window.dispatchEvent(new Event("resize"));
+  }
+  btn.onclick = function () { set(!document.body.classList.contains("clean")); };
+  set(get());
+})();
+
+  // ---------- постоянное зрение: Chloe видит экран ----------
+  (function () {
+    var btn = document.getElementById("seeBtn"), txt = document.getElementById("seeTxt"), on = true;
+    function api() { return window.pywebview && window.pywebview.api && window.pywebview.api.vision_get ? window.pywebview.api : null; }
+    window.chloeSee = function (title, priv, enabled) {
+      on = enabled !== false;
+      btn.hidden = false;
+      btn.className = !on ? "off" : priv ? "on private" : "on";
+      txt.textContent = !on ? "Не смотрю на экран" : priv ? "Приватное окно — не смотрю" : (title ? "Вижу: " + title : "Вижу экран");
+      if (on && !priv && title && window.chloeGlance) window.chloeGlance();
+      btn.title = on ? "Chloe видит экран (приватные окна пропускает). Нажмите — перестанет смотреть."
+                     : "Постоянное зрение выключено. Нажмите — Chloe снова будет видеть экран.";
+    };
+    btn.onclick = function () {
+      var a = api();
+      if (!a) return;
+      a.vision_set(!on).then(function (v) { window.chloeSee(v ? "" : "", false, v); });
+    };
+    function init() {
+      var a = api();
+      if (!a) return;
+      a.vision_get().then(function (v) { if (v) window.chloeSee(v.title, v.private, v.on); }).catch(function () {});
+    }
+    if (api()) init(); else window.addEventListener("pywebviewready", init);
+  })();
+</script>
+</body>
+</html>

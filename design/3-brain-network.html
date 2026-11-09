@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chloe Brain</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #04101a;
+    color: #8fb5c9;
+    font-family: system-ui, sans-serif;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  header b { color: #4fd1ff; font-weight: 500; }
+  header i {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #3ddc97;
+    margin-right: 6px;
+  }
+  #core {
+    flex: 1;
+    min-height: 0;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  #core.drag { cursor: grabbing; }
+  #core canvas { display: block; width: 100%; height: 100%; }
+  input {
+    background: #071a28;
+    border: 1px solid #164a66;
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 13px;
+    color: #dff6ff;
+    outline: none;
+  }
+  input::placeholder { color: #5a8aa3; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><b>Chloe</b><span><i></i>онлайн</span></header>
+  <div id="core"></div>
+  <input id="cmd" placeholder="Скажите «Хлоя» или напишите команду…" autocomplete="off">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var wrap = document.getElementById("core");
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x000000, 0);
+  wrap.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x04101a, 5.2, 10.5);
+
+  var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 0, 6.4);
+
+  var CYAN = 0x4fd1ff;
+  var ICE = 0xe8fbff;
+  var baseColor = new THREE.Color(CYAN);
+  var whiteColor = new THREE.Color(ICE);
+
+  var group = new THREE.Group();
+  scene.add(group);
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+
+  // -------------------------------------------------------
+  // НЕЙРОНЫ: тела клеток внутри формы мозга (два полушария)
+  // -------------------------------------------------------
+  var NEURONS = 110;
+  var positions = [];
+  while (positions.length < NEURONS) {
+    var x = rnd(-1, 1), y = rnd(-1, 1), z = rnd(-1, 1);
+    var r2 = x * x + y * y + z * z;
+    if (r2 > 1) continue;
+    var r = Math.sqrt(r2);
+    if (Math.random() > 0.35 + 0.65 * r) continue;
+    var side = Math.random() < 0.5 ? -1 : 1;
+    var px = side * 0.62 + x * 0.95;
+    var py = (y > 0 ? y : y * 0.7);
+    var pz = z * 1.4;
+    if (Math.abs(px) < 0.14) continue;
+    positions.push(new THREE.Vector3(px, py, pz));
+  }
+
+  var somaGeo = new THREE.SphereGeometry(1, 12, 12);
+  var somas = [];
+  positions.forEach(function (p) {
+    var mat = new THREE.MeshBasicMaterial({ color: CYAN });
+    var mesh = new THREE.Mesh(somaGeo, mat);
+    var size = rnd(0.032, 0.06);
+    mesh.position.copy(p);
+    mesh.scale.setScalar(size);
+    group.add(mesh);
+    somas.push({ mesh: mesh, mat: mat, size: size, flash: 0 });
+  });
+
+  // -------------------------------------------------------
+  // АКСОНЫ: кривые связи между ближайшими нейронами
+  // -------------------------------------------------------
+  var edges = [];
+  var edgeKeys = {};
+  var adjacency = positions.map(function () { return []; });
+
+  function addEdge(i, j) {
+    var key = i < j ? i + "_" + j : j + "_" + i;
+    if (edgeKeys[key]) return;
+    edgeKeys[key] = true;
+    var a = positions[i], b = positions[j];
+    var mid = a.clone().add(b).multiplyScalar(0.5);
+    var len = a.distanceTo(b);
+    mid.add(new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(0.28 * len));
+    var curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+    var edge = { a: i, b: j, curve: curve, len: Math.max(curve.getLength(), 0.05) };
+    edges.push(edge);
+    adjacency[i].push(edge);
+    adjacency[j].push(edge);
+  }
+
+  positions.forEach(function (p, i) {
+    var order = positions.map(function (q, j) { return { j: j, d: p.distanceTo(q) }; })
+      .filter(function (o) { return o.j !== i; })
+      .sort(function (u, v) { return u.d - v.d; });
+    for (var k = 0; k < 3; k++) addEdge(i, order[k].j);
+  });
+
+  // длинные связи между полушариями
+  for (var n = 0; n < 14; n++) {
+    var i1 = Math.floor(Math.random() * NEURONS);
+    var j1 = Math.floor(Math.random() * NEURONS);
+    if (i1 !== j1 && positions[i1].x * positions[j1].x < 0 && positions[i1].distanceTo(positions[j1]) < 1.8) {
+      addEdge(i1, j1);
+    }
+  }
+
+  var axonVerts = [];
+  edges.forEach(function (e) {
+    var pts = e.curve.getPoints(14);
+    for (var s = 0; s < pts.length - 1; s++) {
+      axonVerts.push(pts[s].x, pts[s].y, pts[s].z, pts[s + 1].x, pts[s + 1].y, pts[s + 1].z);
+    }
+  });
+  var axonGeo = new THREE.BufferGeometry();
+  axonGeo.setAttribute("position", new THREE.Float32BufferAttribute(axonVerts, 3));
+  group.add(new THREE.LineSegments(axonGeo, new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.32 })));
+
+  // -------------------------------------------------------
+  // ДЕНДРИТЫ: короткие ветвящиеся отростки у каждой клетки
+  // -------------------------------------------------------
+  var dendVerts = [];
+  positions.forEach(function (p) {
+    for (var k = 0; k < 4; k++) {
+      var dir = new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+      var len = rnd(0.1, 0.22);
+      var m = p.clone().add(dir.clone().multiplyScalar(len * 0.5));
+      var dir2 = dir.clone().add(new THREE.Vector3(rnd(-0.6, 0.6), rnd(-0.6, 0.6), rnd(-0.6, 0.6))).normalize();
+      var e2 = m.clone().add(dir2.multiplyScalar(len * 0.5));
+      dendVerts.push(p.x, p.y, p.z, m.x, m.y, m.z, m.x, m.y, m.z, e2.x, e2.y, e2.z);
+    }
+  });
+  var dendGeo = new THREE.BufferGeometry();
+  dendGeo.setAttribute("position", new THREE.Float32BufferAttribute(dendVerts, 3));
+  group.add(new THREE.LineSegments(dendGeo, new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.2 })));
+
+  // -------------------------------------------------------
+  // СИГНАЛЫ: импульсы бегут по аксонам, клетки вспыхивают
+  // -------------------------------------------------------
+  var PULSES = 40;
+  var pulseGeo = new THREE.SphereGeometry(0.03, 10, 10);
+  var pulses = [];
+
+  function startPulse(p) {
+    var from = Math.floor(Math.random() * NEURONS);
+    var list = adjacency[from];
+    if (!list.length) { p.edge = null; return; }
+    var edge = list[Math.floor(Math.random() * list.length)];
+    p.edge = edge;
+    p.dir = edge.a === from ? 1 : -1;
+    p.t = p.dir > 0 ? 0 : 1;
+    p.speed = rnd(0.7, 1.4);
+  }
+
+  for (var q = 0; q < PULSES; q++) {
+    var mesh = new THREE.Mesh(pulseGeo, new THREE.MeshBasicMaterial({
+      color: ICE,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    group.add(mesh);
+    var pulse = { mesh: mesh, edge: null, dir: 1, t: 0, speed: 1 };
+    startPulse(pulse);
+    pulse.t = Math.random();
+    pulses.push(pulse);
+  }
+
+  function advancePulse(p, dt) {
+    if (!p.edge) { startPulse(p); return; }
+    p.t += p.dir * (p.speed * dt) / p.edge.len;
+    if (p.t >= 1 || p.t <= 0) {
+      var arrived = p.dir > 0 ? p.edge.b : p.edge.a;
+      somas[arrived].flash = 1;
+      var list = adjacency[arrived];
+      var next = list[Math.floor(Math.random() * list.length)];
+      if (list.length > 1 && next === p.edge) {
+        next = list[(list.indexOf(next) + 1) % list.length];
+      }
+      p.edge = next;
+      p.dir = next.a === arrived ? 1 : -1;
+      p.t = p.dir > 0 ? 0 : 1;
+      p.speed = rnd(0.7, 1.4);
+    }
+    p.mesh.position.copy(p.edge.curve.getPoint(Math.min(Math.max(p.t, 0), 1)));
+  }
+
+  // -------------------------------------------------------
+  // РАЗМЕР
+  // -------------------------------------------------------
+  function resize() {
+    var w = Math.max(wrap.clientWidth, 1);
+    var h = Math.max(wrap.clientHeight, 1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // -------------------------------------------------------
+  // УПРАВЛЕНИЕ ПАЛЬЦЕМ И МЫШЬЮ + ИНЕРЦИЯ
+  // -------------------------------------------------------
+  var dragging = false, lx = 0, ly = 0, offY = 0, offX = 0, vY = 0, vX = 0;
+  var el = renderer.domElement;
+
+  el.addEventListener("pointerdown", function (e) {
+    dragging = true; lx = e.clientX; ly = e.clientY; vY = 0; vX = 0;
+    wrap.classList.add("drag");
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+  });
+  window.addEventListener("pointerup", function () {
+    dragging = false;
+    wrap.classList.remove("drag");
+  });
+  el.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    vY = (e.clientX - lx) * 0.008;
+    vX = (e.clientY - ly) * 0.008;
+    lx = e.clientX; ly = e.clientY;
+    offY += vY; offX += vX;
+  });
+
+  // -------------------------------------------------------
+  // АНИМАЦИЯ
+  // -------------------------------------------------------
+  var clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    var dt = Math.min(clock.getDelta(), 0.05);
+    var t = clock.elapsedTime;
+
+    if (!dragging) {
+      offY += vY; offX += vX;
+      vY *= 0.95; vX *= 0.95;
+    }
+
+    group.rotation.y = 1.1 + t * 0.12 + offY;
+    group.rotation.x = 0.15 + offX;
+    var breath = 1 + 0.012 * Math.sin(t * 1.3);
+    group.scale.set(breath, breath, breath);
+
+    for (var i = 0; i < pulses.length; i++) advancePulse(pulses[i], dt);
+
+    for (var k = 0; k < somas.length; k++) {
+      var s = somas[k];
+      if (s.flash > 0) s.flash = Math.max(0, s.flash - dt * 1.8);
+      s.mesh.scale.setScalar(s.size * (1 + 1.4 * s.flash));
+      s.mat.color.copy(baseColor).lerp(whiteColor, s.flash);
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>

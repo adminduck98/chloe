@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chloe</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #04101a;
+    color: #8fb5c9;
+    font-family: system-ui, sans-serif;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  header b { color: #4fd1ff; font-weight: 500; }
+  header i {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #3ddc97;
+    margin-right: 6px;
+  }
+  #core {
+    flex: 1;
+    min-height: 0;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  #core.drag { cursor: grabbing; }
+  #core canvas { display: block; width: 100%; height: 100%; }
+  input {
+    background: #071a28;
+    border: 1px solid #164a66;
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 13px;
+    color: #dff6ff;
+    outline: none;
+  }
+  input::placeholder { color: #5a8aa3; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><b>Chloe</b><span><i></i>онлайн</span></header>
+  <div id="core"></div>
+  <input id="cmd" placeholder="Скажите «Хлоя» или напишите команду…" autocomplete="off">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var wrap = document.getElementById("core");
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(DPR);
+  renderer.setClearColor(0x000000, 0);
+  wrap.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(0, 0, 4.6);
+
+  var group = new THREE.Group();
+  scene.add(group);
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+
+  // -------------------------------------------------------
+  // СФЕРА ИЗ ЧАСТИЦ (равномерная спираль Фибоначчи)
+  // -------------------------------------------------------
+  var N = 24000;
+  var pos = new Float32Array(N * 3);
+  var bright = new Float32Array(N);
+  var seed = new Float32Array(N);
+  var golden = Math.PI * (3 - Math.sqrt(5));
+
+  for (var i = 0; i < N; i++) {
+    var y = 1 - (i / (N - 1)) * 2;
+    var r = Math.sqrt(1 - y * y);
+    var th = golden * i;
+    var R = 1.15 + rnd(-0.015, 0.015);
+    pos[i * 3] = Math.cos(th) * r * R;
+    pos[i * 3 + 1] = y * R;
+    pos[i * 3 + 2] = Math.sin(th) * r * R;
+    bright[i] = 0.55 + 0.45 * Math.abs(Math.sin(y * 9));  // широтные полосы
+    seed[i] = Math.random();
+  }
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("aBright", new THREE.BufferAttribute(bright, 1));
+  geo.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1));
+
+  // -------------------------------------------------------
+  // ВСПЫШКИ АКТИВНОСТИ
+  // -------------------------------------------------------
+  var FLASHES = 5;
+  var flashData = [];
+  for (var f = 0; f < FLASHES; f++) flashData.push(new THREE.Vector4(0, 0, 0, -100));
+
+  var uniforms = {
+    uTime: { value: 0 },
+    uEnergy: { value: 0.35 },   // сила "живой" деформации (0 — ровный шар, 1 — сильно)
+    uPixel: { value: DPR },
+    uFlash: { value: flashData },
+    uBase: { value: new THREE.Color(0x2fa9dc) },
+    uHot: { value: new THREE.Color(0xe8fbff) }
+  };
+
+  var material = new THREE.ShaderMaterial({
+    uniforms: uniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime;",
+      "uniform float uEnergy;",
+      "uniform float uPixel;",
+      "uniform vec4 uFlash[" + FLASHES + "];",
+      "attribute float aBright;",
+      "attribute float aSeed;",
+      "varying float vBright;",
+      "varying float vHot;",
+      "void main() {",
+      "  vec3 n = normalize(position);",
+      // поверхность медленно «дышит» несколькими волнами
+      "  float w = sin(n.x * 3.1 + uTime * 0.9)",
+      "          + sin(n.y * 4.3 - uTime * 0.7)",
+      "          + sin(n.z * 3.7 + uTime * 1.1)",
+      "          + 0.5 * sin((n.x + n.y) * 6.0 - uTime * 1.6);",
+      "  vec3 p = position + n * w * 0.045 * uEnergy * 2.0;",
+      "  float hot = 0.0;",
+      "  for (int i = 0; i < " + FLASHES + "; i++) {",
+      "    float age = uTime - uFlash[i].w;",
+      "    if (age > 0.0 && age < 2.2) {",
+      "      float d = distance(position, uFlash[i].xyz);",
+      "      float ring = exp(-pow((d - age * 0.75) / 0.07, 2.0));",
+      "      float spot = exp(-pow(d / 0.12, 2.0)) * exp(-age * 3.0);",
+      "      hot += (ring * 0.9 + spot) * (1.0 - age / 2.2);",
+      "    }",
+      "  }",
+      "  float twinkle = 0.75 + 0.25 * sin(uTime * (1.0 + aSeed * 2.0) + aSeed * 40.0);",
+      "  vBright = aBright * twinkle * (0.85 + 0.15 * w);",
+      "  vHot = clamp(hot, 0.0, 1.0);",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  gl_PointSize = (2.3 + 3.0 * vHot) * uPixel * (4.5 / -mv.z);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uBase;",
+      "uniform vec3 uHot;",
+      "varying float vBright;",
+      "varying float vHot;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5);",
+      "  if (r > 0.5) discard;",
+      "  float soft = smoothstep(0.5, 0.0, r);",
+      "  vec3 col = mix(uBase, uHot, vHot);",
+      "  float a = soft * (vBright * 0.95 + vHot);",
+      "  gl_FragColor = vec4(col * a, a);",
+      "}"
+    ].join("\n")
+  });
+
+  var points = new THREE.Points(geo, material);
+  points.frustumCulled = false;
+  group.add(points);
+
+  var nextFlash = 0, flashIndex = 0;
+  function spawnFlash(t) {
+    var i = Math.floor(Math.random() * N);
+    flashData[flashIndex].set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], t);
+    flashIndex = (flashIndex + 1) % FLASHES;
+  }
+
+  // Для будущего подключения к Python: window.chloeEnergy(0.8) — сфера оживляется
+  window.chloeEnergy = function (v) {
+    uniforms.uEnergy.value = Math.max(0, Math.min(1, v));
+  };
+
+  // -------------------------------------------------------
+  // РАЗМЕР
+  // -------------------------------------------------------
+  function resize() {
+    var w = Math.max(wrap.clientWidth, 1);
+    var h = Math.max(wrap.clientHeight, 1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.position.z = w / h < 0.8 ? 5.6 : 4.6;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // -------------------------------------------------------
+  // УПРАВЛЕНИЕ ПАЛЬЦЕМ И МЫШЬЮ + ИНЕРЦИЯ
+  // -------------------------------------------------------
+  var dragging = false, lx = 0, ly = 0, offY = 0, offX = 0, vY = 0, vX = 0;
+  var el = renderer.domElement;
+  el.addEventListener("pointerdown", function (e) {
+    dragging = true; lx = e.clientX; ly = e.clientY; vY = 0; vX = 0;
+    wrap.classList.add("drag");
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+  });
+  window.addEventListener("pointerup", function () { dragging = false; wrap.classList.remove("drag"); });
+  el.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    vY = (e.clientX - lx) * 0.008; vX = (e.clientY - ly) * 0.008;
+    lx = e.clientX; ly = e.clientY;
+    offY += vY; offX += vX;
+  });
+
+  // -------------------------------------------------------
+  // АНИМАЦИЯ
+  // -------------------------------------------------------
+  var clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    var t = clock.getElapsedTime();
+    if (!dragging) { offY += vY; offX += vX; vY *= 0.95; vX *= 0.95; }
+
+    group.rotation.y = t * 0.12 + offY;
+    group.rotation.x = 0.2 + offX;
+
+    if (t > nextFlash) { spawnFlash(t); nextFlash = t + rnd(0.35, 0.9); }
+
+    uniforms.uTime.value = t;
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>

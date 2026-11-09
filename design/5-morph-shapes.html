@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chloe</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #04101a;
+    color: #8fb5c9;
+    font-family: system-ui, sans-serif;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  header b { color: #4fd1ff; font-weight: 500; }
+  header i {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #3ddc97;
+    margin-right: 6px;
+  }
+  #core {
+    flex: 1;
+    min-height: 0;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  #core.drag { cursor: grabbing; }
+  #core canvas { display: block; width: 100%; height: 100%; }
+  #shapes {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  #shapes button {
+    background: transparent;
+    border: 1px solid #164a66;
+    color: #5a8aa3;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  #shapes button.on { border-color: #4fd1ff; color: #dff6ff; }
+  input {
+    background: #071a28;
+    border: 1px solid #164a66;
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 13px;
+    color: #dff6ff;
+    outline: none;
+  }
+  input::placeholder { color: #5a8aa3; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><b>Chloe</b><span><i></i>онлайн</span></header>
+  <div id="core"></div>
+  <div id="shapes"></div>
+  <input id="cmd" placeholder="Скажите «Хлоя» или напишите команду…" autocomplete="off">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var wrap = document.getElementById("core");
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(DPR);
+  renderer.setClearColor(0x000000, 0);
+  wrap.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(0, 0, 4.4);
+
+  var group = new THREE.Group();
+  scene.add(group);
+
+  var N = 24000;              // число частиц — одинаково для всех форм
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function randDir() {
+    var v = new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1));
+    if (v.lengthSq() < 1e-4) v.set(1, 0, 0);
+    return v.normalize();
+  }
+
+  // Каждая форма = массив из N позиций и N яркостей.
+  // Точки перемешаны, поэтому при смене формы частицы разлетаются и собираются заново.
+  function finish(list) {
+    for (var i = list.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = list[i]; list[i] = list[j]; list[j] = tmp;
+    }
+    var pos = new Float32Array(N * 3), br = new Float32Array(N);
+    for (var k = 0; k < N; k++) {
+      var e = list[k % list.length];
+      pos[k * 3] = e[0]; pos[k * 3 + 1] = e[1]; pos[k * 3 + 2] = e[2];
+      br[k] = e[3];
+    }
+    return { pos: pos, br: br };
+  }
+
+  // -------------------------------------------------------
+  // ФОРМА 1. СФЕРА — спокойное ожидание
+  // -------------------------------------------------------
+  function makeSphere() {
+    var list = [];
+    var golden = Math.PI * (3 - Math.sqrt(5));
+    for (var i = 0; i < N; i++) {
+      var y = 1 - (i / (N - 1)) * 2;
+      var r = Math.sqrt(1 - y * y);
+      var th = golden * i;
+      var R = 1.15 + rnd(-0.02, 0.02);
+      var band = 0.55 + 0.45 * Math.abs(Math.sin(y * 9));
+      list.push([Math.cos(th) * r * R, y * R, Math.sin(th) * r * R, band]);
+    }
+    return finish(list);
+  }
+
+  // -------------------------------------------------------
+  // ФОРМА 2. МОЗГ — полушария, извилины, мозжечок, ствол
+  // -------------------------------------------------------
+  function makeFolds(count, freq) {
+    var waves = [];
+    for (var i = 0; i < count; i++) {
+      waves.push({ d: randDir().multiplyScalar(freq * rnd(0.8, 1.25)), ph: rnd(0, Math.PI * 2) });
+    }
+    return function (p) {
+      var s = 0;
+      for (var i = 0; i < waves.length; i++) {
+        s += Math.sin(p.x * waves[i].d.x + p.y * waves[i].d.y + p.z * waves[i].d.z + waves[i].ph);
+      }
+      return s / Math.sqrt(waves.length);
+    };
+  }
+
+  function makeBrain() {
+    var folds = makeFolds(8, 6.0);
+    function hemi(side) {
+      var v = randDir();
+      v.x = Math.abs(v.x);
+      var p = new THREE.Vector3(v.x * 0.78, v.y * 0.86, v.z * 1.18);
+      if (p.y < 0) p.y *= 0.62;
+      p.x *= 1 - 0.18 * Math.max(0, p.y);
+      if (p.z > 0.5) p.y *= 1 - 0.2 * (p.z - 0.5);
+      var temporal = Math.exp(-Math.pow((p.y + 0.38) / 0.22, 2)) * Math.exp(-Math.pow((p.z - 0.15) / 0.55, 2));
+      p.x += 0.12 * temporal * v.x;
+      p.y -= 0.06 * temporal;
+      var f = folds(p);
+      p.add(p.clone().normalize().multiplyScalar(0.05 * Math.tanh(f * 1.6)));
+      p.x = side * (p.x + 0.045);
+      return { p: p, f: f };
+    }
+    var list = [];
+    var cortex = Math.floor(N * 0.8), made = 0;
+    while (made < cortex) {
+      var h = hemi(made % 2 === 0 ? -1 : 1);
+      var fold = Math.abs(h.f);
+      if (fold < 0.42 && Math.random() < 0.97) continue;
+      list.push([h.p.x, h.p.y, h.p.z, 0.5 + 0.5 * Math.min(1, (fold - 0.42) / 0.8)]);
+      made++;
+    }
+    while (list.length < cortex + Math.floor(N * 0.15)) {
+      var v2 = randDir();
+      var c = new THREE.Vector3(v2.x * 0.62, v2.y * 0.28 - 0.58, v2.z * 0.36 - 0.78);
+      var stripe = Math.abs(Math.sin(c.y * 46 + c.z * 8));
+      if (stripe < 0.3 && Math.random() < 0.8) continue;
+      list.push([c.x, c.y, c.z, 0.3 + 0.5 * stripe]);
+    }
+    while (list.length < N) {
+      var a = rnd(0, Math.PI * 2), t = rnd(0, 1), rad = 0.15 - 0.04 * t;
+      list.push([Math.cos(a) * rad, -0.45 - t * 0.6, -0.32 - t * 0.12 + Math.sin(a) * rad * 0.8, 0.35]);
+    }
+    return finish(list);
+  }
+
+  // -------------------------------------------------------
+  // ФОРМА 3. ВОЛНА — кольцо голоса (для ответа голосом)
+  // -------------------------------------------------------
+  function makeWave() {
+    var list = [];
+    for (var i = 0; i < N; i++) {
+      var a = rnd(0, Math.PI * 2);
+      var layer = Math.floor(rnd(0, 3));
+      var amp = [0.22, 0.14, 0.08][layer];
+      var freq = [6, 9, 13][layer];
+      var R = 1.2 + amp * Math.sin(a * freq + layer) + rnd(-0.015, 0.015);
+      var thick = rnd(-0.03, 0.03);
+      list.push([Math.cos(a) * R, Math.sin(a) * R, thick + (layer - 1) * 0.06, [1, 0.75, 0.5][layer]]);
+    }
+    return finish(list);
+  }
+
+  // -------------------------------------------------------
+  // ФОРМА 4. ГАЛАКТИКА — спиральные рукава
+  // -------------------------------------------------------
+  function makeGalaxy() {
+    var list = [];
+    var ARMS = 3;
+    for (var i = 0; i < N; i++) {
+      var arm = i % ARMS;
+      var r = Math.pow(Math.random(), 0.6) * 1.6;
+      var a = arm / ARMS * Math.PI * 2 + r * 2.4 + rnd(-0.3, 0.3) * (0.4 + r * 0.4);
+      var y = rnd(-1, 1) * 0.08 * (1.6 - r);
+      var bright = r < 0.25 ? 1 : 0.4 + 0.6 * Math.random() * (1 - r / 1.6);
+      list.push([Math.cos(a) * r, y, Math.sin(a) * r, bright]);
+    }
+    return finish(list);
+  }
+
+  var SHAPES = [
+    { name: "Сфера",     data: makeSphere(), tilt: 0.0,  yaw: 0 },
+    { name: "Мозг",      data: makeBrain(),  tilt: 0.1,  yaw: -1.25 },
+    { name: "Волна",     data: makeWave(),   tilt: 0.0,  yaw: 0 },
+    { name: "Галактика", data: makeGalaxy(), tilt: 0.55, yaw: 0 }
+  ];
+
+  // -------------------------------------------------------
+  // ГЕОМЕТРИЯ: позиции "откуда" и "куда" + смешивание в шейдере
+  // -------------------------------------------------------
+  var seeds = new Float32Array(N);
+  for (var s = 0; s < N; s++) seeds[s] = Math.random();
+
+  var geo = new THREE.BufferGeometry();
+  var aFrom = new THREE.BufferAttribute(SHAPES[0].data.pos.slice(), 3);
+  var aTo = new THREE.BufferAttribute(SHAPES[0].data.pos.slice(), 3);
+  var bFrom = new THREE.BufferAttribute(SHAPES[0].data.br.slice(), 1);
+  var bTo = new THREE.BufferAttribute(SHAPES[0].data.br.slice(), 1);
+  geo.setAttribute("position", aFrom);   // нужен three.js для границ
+  geo.setAttribute("aTo", aTo);
+  geo.setAttribute("aBrFrom", bFrom);
+  geo.setAttribute("aBrTo", bTo);
+  geo.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+
+  var FLASHES = 5;
+  var flashData = [];
+  for (var f = 0; f < FLASHES; f++) flashData.push(new THREE.Vector4(0, 0, 0, -100));
+
+  var uniforms = {
+    uTime: { value: 0 },
+    uMix: { value: 1 },
+    uPixel: { value: DPR },
+    uFlash: { value: flashData },
+    uBase: { value: new THREE.Color(0x2fa9dc) },
+    uHot: { value: new THREE.Color(0xe8fbff) }
+  };
+
+  var material = new THREE.ShaderMaterial({
+    uniforms: uniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: [
+      "uniform float uTime;",
+      "uniform float uMix;",
+      "uniform float uPixel;",
+      "uniform vec4 uFlash[" + FLASHES + "];",
+      "attribute vec3 aTo;",
+      "attribute float aBrFrom;",
+      "attribute float aBrTo;",
+      "attribute float aSeed;",
+      "varying float vBright;",
+      "varying float vHot;",
+      "void main() {",
+      // плавный ход с разной задержкой у каждой частицы
+      "  float m = clamp((uMix - aSeed * 0.35) / 0.65, 0.0, 1.0);",
+      "  m = m * m * (3.0 - 2.0 * m);",
+      "  vec3 p = mix(position, aTo, m);",
+      // в середине перехода частицы закручиваются и разлетаются
+      "  float burst = sin(3.14159 * m);",
+      "  float a = burst * (1.2 + aSeed * 2.0);",
+      "  p.xz = mat2(cos(a), -sin(a), sin(a), cos(a)) * p.xz;",
+      "  p += normalize(p + 0.0001) * burst * (0.25 + 0.35 * aSeed);",
+      "  float hot = 0.0;",
+      "  for (int i = 0; i < " + FLASHES + "; i++) {",
+      "    float age = uTime - uFlash[i].w;",
+      "    if (age > 0.0 && age < 2.2) {",
+      "      float d = distance(p, uFlash[i].xyz);",
+      "      float ring = exp(-pow((d - age * 0.75) / 0.07, 2.0));",
+      "      float spot = exp(-pow(d / 0.12, 2.0)) * exp(-age * 3.0);",
+      "      hot += (ring * 0.9 + spot) * (1.0 - age / 2.2);",
+      "    }",
+      "  }",
+      "  float twinkle = 0.75 + 0.25 * sin(uTime * (1.0 + aSeed * 2.0) + aSeed * 40.0);",
+      "  vBright = mix(aBrFrom, aBrTo, m) * twinkle + burst * 0.25;",
+      "  vHot = clamp(hot, 0.0, 1.0);",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  gl_PointSize = (2.3 + 3.0 * vHot) * uPixel * (4.5 / -mv.z);",
+      "  gl_Position = projectionMatrix * mv;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform vec3 uBase;",
+      "uniform vec3 uHot;",
+      "varying float vBright;",
+      "varying float vHot;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5);",
+      "  if (r > 0.5) discard;",
+      "  float soft = smoothstep(0.5, 0.0, r);",
+      "  vec3 col = mix(uBase, uHot, vHot);",
+      "  float a = soft * (vBright * 0.95 + vHot);",
+      "  gl_FragColor = vec4(col * a, a);",
+      "}"
+    ].join("\n")
+  });
+
+  var points = new THREE.Points(geo, material);
+  points.frustumCulled = false;
+  group.add(points);
+
+  // -------------------------------------------------------
+  // СМЕНА ФОРМЫ
+  // -------------------------------------------------------
+  var MORPH_TIME = 2.4;     // секунд на перетекание
+  var HOLD_TIME = 6;        // секунд держать форму в авторежиме
+  var current = 0, target = 0, morphStart = -100, nextAuto = HOLD_TIME;
+  var tiltFrom = 0, tiltTo = 0, yawFrom = 0, yawTo = 0;
+  var buttons = [];
+
+  // текущие позиции частиц (на случай смены формы посреди перехода)
+  function snapshot() {
+    var m = uniforms.uMix.value;
+    var from = aFrom.array, to = aTo.array, bf = bFrom.array, bt = bTo.array;
+    for (var i = 0; i < N; i++) {
+      var k = Math.min(Math.max((m - seeds[i] * 0.35) / 0.65, 0), 1);
+      k = k * k * (3 - 2 * k);
+      for (var c = 0; c < 3; c++) from[i * 3 + c] += (to[i * 3 + c] - from[i * 3 + c]) * k;
+      bf[i] += (bt[i] - bf[i]) * k;
+    }
+  }
+
+  function morphTo(index, now) {
+    if (index === target && uniforms.uMix.value >= 1) return;
+    snapshot();
+    var d = SHAPES[index].data;
+    aTo.array.set(d.pos);
+    bTo.array.set(d.br);
+    aFrom.needsUpdate = aTo.needsUpdate = bFrom.needsUpdate = bTo.needsUpdate = true;
+    tiltFrom = group.userData.tilt || 0;
+    tiltTo = SHAPES[index].tilt;
+    yawFrom = group.userData.yaw || 0;
+    yawTo = SHAPES[index].yaw;
+    target = index;
+    morphStart = now;
+    uniforms.uMix.value = 0;
+    buttons.forEach(function (b, i) { b.classList.toggle("on", i === index); });
+  }
+
+  // Публичный вызов для Python: window.chloeShape("Мозг") или window.chloeShape(1)
+  window.chloeShape = function (nameOrIndex) {
+    var i = typeof nameOrIndex === "number" ? nameOrIndex
+      : SHAPES.findIndex(function (s) { return s.name === nameOrIndex; });
+    if (i >= 0) { morphTo(i, clock.getElapsedTime()); nextAuto = Infinity; }
+  };
+
+  var bar = document.getElementById("shapes");
+  SHAPES.forEach(function (s, i) {
+    var b = document.createElement("button");
+    b.textContent = s.name;
+    b.onclick = function () { morphTo(i, clock.getElapsedTime()); nextAuto = clock.getElapsedTime() + HOLD_TIME + MORPH_TIME; };
+    bar.appendChild(b);
+    buttons.push(b);
+  });
+  buttons[0].classList.add("on");
+
+  var nextFlash = 0, flashIndex = 0;
+  function spawnFlash(t) {
+    var i = Math.floor(Math.random() * N);
+    var arr = aTo.array;
+    flashData[flashIndex].set(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2], t);
+    flashIndex = (flashIndex + 1) % FLASHES;
+  }
+
+  // -------------------------------------------------------
+  // РАЗМЕР
+  // -------------------------------------------------------
+  function resize() {
+    var w = Math.max(wrap.clientWidth, 1);
+    var h = Math.max(wrap.clientHeight, 1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.position.z = w / h < 0.8 ? 5.4 : 4.5;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // -------------------------------------------------------
+  // УПРАВЛЕНИЕ ПАЛЬЦЕМ И МЫШЬЮ + ИНЕРЦИЯ
+  // -------------------------------------------------------
+  var dragging = false, lx = 0, ly = 0, offY = 0, offX = 0, vY = 0, vX = 0;
+  var el = renderer.domElement;
+  el.addEventListener("pointerdown", function (e) {
+    dragging = true; lx = e.clientX; ly = e.clientY; vY = 0; vX = 0;
+    wrap.classList.add("drag");
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+  });
+  window.addEventListener("pointerup", function () { dragging = false; wrap.classList.remove("drag"); });
+  el.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    vY = (e.clientX - lx) * 0.008; vX = (e.clientY - ly) * 0.008;
+    lx = e.clientX; ly = e.clientY;
+    offY += vY; offX += vX;
+  });
+
+  // -------------------------------------------------------
+  // АНИМАЦИЯ
+  // -------------------------------------------------------
+  var clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    var t = clock.getElapsedTime();
+
+    if (!dragging) { offY += vY; offX += vX; vY *= 0.95; vX *= 0.95; }
+
+    // авторежим: формы сменяют друг друга по кругу
+    if (t > nextAuto) {
+      morphTo((target + 1) % SHAPES.length, t);
+      nextAuto = t + HOLD_TIME + MORPH_TIME;
+    }
+
+    var m = Math.min(1, (t - morphStart) / MORPH_TIME);
+    uniforms.uMix.value = m;
+    var ease = m * m * (3 - 2 * m);
+    group.userData.tilt = tiltFrom + (tiltTo - tiltFrom) * ease;
+    group.userData.yaw = yawFrom + (yawTo - yawFrom) * ease;
+
+    group.rotation.y = group.userData.yaw + Math.sin(t * 0.25) * 0.7 + offY;
+    group.rotation.x = group.userData.tilt + offX;
+
+    if (t > nextFlash) { spawnFlash(t); nextFlash = t + rnd(0.35, 0.9); }
+
+    uniforms.uTime.value = t;
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>

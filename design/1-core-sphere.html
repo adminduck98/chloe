@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chloe</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #04101a; color: #8fb5c9; font-family: system-ui, sans-serif; }
+  #app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; padding: 12px; box-sizing: border-box; }
+  header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  header b { color: #4fd1ff; font-weight: 500; }
+  header i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3ddc97; margin-right: 6px; }
+  #core { flex: 1; min-height: 0; cursor: grab; touch-action: pan-y; }
+  #core.drag { cursor: grabbing; }
+  input { background: #071a28; border: 1px solid #164a66; border-radius: 8px; padding: 11px 14px; font-size: 13px; color: #dff6ff; outline: none; }
+  input::placeholder { color: #5a8aa3; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><b>Chloe</b><span><i></i>онлайн</span></header>
+  <div id="core"></div>
+  <input id="cmd" placeholder="Скажите «Хлоя» или напишите команду…" autocomplete="off">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var wrap = document.getElementById("core");
+  var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  wrap.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.z = 6.4;
+
+  var CYAN = 0x4fd1ff;
+  var group = new THREE.Group();
+  scene.add(group);
+
+  // сфера из граней: тёмная заливка + тонкая сетка
+  var shell = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.5, 2),
+    new THREE.MeshBasicMaterial({ color: 0x0a2a3d, transparent: true, opacity: 0.7, depthWrite: false })
+  );
+  var mesh = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.5, 2)),
+    new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.55 })
+  );
+
+  // сердцевина и мягкое свечение
+  var core = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xe8fbff })
+  );
+  var halo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.6, 32, 32),
+    new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+
+  // кольцо
+  var ring = new THREE.Mesh(
+    new THREE.TorusGeometry(2.1, 0.016, 8, 160),
+    new THREE.MeshBasicMaterial({ color: CYAN })
+  );
+  ring.rotation.x = 1.15;
+  ring.rotation.y = 0.3;
+
+  group.add(shell, mesh, core, halo, ring);
+
+  // размер под контейнер
+  function resize() {
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // вращение пальцем или мышью, с инерцией
+  var dragging = false, lx = 0, ly = 0, offY = 0, offX = 0, vY = 0, vX = 0;
+  var el = renderer.domElement;
+  el.addEventListener("pointerdown", function (e) {
+    dragging = true; lx = e.clientX; ly = e.clientY; vY = 0; vX = 0;
+    wrap.classList.add("drag");
+  });
+  window.addEventListener("pointerup", function () {
+    dragging = false;
+    wrap.classList.remove("drag");
+  });
+  el.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    vY = (e.clientX - lx) * 0.008;
+    vX = (e.clientY - ly) * 0.008;
+    lx = e.clientX; ly = e.clientY;
+    offY += vY; offX += vX;
+  });
+
+  var t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    if (!dragging) { offY += vY; offX += vX; vY *= 0.95; vX *= 0.95; }
+    mesh.rotation.y = t * 0.2 + offY;
+    mesh.rotation.x = 0.25 + offX;
+    shell.rotation.copy(mesh.rotation);
+    ring.rotation.z = t * 0.3;
+    var p = 1 + 0.08 * Math.sin(t * 2.2);
+    core.scale.setScalar(p);
+    halo.scale.setScalar(p * 1.04);
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>

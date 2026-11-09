@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chloe Core v2</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #04101a;
+    color: #8fb5c9;
+    font-family: system-ui, sans-serif;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  header b { color: #4fd1ff; font-weight: 500; }
+  header i {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #3ddc97;
+    margin-right: 6px;
+    box-shadow: 0 0 10px rgba(61,220,151,.8);
+  }
+  #core {
+    flex: 1;
+    min-height: 0;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  #core.drag { cursor: grabbing; }
+  #core canvas { display: block; width: 100%; height: 100%; }
+  input {
+    background: #071a28;
+    border: 1px solid #164a66;
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 13px;
+    color: #dff6ff;
+    outline: none;
+  }
+  input::placeholder { color: #5a8aa3; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><b>Chloe</b><span><i></i>онлайн</span></header>
+  <div id="core"></div>
+  <input id="cmd" placeholder="Скажите «Хлоя» или напишите команду…" autocomplete="off">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var wrap = document.getElementById("core");
+
+  var renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x000000, 0);
+  wrap.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+
+  var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 0, 6.4);
+
+  var CYAN = 0x4fd1ff;
+  var DEEP = 0x0a2a3d;
+
+  // Главная группа — управляется пальцем/мышью.
+  var group = new THREE.Group();
+  scene.add(group);
+
+  // -------------------------------------------------------
+  // ВНЕШНЯЯ ТЕХНОЛОГИЧЕСКАЯ ОБОЛОЧКА
+  // -------------------------------------------------------
+  var shellGeometry = new THREE.IcosahedronGeometry(1.5, 2);
+
+  var shell = new THREE.Mesh(
+    shellGeometry,
+    new THREE.MeshBasicMaterial({
+      color: DEEP,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false
+    })
+  );
+
+  var outerMesh = new THREE.LineSegments(
+    new THREE.EdgesGeometry(shellGeometry),
+    new THREE.LineBasicMaterial({
+      color: CYAN,
+      transparent: true,
+      opacity: 0.46
+    })
+  );
+
+  // Внутренний слой создаёт глубину, но остаётся минималистичным.
+  var innerGeometry = new THREE.IcosahedronGeometry(1.17, 2);
+  var innerMesh = new THREE.LineSegments(
+    new THREE.EdgesGeometry(innerGeometry),
+    new THREE.LineBasicMaterial({
+      color: CYAN,
+      transparent: true,
+      opacity: 0.18
+    })
+  );
+  innerMesh.rotation.set(0.45, -0.28, 0.12);
+
+  group.add(shell, outerMesh, innerMesh);
+
+  // -------------------------------------------------------
+  // СВЕТЯЩИЕСЯ УЗЛЫ
+  // -------------------------------------------------------
+  var nodes = new THREE.Group();
+  var nodePositions = [
+    [ 0.00,  1.47,  0.00],
+    [ 1.30,  0.62,  0.32],
+    [-1.24,  0.72, -0.25],
+    [ 1.35, -0.52, -0.18],
+    [-1.32, -0.58,  0.22],
+    [ 0.18, -1.45,  0.12]
+  ];
+
+  nodePositions.forEach(function (p, i) {
+    var node = new THREE.Mesh(
+      new THREE.SphereGeometry(i === 0 ? 0.045 : 0.03, 12, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xe8fbff
+      })
+    );
+    node.position.set(p[0], p[1], p[2]);
+    nodes.add(node);
+  });
+  group.add(nodes);
+
+  // -------------------------------------------------------
+  // МНОГОСЛОЙНОЕ AI-ЯДРО
+  // -------------------------------------------------------
+  var coreGroup = new THREE.Group();
+
+  var energyCore = new THREE.Mesh(
+    new THREE.SphereGeometry(0.24, 32, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xf2fdff
+    })
+  );
+
+  var energyLayer = new THREE.Mesh(
+    new THREE.SphereGeometry(0.36, 24, 24),
+    new THREE.MeshBasicMaterial({
+      color: CYAN,
+      transparent: true,
+      opacity: 0.32,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+
+  var energyHalo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.62, 32, 32),
+    new THREE.MeshBasicMaterial({
+      color: CYAN,
+      transparent: true,
+      opacity: 0.075,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+
+  // Тонкая внутренняя орбита вокруг самого ядра.
+  var coreRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.48, 0.008, 6, 96),
+    new THREE.MeshBasicMaterial({
+      color: CYAN,
+      transparent: true,
+      opacity: 0.65
+    })
+  );
+  coreRing.rotation.x = 1.15;
+  coreRing.rotation.y = 0.45;
+
+  coreGroup.add(energyHalo, energyLayer, energyCore, coreRing);
+  group.add(coreGroup);
+
+  // -------------------------------------------------------
+  // ГЛАВНАЯ ОРБИТА
+  // -------------------------------------------------------
+  var orbitGroup = new THREE.Group();
+
+  var ring = new THREE.Mesh(
+    new THREE.TorusGeometry(2.1, 0.014, 8, 160),
+    new THREE.MeshBasicMaterial({
+      color: CYAN,
+      transparent: true,
+      opacity: 0.82
+    })
+  );
+  // Наклон орбиты задаётся группой, чтобы спутник шёл ровно по кольцу.
+  var orbitTilt = new THREE.Group();
+  orbitTilt.rotation.set(1.15, 0.30, 0);
+
+  // Маленький объект на орбите делает движение более живым.
+  var satellite = new THREE.Mesh(
+    new THREE.SphereGeometry(0.045, 12, 12),
+    new THREE.MeshBasicMaterial({
+      color: 0xe8fbff
+    })
+  );
+
+  orbitTilt.add(ring, satellite);
+  orbitGroup.add(orbitTilt);
+  group.add(orbitGroup);
+
+  // Мягкий свет без тяжёлых эффектов.
+  var ambient = new THREE.AmbientLight(0x4fd1ff, 0.35);
+  scene.add(ambient);
+
+  // -------------------------------------------------------
+  // РАЗМЕР
+  // -------------------------------------------------------
+  function resize() {
+    var w = Math.max(wrap.clientWidth, 1);
+    var h = Math.max(wrap.clientHeight, 1);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+
+  window.addEventListener("resize", resize);
+  resize();
+
+  // -------------------------------------------------------
+  // УПРАВЛЕНИЕ ПАЛЬЦЕМ И МЫШЬЮ + ИНЕРЦИЯ
+  // -------------------------------------------------------
+  var dragging = false;
+  var lx = 0, ly = 0;
+  var offY = 0, offX = 0;
+  var vY = 0, vX = 0;
+
+  var el = renderer.domElement;
+
+  el.addEventListener("pointerdown", function (e) {
+    dragging = true;
+    lx = e.clientX;
+    ly = e.clientY;
+    vY = 0;
+    vX = 0;
+    wrap.classList.add("drag");
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+  });
+
+  window.addEventListener("pointerup", function () {
+    dragging = false;
+    wrap.classList.remove("drag");
+  });
+
+  el.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+
+    vY = (e.clientX - lx) * 0.008;
+    vX = (e.clientY - ly) * 0.008;
+
+    lx = e.clientX;
+    ly = e.clientY;
+
+    offY += vY;
+    offX += vX;
+  });
+
+  // -------------------------------------------------------
+  // АНИМАЦИЯ
+  // -------------------------------------------------------
+  var clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    var t = clock.getElapsedTime();
+
+    // Инерция после отпускания.
+    if (!dragging) {
+      offY += vY;
+      offX += vX;
+      vY *= 0.95;
+      vX *= 0.95;
+    }
+
+    // Внешняя оболочка.
+    outerMesh.rotation.y = t * 0.16 + offY;
+    outerMesh.rotation.x = 0.25 + offX;
+    shell.rotation.copy(outerMesh.rotation);
+
+    // Внутренний слой движется немного иначе — появляется глубина.
+    innerMesh.rotation.y = -t * 0.10 + offY * 0.72;
+    innerMesh.rotation.x = 0.45 + offX * 0.72;
+
+    nodes.rotation.copy(outerMesh.rotation);
+
+    // "Дыхание" центрального AI-ядра.
+    var pulse = 1 + 0.07 * Math.sin(t * 2.1);
+    energyCore.scale.setScalar(pulse);
+    energyLayer.scale.setScalar(1 + 0.11 * Math.sin(t * 2.1));
+    energyHalo.scale.setScalar(1 + 0.18 * Math.sin(t * 2.1));
+
+    // Лёгкое вращение внутренней системы.
+    coreGroup.rotation.y = t * 0.32;
+    coreRing.rotation.z = -t * 0.65;
+
+    // Орбита живёт отдельно от сферы.
+    orbitGroup.rotation.z = t * 0.18;
+    orbitGroup.rotation.y = Math.sin(t * 0.35) * 0.18;
+
+    // Спутник движется по главной орбите.
+    var a = t * 0.75;
+    satellite.position.set(
+      Math.cos(a) * 2.1,
+      Math.sin(a) * 2.1,
+      0
+    );
+
+    // Очень мягкое изменение яркости узлов.
+    nodes.children.forEach(function (node, i) {
+      var s = 0.85 + 0.35 * Math.sin(t * 1.7 + i);
+      node.scale.setScalar(s);
+    });
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+})();
+</script>
+</body>
+</html>

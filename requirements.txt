@@ -1,0 +1,31 @@
+anthropic
+pywebview
+SpeechRecognition
+PyAudio
+edge-tts
+pygame
+pyttsx3
+pyautogui
+pyperclip
+Pillow
+PyYAML  # шапки навыков (SKILL.md); без него работает и встроенный разбор
+requests
+brotli>=1.2  # системный brotli 1.1 ломает ответы Claude (httpx2: process() takes no keyword arguments)
+ddgs
+Send2Trash
+google-genai
+openai  # Qwen (QwenCloud) и DeepSeek — OpenAI-совместимые API
+piper-tts
+vosk
+telethon
+# для навыков Anthropic (pdf, docx, xlsx, pptx)
+pypdf
+pdfplumber
+pypdfium2
+reportlab
+python-docx
+openpyxl
+python-pptx
+pandas
+qrcode  # QR-код для телефона-пульта
+miniaudio  # голос потоком: говорить с первого кусочка звука
