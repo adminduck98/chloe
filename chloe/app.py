@@ -394,7 +394,7 @@ def main():
         return
     voice.enabled = not args.text
     if voice.enabled:
-        if config.TTS != "svetlana":   # в режиме «только Светлана» офлайн-голос не нужен
+        if config.TTS in ("piper", "edge"):   # Ирина нужна только там, где она основной или запасной голос
             threading.Thread(target=voice.load_piper, daemon=True).start()   # модель голоса грузится, пока открывается окно
         if config.WAKE_OFFLINE:
             threading.Thread(target=ears.load, daemon=True).start()
