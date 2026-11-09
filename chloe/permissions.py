@@ -26,7 +26,7 @@ STRICT = {"allow": 0, "ask": 1, "block": 2}
 # ключ: (название, что входит, инструменты, уровень по умолчанию — как Chloe работала до карты прав)
 CATEGORIES = {
     "screen":       ("Экран", "скриншоты и постоянное зрение", {"screenshot", "vision"}, "allow"),
-    "files_read":   ("Файлы: чтение", "читать, искать, открывать файлы и папки", {"read_text_file", "list_folder", "search_files", "open_path"}, "allow"),
+    "files_read":   ("Файлы: чтение", "читать, искать, открывать файлы и папки", {"read_text_file", "list_folder", "search_files", "open_path", "transcribe_audio"}, "allow"),
     "files_change": ("Файлы: изменение", "создавать, менять, перемещать, удалять", {"write_text_file", "create_folder", "move_path", "copy_path", "delete_path", "undo_change"}, "allow"),
     "commands":     ("Команды", "команды терминала", {"run_command"}, "allow"),
     "control":      ("Мышь и клавиатура", "клики, печать, клавиши, окна, буфер обмена", {"mouse_click", "type_text", "press_keys", "scroll", "window", "clipboard"}, "allow"),
