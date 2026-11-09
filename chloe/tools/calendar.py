@@ -123,6 +123,10 @@ def tool_calendar(a):
             return "Удалила из календаря: " + describe(ev).rsplit(" [id", 1)[0]
     except gc.NotConnected as e:
         return "Календарь: {}.".format(e)
+    except RuntimeError as e:                     # ошибка от Google: API выключен, нет прав и т.п.
+        return "{} — не получилось.".format(str(e).split(". ")[0])
+    except gc.requests.RequestException:
+        return "Google Calendar не отвечает — нет связи."
     except ValueError:
         return "Дата не понята — нужен формат 2026-11-10 или 2026-11-10T15:00."
     return "Неизвестное действие: " + action

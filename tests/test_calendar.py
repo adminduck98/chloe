@@ -144,6 +144,11 @@ class Events(unittest.TestCase):
             out, _, _ = run_tool("calendar", {"action": "delete", "id": "a"})
         dele.assert_called_once_with("a")
 
+    def test_google_error_is_said_not_crashed(self):
+        with mock.patch.object(gc, "events", side_effect=RuntimeError("Google Calendar: API disabled. Enable it")):
+            out, _, _ = run_tool("calendar", {"action": "list"})
+        self.assertIn("API disabled", out)
+
     def test_permission_map_can_block(self):
         self.addCleanup(permissions.set_level, "calendar", "allow")
         permissions.set_level("calendar", "block")
