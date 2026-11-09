@@ -1,4 +1,5 @@
 """Программы, сайты, команды терминала и сведения о системе."""
+import html
 import json
 import os
 import platform
@@ -90,8 +91,32 @@ def read_only(cmd):
     return bool(rest) and rest[0] in sub
 
 
+ENTITY = re.compile(r"&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);")
+PROJECT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SELF_START = re.compile(r"(?:^|[\s/;&|(`])(?:start\.sh|run\.py)(?=$|[\s;&|)`])")
+
+
+def clean_command(cmd):
+    """Текст, прочитанный с экрана или из веба, приходит с HTML-кодами: &amp;&amp; вместо &&."""
+    return html.unescape(cmd) if ENTITY.search(cmd) else cmd
+
+
+def starts_chloe(cmd):
+    """Команда запускает саму Chloe (start.sh / run.py этого проекта) — получилась бы вторая Хлоя."""
+    if not SELF_START.search(cmd):
+        return False
+    low = cmd.lower()
+    if "chloe" in low or PROJECT.lower() in low:
+        return True
+    return "cd " not in low and os.path.abspath(os.getcwd()) == PROJECT   # ./start.sh из папки Chloe
+
+
 def tool_run_command(a):
-    cmd = a["command"]
+    cmd = clean_command(a["command"])
+    if starts_chloe(cmd):
+        return ("Не запускаю: это моя собственная команда запуска — получилась бы вторая Хлоя, и обе слушали бы "
+                "микрофон. Я уже работаю. Если нужно перезапустить меня, пусть пользователь закроет окно и запустит "
+                "./start.sh в терминале сам.")
     if read_only(cmd):
         print("[команда только читает — без вопроса]")
     elif not confirm("Выполнить команду: " + cmd + "?"):
