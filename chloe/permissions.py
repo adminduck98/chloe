@@ -34,6 +34,7 @@ CATEGORIES = {
     "telegram":     ("Telegram", "читать и отправлять сообщения", {"tg_read", "tg_unread", "tg_send"}, "allow"),
     "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now"}, "allow"),
     "knowledge":    ("База знаний", "изучать документы и отвечать по ним", {"learn_document", "ask_knowledge", "list_knowledge", "forget_document"}, "allow"),
+    "projects":     ("Проекты", "задачи, решения и состояние проектов (git, GitHub)", {"projects", "project_overview", "project_task", "project_note"}, "allow"),
     "power":        ("Питание", "выключение, перезагрузка, сон, блокировка", {"power"}, "allow"),   # выключение и так спрашивает
 }
 TOOL_CATEGORY = {t: key for key, (_, _, tools, _) in CATEGORIES.items() for t in tools}
