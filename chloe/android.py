@@ -57,7 +57,7 @@ def run(args, timeout=TIMEOUT, binary=False, serial=None):
     err = p.stderr.decode("utf-8", "replace")
     if p.returncode != 0 or "SecurityException" in err or (not binary and "SecurityException" in out):
         text = err + ("" if binary else out)
-        if "INJECT_EVENTS" in text:
+        if "INJECT_EVENTS" in text or "WRITE_SECURE_SETTINGS" in text:
             raise PhoneError("телефон запрещает нажатия: на Xiaomi включите «Для разработчиков» → "
                              "«Отладка по USB (настройки безопасности)»")
         if "unauthorized" in text:

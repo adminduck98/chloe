@@ -123,6 +123,14 @@ class Errors(unittest.TestCase):
                 android.run(["shell", "input", "tap", "1", "1"])
         self.assertIn("настройки безопасности", str(e.exception))
 
+    def test_keyboard_switch_blocked_explained(self):
+        with mock.patch("shutil.which", return_value="/usr/bin/adb"), \
+             mock.patch("subprocess.run", return_value=self.proc(err=b"java.lang.SecurityException: uid 2000 does not have "
+                                                                      b"android.permission.WRITE_SECURE_SETTINGS.", code=255)):
+            with self.assertRaises(android.PhoneError) as e:
+                android.run(["shell", "ime", "set", android.ADB_IME])
+        self.assertIn("настройки безопасности", str(e.exception))
+
     def test_no_phone(self):
         with mock.patch.object(android, "run", return_value="List of devices attached\n\n"):
             out = phone.tool_phone({"action": "status"})
