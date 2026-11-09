@@ -652,10 +652,10 @@
   coreGroup.add(coreGlow); coreGroup.add(coreHeart);
 
   var LAYERS = [
-    { key: "think", name: "Мышление", r: 0.25, tilt: [0.35, 0, 0.1],  color: 0xff7777, n: 120, act: 0, phase: 0, opens: "core" },
-    { key: "mem",   name: "Память",   r: 0.34, tilt: [1.2, 0.4, 0],  color: 0xe6e6e6, n: 150, act: 0, phase: 1, opens: "memory" },
-    { key: "proc",  name: "Процессы", r: 0.43, tilt: [-0.5, 0.9, 0.3], color: 0xcacaca, n: 180, act: 0, phase: 2, opens: "journal" },
-    { key: "data",  name: "Данные",   r: 0.52, tilt: [0.9, -0.7, 0.5], color: 0x9a9a9a, n: 210, act: 0, phase: 3, opens: "files" }
+    { key: "think", name: "Мышление", r: 0.25, tilt: [0.35, 0, 0.1],  color: 0xff7777, n: 360, act: 0, phase: 0, opens: "core" },
+    { key: "mem",   name: "Память",   r: 0.34, tilt: [1.2, 0.4, 0],  color: 0xe6e6e6, n: 420, act: 0, phase: 1, opens: "memory" },
+    { key: "proc",  name: "Процессы", r: 0.43, tilt: [-0.5, 0.9, 0.3], color: 0xcacaca, n: 480, act: 0, phase: 2, opens: "journal" },
+    { key: "data",  name: "Данные",   r: 0.52, tilt: [0.9, -0.7, 0.5], color: 0x9a9a9a, n: 540, act: 0, phase: 3, opens: "files" }
   ];
   LAYERS.forEach(function (L) {
     var holder = new THREE.Object3D();
@@ -665,7 +665,7 @@
     var circ = [];
     for (var i = 0; i <= 96; i++) { var a = i / 96 * Math.PI * 2; circ.push(new THREE.Vector3(Math.cos(a) * L.r, 0, Math.sin(a) * L.r)); }
     var line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(circ), new THREE.LineBasicMaterial({
-      color: L.color, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false }));
+      color: L.color, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false }));
     holder.add(line);
     // частицы, бегущие по орбите
     var ang = new Float32Array(L.n), off = new Float32Array(L.n), pos = new Float32Array(L.n * 3);
@@ -683,13 +683,17 @@
         "attribute float aAng; attribute float aOff; varying float vA;",
         "void main() {",
         "  float a = aAng + uPhase * (0.8 + 0.4 * aOff);",
-        "  float r = uR * (1.0 + (aOff - 0.5) * 0.08);",
-        "  vec3 p = vec3(cos(a) * r, (aOff - 0.5) * 0.02 + 0.006 * sin(uTime * 2.0 + aOff * 30.0), sin(a) * r);",
-        // яркие «пакеты» — сгустки частиц, бегущие по кругу; при работе их больше
-        "  float packet = pow(0.5 + 0.5 * sin(a * 3.0 - uPhase * 2.0), 6.0);",
-        "  vA = (0.22 + 0.7 * uAct) * (0.35 + 0.65 * packet);",
+        "  float r = uR * (1.0 + (aOff - 0.5) * 0.05);",
+        "  vec3 p = vec3(cos(a) * r, (aOff - 0.5) * 0.012 + 0.004 * sin(uTime * 2.0 + aOff * 30.0), sin(a) * r);",
+        // кометы: яркая голова и плавно гаснущий хвост позади неё; при работе комет больше и они ярче
+        "  float wave = fract((a - uPhase * 2.0 / 3.0) * 3.0 / 6.2831853);",
+        "  float comet = pow(wave, 5.0) * (1.0 - smoothstep(0.97, 1.0, wave));",
+        // объём: передняя половина кольца ярче задней
         "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
-        "  gl_PointSize = min((1.4 + 1.6 * packet * (0.4 + uAct)) * uPixel * (4.5 / -mv.z), 9.0 * uPixel);",
+        "  vec4 mc = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);",
+        "  float front = smoothstep(-1.0, 1.0, (mv.z - mc.z) / uR);",
+        "  vA = (0.5 + 0.5 * uAct) * (0.6 + 1.2 * comet) * (0.3 + 0.7 * front);",
+        "  gl_PointSize = min((2.4 + 4.0 * comet * (0.5 + uAct)) * uPixel * (4.5 / -mv.z), 14.0 * uPixel);",
         "  gl_Position = projectionMatrix * mv;",
         "}"
       ].join("\n"),
@@ -697,8 +701,8 @@
         "uniform vec3 uColor; uniform float uBright; varying float vA;",
         "void main() {",
         "  float r = length(gl_PointCoord - 0.5); if (r > 0.5) discard;",
-        "  float a = smoothstep(0.5, 0.0, r) * vA * uBright;",
-        "  gl_FragColor = vec4(uColor * a, a);",
+        "  float a = smoothstep(0.5, 0.0, r) * vA * uBright;",   // мягкая светящаяся точка
+        "  gl_FragColor = vec4(mix(uColor, vec3(1.0), 0.15) * a, a);",
         "}"
       ].join("\n")
     }));
@@ -740,7 +744,7 @@
       L.phase += dt * (0.12 + 1.6 * L.act) * awake * (i % 2 ? -1 : 1);
       L.uni.uPhase.value = L.phase;
       L.uni.uAct.value = approach(L.uni.uAct.value, L.act, 4, dt);
-      L.line.material.opacity = 0.12 + 0.3 * L.uni.uAct.value;
+      L.line.material.opacity = 0.03 * L.uni.uAct.value;   // кольцо рисует свет частиц; линия — лишь тонкий след при работе
       L.holder.rotation.y += dt * 0.05 * (i + 1) * awake;
     });
     // сердцебиение ядра: два удара и пауза; при работе — чаще
