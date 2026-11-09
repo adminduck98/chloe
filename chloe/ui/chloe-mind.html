@@ -547,14 +547,14 @@
 
   var shellUniforms = {
     uTime: common.uTime, uPixel: common.uPixel, uBright: common.uBright,
-    uTw: { value: 0 }, uEnergy: { value: 0.3 }, uListen: { value: 0 },
+    uTw: { value: 0 }, uEnergy: { value: 0.3 }, uListen: { value: 0 }, uVoice: { value: 0 },
     uFlash: { value: flashData }, uWave: { value: waveData },
     uBase: { value: SHELL_BASE.clone() }, uHot: { value: new THREE.Color(0xe6e6e6) }
   };
   var shell = new THREE.Points(shellGeo, new THREE.ShaderMaterial({
     uniforms: shellUniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: [
-      "uniform float uTime; uniform float uTw; uniform float uEnergy; uniform float uListen; uniform float uPixel;",
+      "uniform float uTime; uniform float uTw; uniform float uEnergy; uniform float uListen; uniform float uPixel; uniform float uVoice;",
       "uniform vec4 uFlash[" + FLASHES + "];",
       "uniform float uWave[" + WAVES + "];",
       "attribute float aBright; attribute float aSeed;",
@@ -581,8 +581,8 @@
       "    float front = age * " + WAVE_SPEED + ";",
       "    if (age > 0.0 && front < 1.9) {",
       "      float k = exp(-pow((front - 1.25) / 0.22, 2.0)) * (1.0 - front / 1.9);",
-      "      p += n * k * 0.05;",
-      "      hot += k * 0.25;",
+      "      p += n * k * (0.05 + 0.07 * uVoice);",   // волна голоса: чем громче речь, тем выше и ярче
+      "      hot += k * (0.25 + 0.4 * uVoice);",
       "    }",
       "  }",
       "  vBright = aBright * (0.94 + 0.06 * sin(uTw*(1.0+aSeed*2.0)+aSeed*40.0)) * (1.0 + uListen * 0.6);",
@@ -773,7 +773,7 @@
     breath.ph += dt * (0.55 + 0.25 * mood.think - 0.25 * mood.sleep) * Math.PI * 2 / 4;
     var b = Math.sin(breath.ph) * (0.011 + 0.006 * mood.sleep);
     cortexUniforms.uBreath.value = b;
-    shell.scale.setScalar(1 + b);
+    shell.scale.setScalar(1 + b + 0.016 * voice.chloe * mood.speak + 0.008 * voice.user * mood.listen);   // в такт голосу
   }
 
   var DUST = 500;
@@ -927,9 +927,8 @@
   somaGeo.setAttribute("position", new THREE.BufferAttribute(somaPos, 3));
   somaGeo.setAttribute("aId", new THREE.BufferAttribute(somaId, 1));
   somaGeo.setDrawRange(0, 0);
-  var somaPoints = new THREE.Points(somaGeo, new THREE.ShaderMaterial({
-    uniforms: common, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: [
+  var somaVS = [
+      "uniform float uGlowK;",   // 0 — тело нейрона, 1 — проход свечения (крупнее и мягче); в материале тела не задан — 0
       "uniform float uTime; uniform float uPixel; uniform float uProj; uniform float uScaleW; uniform float uDens; uniform float uZoom;",
       "uniform float uDrift; uniform float uSpeak; uniform float uChloe; uniform float uThink; uniform float uSleep; uniform float uSearchOn; uniform float uDeep;",
       "uniform sampler2D uNeur; uniform sampler2D uNeur2;",
@@ -957,10 +956,17 @@
       "  vMul = e.z * crowdF(0.3, uDens, uZoom) * searchF(uSearchOn, e.y) * (1.0 - 0.35 * uSleep) * min(2.2, 1.0 / (tight * tight));",
       "  vec3 p = position + driftOf(aId, uTime, uDrift);",
       "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
-      "  gl_PointSize = e.z < 0.01 ? 0.0 : min(size * uScaleW * uProj / -mv.z, 140.0 * uPixel);",
+      // свечение: спокойная клетка — едва заметный ореол, работающая — широкий; совсем тусклые ореол не рисуют (бережём видеокарту)
+      "  float act = clamp(vGlow + vErr + found, 0.0, 1.0);",
+      "  size *= 1.0 + uGlowK * (0.9 + 1.1 * act);",
+      "  float off = uGlowK * step(vMul * vDim * (0.08 + act), 0.02);",
+      "  gl_PointSize = (e.z < 0.01 || off > 0.5) ? 0.0 : min(size * uScaleW * uProj / -mv.z, (140.0 + 120.0 * uGlowK) * uPixel);",
       "  gl_Position = projectionMatrix * mv;",
       "}"
-    ].join("\n"),
+    ].join("\n");
+  var somaPoints = new THREE.Points(somaGeo, new THREE.ShaderMaterial({
+    uniforms: common, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: somaVS,
     fragmentShader: [
       "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uHotC; uniform vec3 uErrC;",
       "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
@@ -980,6 +986,24 @@
     ].join("\n")
   }));
   somaPoints.frustumCulled = false;
+  // мягкое свечение вокруг нейронов: та же геометрия, крупные полупрозрачные точки под телами
+  var somaGlow = new THREE.Points(somaGeo, new THREE.ShaderMaterial({
+    uniforms: Object.assign({}, common, { uGlowK: { value: 1 } }), transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, vertexShader: somaVS,
+    fragmentShader: [
+      "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uErrC; uniform float uBright;",
+      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
+      "void main() {",
+      "  float r = length(gl_PointCoord - 0.5) * 2.0;",
+      "  if (r > 1.0) discard;",
+      "  vec3 base = mix(vType > 0.5 ? uMem : uSkill, uErrC, vErr);",
+      "  float a = exp(-r * r * 5.0) * (1.0 - r) * (0.5 + 0.5 * vGlow + 0.4 * vErr) * vDim * vMul * uBright;",
+      "  gl_FragColor = vec4(mix(base, vec3(1.0), 0.12) * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  somaGlow.frustumCulled = false;
+  somaGlow.renderOrder = -1;
 
   // --- дендриты ---
   var DV = MAX_N * DEND_MAX * 2;
@@ -1114,10 +1138,11 @@
   axMesh.frustumCulled = false;
   group.add(axMesh);
   group.add(dendLines);
+  group.add(somaGlow);
   group.add(somaPoints);
 
   // --- сигналы: цветные огоньки со шлейфом ---
-  var MAX_S = 800, TRAIL = 4;
+  var MAX_S = 800, TRAIL = 12;   // точек в шлейфе импульса: голова и плавно гаснущий хвост
   var sigGeo = new THREE.BufferGeometry();
   var sigPos = new Float32Array(MAX_S * TRAIL * 3), sigA = new Float32Array(MAX_S * TRAIL), sigCol = new Float32Array(MAX_S * TRAIL * 3);
   sigGeo.setAttribute("position", new THREE.BufferAttribute(sigPos, 3));
@@ -1132,7 +1157,7 @@
       "void main() {",
       "  vA = aA; vCol = aCol;",
       "  vec4 mv = modelViewMatrix * vec4(position, 1.0);",
-      "  gl_PointSize = min(0.1 * (0.5 + 0.5 * aA) * (0.5 + 0.5 * uDens) * uScaleW * uProj / -mv.z, 40.0);",
+      "  gl_PointSize = min(0.12 * (0.3 + 0.7 * aA) * (0.5 + 0.5 * uDens) * uScaleW * uProj / -mv.z, 44.0);",
       "  gl_Position = projectionMatrix * mv;",
       "}"
     ].join("\n"),
@@ -1142,7 +1167,8 @@
       "  float r = length(gl_PointCoord - 0.5) * 2.0;",
       "  if (r > 1.0) discard;",
       "  float a = (0.75 * exp(-r * r * 8.0) + 0.3 * exp(-r * r * 2.5)) * vA;",
-      "  gl_FragColor = vec4(vCol * a, a);",
+      "  float spark = smoothstep(0.75, 1.0, vA) * exp(-r * r * 16.0);",   // голова импульса — белая искра
+      "  gl_FragColor = vec4(mix(vCol, vec3(1.0), spark * 0.7) * a, a);",
       "}"
     ].join("\n")
   }));
@@ -2918,6 +2944,7 @@
     shellGeo.setDrawRange(0, [5000, 9000, SN][level]);
     dustGeo.setDrawRange(0, [150, 300, DUST][level]);
     dendLines.visible = level > 0;
+    somaGlow.visible = level > 0;   // свечение нейронов — только когда компьютер тянет
     axLod(level);
     haze.forEach(function (h) { h.visible = level > 0; });
     resize();
@@ -3317,6 +3344,8 @@
       var syl = 0.5 + 0.5 * Math.sin(t * 13) * Math.sin(t * 5.3 + 1);
       voice.chloe = approach(voice.chloe, 0.35 + 0.65 * syl, 12, dt);
       if (t > nextWave) { emitWave(t); nextWave = t + 0.45 - 0.2 * voice.chloe; }
+    } else if (STATE.name === "listening" && voice.user > 0.1 && t > nextWave) {
+      emitWave(t); nextWave = t + 0.75 - 0.25 * voice.user;   // вы говорите — по сфере тоже идут волны, реже и мягче
     }
 
     // мозг растёт вместе с опытом; камера
@@ -3388,10 +3417,11 @@
     for (var q = 0; q < signals.length; q++) {
       var sq = signals[q];
       for (var tr = 0; tr < TRAIL; tr++) {
-        var tt = clamp(sq.t - sq.dir * tr * 0.016, 0, 1);
+        var tt = clamp(sq.t - sq.dir * tr * 0.011, 0, 1);
         linkPoint(sq.link, tt, t, tmpP);
         sigPos[cnt * 3] = tmpP.x; sigPos[cnt * 3 + 1] = tmpP.y; sigPos[cnt * 3 + 2] = tmpP.z;
-        sigA[cnt] = 0.85 * (1 - tr / TRAIL) * sq.alpha;
+        var fade = 1 - tr / TRAIL;
+        sigA[cnt] = (tr === 0 ? 1 : 0.8 * fade * fade) * sq.alpha;   // хвост гаснет плавно, голова — яркая
         sigCol[cnt * 3] = sq.color.r; sigCol[cnt * 3 + 1] = sq.color.g; sigCol[cnt * 3 + 2] = sq.color.b;
         cnt++;
       }
@@ -3440,6 +3470,7 @@
     common.uSleep.value = mood.sleep;
     shellUniforms.uEnergy.value = 0.3 + 0.35 * mood.think + 0.15 * mood.speak - 0.15 * mood.sleep;
     shellUniforms.uListen.value = voice.user * (0.4 + 0.6 * mood.listen);
+    shellUniforms.uVoice.value = Math.max(voice.chloe * mood.speak, 0.6 * voice.user * mood.listen);
     renderer.render(scene, camera);
     perf.js = perf.js * 0.95 + (performance.now() - nowMs) * 0.05;
   }
