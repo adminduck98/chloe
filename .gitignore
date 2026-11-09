@@ -7,3 +7,4 @@ __pycache__/
 .env
 *.db
 .claude/
+.DEEPSEEK_API_KEY*
