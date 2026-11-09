@@ -82,8 +82,9 @@ LANG = os.environ.get("CHLOE_LANG", "ru-RU")                     # для узб
 VOICE = os.environ.get("CHLOE_VOICE", "ru-RU-SvetlanaNeural")    # голос edge-tts: Светлана (русский, Microsoft)
 VOICES = [VOICE]   # если Светлана не отвечает, Chloe говорит офлайн-голосом Piper (тоже женским), а не мужским Дмитрием
 TTS = os.environ.get("CHLOE_TTS") or ("qwen" if QWEN_KEY else "edge")                         # edge — Светлана (Microsoft, онлайн); piper — офлайн и быстрее; svetlana — только Светлана, без запасных; qwen — голос Qwen (запасной — Светлана)
-# слух: qwen — распознавание Qwen (лучше с английскими названиями посреди русской речи), запасной — Google; google — только Google
-ASR = os.environ.get("CHLOE_ASR") or ("qwen" if QWEN_KEY else "google")
+# слух: google — быстрее (0,6–1,5 с); qwen — точнее с английскими названиями посреди русской речи, но 2–4,5 с
+# и спрашивается вместе с Google (ждём его не дольше CHLOE_QWEN_ASR_WAIT). По умолчанию — скорость.
+ASR = os.environ.get("CHLOE_ASR", "google")
 PIPER_VOICE = os.environ.get("CHLOE_PIPER_VOICE", "ru_RU-irina-medium")   # русские: irina (жен.), denis, dmitri, ruslan
 VOICES_DIR = DATA / "voices"                                       # модели Piper
 EARS_DIR = DATA / "ears"                                           # офлайн-слух Vosk: слово «Хлоя» без интернета

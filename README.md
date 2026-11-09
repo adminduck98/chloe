@@ -71,7 +71,7 @@ python run.py --text        # без микрофона, с клавиатуры
 | `CHLOE_MODEL` | — | одна модель на всё, без переключения; если модель перегружена, Chloe сама берёт запасную; `+thinking` — та же модель Qwen с раздумьями |
 | `CHLOE_LANG` | `ru-RU` | язык распознавания (`uz-UZ`, `en-US`) |
 | `CHLOE_TTS` | `qwen`, если есть ключ Qwen, иначе `edge` | `edge` — Светлана (Microsoft, нужен интернет); `piper` — офлайн-голос, озвучка за доли секунды; `svetlana` — только Светлана: без интернета Chloe молчит, ответ виден в окне; `qwen` — голос Qwen (`CHLOE_QWEN_VOICE`, по умолчанию `longanlingxin`), не ответил — Светлана |
-| `CHLOE_ASR` | `qwen`, если есть ключ Qwen, иначе `google` | слух: `qwen` — распознавание Qwen (лучше с английскими названиями посреди русской речи), спрашивается вместе с Google; Qwen ждём `CHLOE_QWEN_ASR_WAIT` = 3,5 с, потом берём Google |
+| `CHLOE_ASR` | `google` | слух: `google` — быстрее (0,6–1,5 с); `qwen` — распознавание Qwen (2–4,5 с) (лучше с английскими названиями посреди русской речи), спрашивается вместе с Google; Qwen ждём `CHLOE_QWEN_ASR_WAIT` = 3,5 с, потом берём Google |
 | `CHLOE_VOICE` | `ru-RU-SvetlanaNeural` | голос Microsoft, например `en-US-AvaMultilingualNeural` (многоязычная Ava) или `uz-UZ-MadinaNeural` |
 | `CHLOE_STREAM_VOICE` | `on` | `on` — Светлана начинает говорить с первого кусочка звука, не дожидаясь всей фразы (нужен `miniaudio`); `off` — целым файлом, как раньше |
 | `CHLOE_PIPER_VOICE` | `ru_RU-irina-medium` | офлайн-голос: запасной, когда Microsoft не отвечает, или основной при `CHLOE_TTS=piper`; русские: irina (жен.), denis, dmitri, ruslan |
