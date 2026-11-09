@@ -372,17 +372,22 @@ def voice_mp3(text, timeout=60):
 voice = Voice(enabled=True)
 
 
+LONG_WORDS = 8          # после стольких слов речь считается длинной: ждём паузу дольше — человек может задуматься
+LONG_PAUSE_EXTRA = 0.8  # секунды к PAUSE для длинной речи; короткие команды по-прежнему отвечают быстро
+
+
 def finish_speech(text):
     """Ждёт, пока человек договорит: части, сказанные с паузами, склеиваются в одну просьбу.
-    Конец — когда тишина длится дольше PAUSE и всё записанное уже распознано."""
-    deadline = time.time() + PHRASE_LIMIT
+    Конец — когда тишина длится дольше PAUSE (у длинной речи — чуть дольше) и всё записанное уже распознано."""
+    deadline = time.time() + max(PHRASE_LIMIT, CONTINUE_MAX)
     while time.time() < deadline:
         try:
             text += " " + heard_q.get(timeout=0.2)
             continue
         except queue.Empty:
             pass
-        still_talking = time.time() - voice.last_loud < PAUSE
+        pause = PAUSE + (LONG_PAUSE_EXTRA if len(words(text)) >= LONG_WORDS else 0)
+        still_talking = time.time() - voice.last_loud < pause
         if not still_talking and audio_q.empty() and not voice.recognizing:
             break
     return text
@@ -398,7 +403,7 @@ def recorder():
             time.sleep(2)
 
 
-CONTINUE_MAX = 20    # секунды: самая длинная просьба после слова «Хлоя» (с паузами)
+CONTINUE_MAX = float(os.environ.get("CHLOE_CONTINUE", "60"))   # секунды: самая длинная просьба после «Хлоя» (с паузами)
 SHORT_PHRASE = 2.5   # секунды: короткую фразу, сказанную пока Chloe работает, проверяем в Google — вдруг это «стоп»
 
 
@@ -448,7 +453,7 @@ def open_continuation(now=None):
     now = now or time.time()
     if voice.reason in ("wake", "window"):
         voice.open_origin = now
-    voice.open_until = min(now + PAUSE + 1.5, voice.open_origin + CONTINUE_MAX)
+    voice.open_until = min(now + PAUSE + LONG_PAUSE_EXTRA + 1.5, voice.open_origin + CONTINUE_MAX)
     voice.reason = ""
 
 

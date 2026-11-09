@@ -96,7 +96,7 @@ class ListenerTest(unittest.TestCase):
 
 
 class FinishSpeechTest(unittest.TestCase):
-    def run_script(self, script):
+    def run_script(self, script, start="открой папку"):
         drain(heard_q)
         voice.last_loud = time.time() - 0.2
 
@@ -110,7 +110,7 @@ class FinishSpeechTest(unittest.TestCase):
 
         feeder = threading.Thread(target=feed, daemon=True)
         feeder.start()
-        result = finish_speech("открой папку")
+        result = finish_speech(start)
         feeder.join()   # опоздавшая часть не должна попасть в следующий тест
         drain(heard_q)
         return result
@@ -119,6 +119,16 @@ class FinishSpeechTest(unittest.TestCase):
         self.assertEqual(self.run_script([]), "открой папку")
         self.assertEqual(self.run_script([(1.0, "loud", 0), (0.5, "loud", 0), (0.6, "text", "Документы")]),
                          "открой папку Документы")
+
+    def test_long_speech_waits_longer_at_a_pause(self):
+        # длинная диктовка: человек замолчал на 1,9 с, задумавшись, — это ещё не конец (короткой команде хватило бы 1,5 с)
+        long = "напиши письмо Ахмеду что я задержусь на час потому что"
+        self.assertEqual(self.run_script([(1.9, "text", "пробки на дороге")], start=long), long + " пробки на дороге")
+
+    def test_short_command_still_ends_quickly(self):
+        started = time.time()
+        self.assertEqual(self.run_script([]), "открой папку")
+        self.assertLess(time.time() - started, 1.8)
 
     def test_long_silence_ends_the_phrase(self):
         self.assertEqual(self.run_script([(3.0, "loud", 0), (0.3, "text", "спасибо")]), "открой папку")

@@ -43,6 +43,10 @@
   #seeBtn { display: inline-flex; align-items: center; gap: 8px; max-width: 320px; background: transparent; border: 0; border-left: 1px solid var(--line);
     margin-left: 18px; padding: 0 0 0 18px; min-height: 36px; color: var(--iron); font-size: 14px; letter-spacing: -.01em; cursor: pointer; }
   #seeBtn[hidden] { display: none; }
+  #spendBtn { background: transparent; border: 0; border-left: 1px solid var(--line); padding: 0 0 0 10px; color: var(--iron);
+    font: inherit; letter-spacing: -.01em; cursor: pointer; font-variant-numeric: tabular-nums; }
+  #spendBtn:hover, #spendBtn:focus-visible { color: var(--ink); outline: none; }
+  #spendBtn[hidden] { display: none; }
   #seeBtn:hover { color: var(--ink); }
   #seeTxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #seeEye { flex: none; width: 14px; height: 9px; border: 1px solid currentColor; border-radius: 50% / 60%; position: relative; }
@@ -118,7 +122,9 @@
   /* --- ответ Chloe: крупный заголовок, как в студийной вёрстке --- */
   #reply { position: absolute; left: 40px; bottom: 120px; z-index: 4; max-width: min(760px, calc(100% - 520px)); min-height: 0;
     font-size: 45px; line-height: .98; letter-spacing: -.045em; font-weight: 400; color: var(--ink); text-align: left;
-    transition: opacity .6s; pointer-events: none; text-shadow: 0 0 24px var(--bg); }
+    transition: opacity .6s; pointer-events: none; text-shadow: 0 0 24px var(--bg);
+    max-height: calc(100% - 64px - 150px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  #reply.scroll { pointer-events: auto; }   /* длинный ответ не уходит под шапку — его можно прокрутить */
   #reply.heard { color: var(--iron); font-style: normal; }
   #reply.heard::before { content: "Вы: "; color: var(--coral); }
 
@@ -276,7 +282,7 @@
 </head>
 <body>
 <div id="app">
-  <header><b>Chloe</b><span><i id="dot"></i><span id="statusTxt">онлайн</span><button id="seeBtn" title="Постоянное зрение: Chloe видит экран. Нажмите, чтобы выключить или включить." hidden><i id="seeEye"></i><span id="seeTxt">Вижу экран</span></button><button id="moreBtn">Все функции</button></span></header>
+  <header><b>Chloe</b><span><i id="dot"></i><span id="statusTxt">онлайн</span><button id="spendBtn" title="Сколько стоили запросы к моделям сегодня (оценка по прайсу). Нажмите — подробнее в ядре." hidden></button><button id="seeBtn" title="Постоянное зрение: Chloe видит экран. Нажмите, чтобы выключить или включить." hidden><i id="seeEye"></i><span id="seeTxt">Вижу экран</span></button><button id="moreBtn">Все функции</button></span></header>
   <div id="stats">нейронов <span id="sN">0</span> · связей <span id="sL">0</span> · зон <span id="sZ">0</span> · сигналов <span id="sS">0</span></div>
   <div id="filters"></div>
   <div id="core">
@@ -337,6 +343,19 @@
   var info = document.getElementById("info");
   var statsPanel = document.getElementById("statsPanel");
   var replyEl = document.getElementById("reply");
+  // длинный ответ — мельче шрифт, чтобы он был виден целиком; не влез — прокрутка, а не обрезка под шапкой
+  function fitReply() {
+    replyEl.style.fontSize = ""; replyEl.style.lineHeight = "";
+    var len = replyEl.textContent.length;
+    var k = len <= 80 ? 1 : len <= 160 ? 0.72 : len <= 320 ? 0.52 : len <= 700 ? 0.4 : 0.34;
+    if (k < 1) {
+      var base = parseFloat(window.getComputedStyle(replyEl).fontSize) || 45;
+      replyEl.style.fontSize = Math.max(16, Math.round(base * k)) + "px";
+      replyEl.style.lineHeight = "1.18";
+    }
+    replyEl.scrollTop = 0;
+    replyEl.classList.toggle("scroll", replyEl.scrollHeight > replyEl.clientHeight + 2);
+  }
 
   var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   var DEVICE_DPR = window.devicePixelRatio || 1;
@@ -1750,7 +1769,7 @@
   }
   function speak(text, after) {
     setState("speaking");
-    replyEl.textContent = text;
+    replyEl.textContent = text; fitReply();
     replyEl.style.opacity = 1;
     var done = function () {
       voice.chloe = 0;
@@ -3172,11 +3191,11 @@
   window.chloeSay = function (text) { touch(); speak(text); };
   window.chloeReply = function (text) {         // Chloe говорит: текст под мозгом, состояние «говорит» до chloeState("idle")
     touch(); setState("speaking");
-    replyEl.classList.remove("heard"); replyEl.textContent = text; replyEl.style.opacity = 1;
+    replyEl.classList.remove("heard"); replyEl.textContent = text; fitReply(); replyEl.style.opacity = 1;
   };
   window.chloeHeard = function (text) {          // что Chloe услышала
     touch();
-    replyEl.classList.add("heard"); replyEl.textContent = "«" + text + "»"; replyEl.style.opacity = 1;
+    replyEl.classList.add("heard"); replyEl.textContent = "«" + text + "»"; fitReply(); replyEl.style.opacity = 1;
   };
   window.chloeEnsure = function (name, type, desc, zone) {   // навык есть — ничего; нет — вырастить
     for (var i = 0; i < nCount; i++) if (neurons[i].name === name) return neurons[i].id;
@@ -3445,6 +3464,24 @@
     fetchCoreStatus();
     if (!coreTimer) coreTimer = setInterval(function () { renderCore(); }, 700);
   }
+  // расход за сегодня — всегда в шапке: сколько стоили запросы к моделям (обновляется каждые 15 секунд)
+  var spendBtn = document.getElementById("spendBtn");
+  function fetchSpend() {
+    var api = window.pywebview && window.pywebview.api && window.pywebview.api.system_status ? window.pywebview.api : null;
+    if (!api) return;
+    api.system_status().then(function (st) {
+      if (!st || !st.today) return;
+      var usd = Number(st.today.usd) || 0;
+      spendBtn.textContent = "сегодня $" + (usd < 1 ? usd.toFixed(3) : usd.toFixed(2));
+      spendBtn.title = "Сегодня " + st.today.calls + " запросов к моделям ≈ $" + usd.toFixed(4) +
+        " (оценка по прайсу; точный счёт — в кабинетах Anthropic и DeepSeek). Нажмите — подробнее в ядре.";
+      spendBtn.hidden = false;
+    }).catch(function () {});
+  }
+  spendBtn.addEventListener("click", function () { openCore(); });
+  window.addEventListener("pywebviewready", fetchSpend);
+  setTimeout(fetchSpend, 1500);
+  setInterval(fetchSpend, 15000);
   function fetchCoreStatus() {
     var api = window.pywebview && window.pywebview.api && window.pywebview.api.system_status ? window.pywebview.api : null;
     if (!api) { coreStatus = null; return; }

@@ -3,9 +3,14 @@ import os
 import pathlib
 import platform
 import subprocess
+import sys
 
 
 HOME = pathlib.Path.home()
+# тесты без временной домашней папки испортили бы настоящие память, мозг и напоминания — отказываемся сразу
+if "unittest" in sys.modules and os.environ.get("CHLOE_TEST_HOME") != str(HOME):
+    raise RuntimeError("Тесты Chloe запускаются только так: .venv/bin/python -m unittest discover -s tests -t . "
+                       "(иначе они работали бы с настоящей ~/.chloe)")
 DATA = HOME / ".chloe"
 DATA.mkdir(exist_ok=True)
 for _stale in DATA.glob("tmp*.mp3"):   # озвучка, оставшаяся после прерванного запуска
