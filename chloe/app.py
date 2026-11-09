@@ -45,12 +45,31 @@ def strip_wake(text):
     return text, has_wake(text)
 
 
+WORK_ON = ("приступаем к работе", "приступим к работе", "приступаем к проекту", "начинаем работать")
+WORK_OFF = ("не напоминай о задачах", "не напоминай о проектах", "заканчиваем работу", "закончили работу")
+
+
+def work_mode_phrase(low):
+    """«Приступаем к работе» — включить напоминание о задачах при старте; «заканчиваем работу» — выключить.
+    Возвращает True/False, если фраза есть, иначе None. Команда всё равно идёт в мозг — он и начинает работу."""
+    low = " ".join(low.replace("ё", "е").split())
+    if any(w in low for w in WORK_OFF):
+        return False
+    if any(w in low for w in WORK_ON):
+        return True
+    return None
+
+
 def startup_reminder():
-    """При включении — важные задачи проектов (приоритет «важно», не сделаны): пользователь просил напоминать."""
+    """При включении — важные задачи проектов (приоритет «важно», не сделаны).
+    Только после «приступаем к работе»: пока пользователь этого не сказал, Хлоя о задачах молчит."""
     try:
         from .permissions import permissions
         from .project_memory import project_memory
+        from .settings import settings
 
+        if not settings.get("work_mode", False):
+            return ""
         if permissions.level("projects") == "block":
             return ""
         tasks = project_memory.important_open(3)
@@ -133,6 +152,11 @@ def assistant(args):
             idle["sent"] = False   # дальше — думает и говорит; потом снова «спокойна»
             journal.add("heard", "Голос", command, {"typed": bool(typed or args.text)})
             seen_text.append(command)   # адрес, названный пользователем, можно открыть
+            mode = work_mode_phrase(low)
+            if mode is not None:
+                from .settings import settings
+                settings.set("work_mode", mode)
+                print("[работа: напоминание о задачах при включении {}]".format("включено" if mode else "выключено"))
             if low in EXIT_WORDS:
                 voice.say("До встречи!")
                 os._exit(0)

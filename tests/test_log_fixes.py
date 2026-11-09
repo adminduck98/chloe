@@ -73,6 +73,30 @@ class MediaInBrave(unittest.TestCase):
 
 
 class StartupReminder(unittest.TestCase):
+    def setUp(self):
+        from chloe.settings import settings
+        settings.set("work_mode", True)
+        self.addCleanup(settings.set, "work_mode", False)
+
+    def test_silent_until_work_starts(self):
+        from chloe.app import startup_reminder
+        from chloe.project_memory import project_memory
+        from chloe.settings import settings
+
+        project_memory.add_task("chloe", "Важная штука", 1)
+        settings.set("work_mode", False)
+        self.assertEqual(startup_reminder(), "")              # «не напоминай, пока не скажу»
+        settings.set("work_mode", True)
+        self.assertIn("Важная штука", startup_reminder())
+
+    def test_work_phrases(self):
+        from chloe.app import work_mode_phrase
+        self.assertIs(work_mode_phrase("хлоя приступаем к работе"), True)
+        self.assertIs(work_mode_phrase("ну всё, приступим к работе над проектом"), True)
+        self.assertIs(work_mode_phrase("заканчиваем работу на сегодня"), False)
+        self.assertIs(work_mode_phrase("не напоминай о задачах"), False)
+        self.assertIsNone(work_mode_phrase("какая погода"))
+
     def test_important_open_tasks_are_named(self):
         from chloe.app import startup_reminder
         from chloe.project_memory import project_memory
