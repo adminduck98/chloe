@@ -81,7 +81,7 @@ def has_key(provider=None):
 LANG = os.environ.get("CHLOE_LANG", "ru-RU")                     # для узбекского: uz-UZ
 VOICE = os.environ.get("CHLOE_VOICE", "ru-RU-SvetlanaNeural")    # голос edge-tts: Светлана (русский, Microsoft)
 VOICES = [VOICE]   # если Светлана не отвечает, Chloe говорит офлайн-голосом Piper (тоже женским), а не мужским Дмитрием
-TTS = os.environ.get("CHLOE_TTS") or ("qwen" if QWEN_KEY else "edge")                         # edge — Светлана (Microsoft, онлайн); piper — офлайн и быстрее; svetlana — только Светлана, без запасных; qwen — голос Qwen (запасной — Светлана)
+TTS = os.environ.get("CHLOE_TTS", "edge")                         # edge — Светлана (Microsoft, онлайн); piper — офлайн и быстрее; svetlana — только Светлана, без запасных; qwen — голос Qwen (запасной — Светлана)
 # слух: google — быстрее (0,6–1,5 с); qwen — точнее с английскими названиями посреди русской речи, но 2–4,5 с
 # и спрашивается вместе с Google (ждём его не дольше CHLOE_QWEN_ASR_WAIT). По умолчанию — скорость.
 ASR = os.environ.get("CHLOE_ASR", "google")
