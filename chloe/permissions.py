@@ -35,6 +35,7 @@ CATEGORIES = {
     "control":      ("Мышь и клавиатура", "клики, печать, клавиши, окна, буфер обмена", {"mouse_click", "type_text", "press_keys", "scroll", "window", "clipboard"}, "allow"),
     "internet":     ("Интернет", "поиск, сайты, YouTube, скачивание", {"web_search", "read_web_page", "open_url", "play_youtube", "download_file", "weather"}, "allow"),
     "telegram":     ("Telegram", "читать и отправлять сообщения", {"tg_read", "tg_unread", "tg_send"}, "allow"),
+    "phone":        ("Телефон", "экран, нажатия, приложения и ссылки на телефоне Android", {"phone"}, "allow"),
     "calendar":     ("Календарь Google", "смотреть, добавлять и удалять события (добавление и удаление — с подтверждением)", {"calendar"}, "allow"),
     "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now"}, "allow"),
     "knowledge":    ("База знаний", "изучать документы и отвечать по ним", {"learn_document", "ask_knowledge", "list_knowledge", "forget_document"}, "allow"),
