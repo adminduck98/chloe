@@ -109,6 +109,36 @@ class Download:
             return bool(self.buf)
 
 
+class QwenDownload(Download):
+    """То же, что Download, но голосом Qwen: mp3 приходит кусочками по SSE, первый звук ~1 с."""
+
+    def _run(self):
+        from . import qwen_audio
+
+        problem = None
+        for _ in range(2):
+            try:
+                for chunk in qwen_audio.tts_stream(self.text, self.voice_name, timeout=self.timeout):
+                    with self.cond:
+                        self.buf += chunk
+                        self.cond.notify_all()
+                problem = None
+                break
+            except Exception as e:
+                problem = e
+                with self.cond:
+                    if self.buf:
+                        break   # часть уже звучит — повтор начал бы фразу заново
+        global last_problem
+        last_problem = type(problem).__name__ if problem is not None and not self.buf else None
+        with self.cond:
+            self.failed = problem is not None and not self.buf
+            self.done = True
+            self.cond.notify_all()
+        if problem is not None:
+            print("[голос Qwen: {} — {}]".format("не ответил" if self.failed else "оборвался", str(problem)[:80]))
+
+
 def make_source(download):
     import miniaudio
 
@@ -169,21 +199,22 @@ class Player:
             return len(self.pcm) / BYTES_PER_SECOND
 
 
-def speak(parts, voice_name, interrupt):
+def speak(parts, voice_name, interrupt, make=None):
     """Говорит части ответа потоком. True — сказано (или прервано «стоп»); False — первая часть не пришла,
     пусть говорит запасной голос."""
     import miniaudio
 
     if not parts:
         return True
-    downloads = [Download(parts[0], voice_name)]
+    make = make or Download   # по умолчанию — Светлана (edge-tts); голос Qwen передаёт QwenDownload
+    downloads = [make(parts[0], voice_name)]
     if not downloads[0].wait_first():
         return False
 
     def ordered():
         for i in range(len(parts)):
             if i + 1 < len(parts) and len(downloads) == i + 1:
-                downloads.append(Download(parts[i + 1], voice_name))   # следующая качается, пока звучит эта
+                downloads.append(make(parts[i + 1], voice_name))   # следующая качается, пока звучит эта
             yield downloads[i]
 
     player = Player(interrupt)

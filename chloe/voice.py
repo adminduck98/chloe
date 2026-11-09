@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import config, speech_stream
+from . import config, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -65,6 +65,8 @@ class Voice:
         self.open_until = 0.0     # до этого времени части начатой просьбы идут на распознавание без слова «Хлоя»
         self.open_origin = 0.0    # когда началась эта просьба
         self.reason = ""          # почему последняя фраза ушла на распознавание
+        self.asr_down_until = 0.0  # до этого времени распознавание Qwen не трогаем (было недоступно)
+        self.qwen_down_until = 0.0  # и голос Qwen
 
     # --- слух ---
     @contextlib.contextmanager
@@ -120,9 +122,43 @@ class Voice:
                 started = time.time() - seconds + self.recognizer.pause_threshold + 0.3
                 audio_q.put((audio, started))   # «слушает» мозг покажет, только если фраза обращена к Chloe (см. listener)
 
+    def _google(self, audio):
+        import speech_recognition as sr
+
+        try:
+            return self.recognizer.recognize_google(audio, language=LANG)
+        except sr.UnknownValueError:
+            return ""
+        except sr.RequestError as e:
+            print("[распознавание недоступно: " + str(e) + "]")
+            return ""
+
     def recognize(self, audio):
         import speech_recognition as sr
 
+        if config.ASR == "qwen" and qwen_audio.available() and time.time() >= self.asr_down_until:
+            # гонка: Qwen точнее (английские названия посреди русской речи), но иногда отвечает 4–7 с.
+            # Спрашиваем обоих сразу; ответ Qwen ждём не дольше QWEN_ASR_WAIT, иначе берём Google.
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as Late
+
+            pool = ThreadPoolExecutor(max_workers=2)
+            wav = audio.get_wav_data(convert_rate=16000, convert_width=2)
+            qwen = pool.submit(qwen_audio.asr, wav, LANG.split("-")[0])
+            google = pool.submit(self._google, audio)
+            pool.shutdown(wait=False)
+            try:
+                text = qwen.result(timeout=QWEN_ASR_WAIT)
+                brain.voice(0, "user")
+                return text
+            except Late:
+                print("[слух Qwen не успел за {:.1f} с — беру Google]".format(QWEN_ASR_WAIT))
+            except Exception as e:   # нет связи, кредиты кончились — слушаем через Google, Qwen попробуем через минуту
+                print("[слух Qwen: " + str(e)[:80] + " — распознаю через Google]")
+                self.asr_down_until = time.time() + 60
+            try:
+                return google.result(timeout=15)
+            finally:
+                brain.voice(0, "user")
         try:
             return self.recognizer.recognize_google(audio, language=LANG)
         except sr.UnknownValueError:
@@ -144,8 +180,8 @@ class Voice:
             if self.enabled:
                 # голоса по очереди: основной (CHLOE_TTS) → второй → системный; svetlana — только Светлана, без запасных
                 engines = {"piper": [self._say_piper, self._say_edge], "edge": [self._say_edge, self._say_piper],
-                           "svetlana": [self._say_edge]}
-                if not any(engine(text) for engine in engines.get(TTS, engines["piper"])) and TTS != "svetlana":
+                           "svetlana": [self._say_edge], "qwen": [self._say_qwen, self._say_edge]}
+                if not any(engine(text) for engine in engines.get(TTS, engines["piper"])) and TTS not in ("svetlana", "qwen"):
                     self._say_pyttsx3(text)
             else:
                 time.sleep(min(4, 0.6 + len(text) * 0.03))
@@ -217,6 +253,34 @@ class Voice:
             return False
         finally:
             os.remove(path)
+
+    def _say_qwen(self, text):
+        """Голос Qwen потоком: говорит с первого кусочка (~1 с). Не вышло — False, скажет Светлана."""
+        if not qwen_audio.available() or time.time() < self.qwen_down_until:
+            return False
+        parts = pieces(text)
+        if not parts:
+            return True
+        try:
+            if STREAMING and speech_stream.available() and not interrupt.is_set():
+                if speech_stream.speak(parts, qwen_audio.VOICE, interrupt, make=speech_stream.QwenDownload):
+                    return True
+            else:
+                for p in parts:
+                    if interrupt.is_set():
+                        return True
+                    fd, path = tempfile.mkstemp(suffix=".mp3", dir=DATA)
+                    try:
+                        with os.fdopen(fd, "wb") as f:
+                            f.write(qwen_audio.tts_mp3(p))
+                        self._play(path)
+                    finally:
+                        os.remove(path)
+                return True
+        except Exception as e:
+            print("[голос Qwen: " + str(e)[:80] + " — говорю Светланой]")
+        self.qwen_down_until = time.time() + 60
+        return False
 
     def _say_edge(self, text):
         """Голос Светланы (Microsoft, нужен интернет). Длинный ответ — частями по предложениям: следующая часть
@@ -340,7 +404,13 @@ def pieces(text, size=300, first=140):
 def voice_mp3(text, timeout=60):
     """mp3 голосом Светланы (edge-tts) — для колонок компьютера и для телефона. None — Светлана недоступна.
     Медленный сервер — не повод менять голос: ждём до timeout секунд и пробуем ещё раз.
-    Запасной голос — только когда до Microsoft не достучаться (нет интернета)."""
+    Запасной голос — только когда до Microsoft не достучаться (нет интернета).
+    При CHLOE_TTS=qwen — сначала голос Qwen, чтобы на телефоне звучал тот же голос, что и на компьютере."""
+    if TTS == "qwen" and qwen_audio.available():
+        try:
+            return qwen_audio.tts_mp3(text, timeout=timeout)
+        except Exception as e:
+            print("[голос Qwen: " + str(e)[:80] + " — Светлана]")
     try:
         import edge_tts
     except ImportError as e:
@@ -369,6 +439,8 @@ def voice_mp3(text, timeout=60):
                 time.sleep(1)
     print("[голос {} недоступен ({}) — говорю запасным]".format(VOICES[0], type(problem).__name__ if problem else "пусто"))
     return None
+
+QWEN_ASR_WAIT = float(os.environ.get("CHLOE_QWEN_ASR_WAIT", "3.5"))   # сек: дольше — берём ответ Google
 
 voice = Voice(enabled=True)
 
