@@ -177,10 +177,13 @@ class Voice:
         text = redact(text)
         print("Chloe:", text)
         journal.add("said", "Голос", text)
-        brain.reply(text)
+        where = state.get("where", "local")
+        brain.reply(text, where)
         self.saying = text
         try:
-            if self.enabled:
+            if where == "phone":
+                pass   # просьба была с телефона: он и озвучит ответ, компьютер молчит (текст — в окне)
+            elif self.enabled:
                 # голоса по очереди: основной (CHLOE_TTS) → второй → системный; svetlana — только Светлана, без запасных
                 engines = {"piper": [self._say_piper, self._say_edge], "edge": [self._say_edge, self._say_piper],
                            "svetlana": [self._say_edge], "qwen": [self._say_qwen, self._say_edge]}

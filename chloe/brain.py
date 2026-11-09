@@ -60,8 +60,8 @@ class Brain:
     def heard(self, text):
         self.js("chloeHeard", text)
 
-    def reply(self, text):
-        self.js("chloeReply", text)
+    def reply(self, text, where="local"):
+        self.js("chloeReply", text, where)   # where: где ответ звучит — local (компьютер) или phone (телефон)
 
     def voice(self, level, who="user"):
         self.js("chloeVoice", level, who)

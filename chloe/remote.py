@@ -170,6 +170,8 @@ def make_handler(api, secret):
             try:
                 size = min(int(self.headers.get("Content-Length", "0")), 1 << 20)
                 args = json.loads(self.rfile.read(size) or b"{}").get("args", [])
+                if name == "command":   # просьба с телефона: ответ прозвучит на телефоне, а компьютер промолчит
+                    return self.send_json(api.command(str(args[0]) if args else "", where="phone"))
                 return self.send_json(getattr(api, name)(*args))
             except Exception as e:
                 return self.send_json({"error": str(e)[:200]}, 500)

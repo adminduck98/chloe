@@ -54,7 +54,14 @@ class Phone(unittest.TestCase):
     def test_command_goes_to_chloe(self):
         drain(commands)
         self.assertEqual(self.call("command", "какая погода")[0], 200)
-        self.assertEqual(commands.get(timeout=2), "какая погода")
+        got = commands.get(timeout=2)
+        self.assertEqual(got, "какая погода")
+        self.assertEqual(got.where, "phone")                           # просьба с телефона — ответ звучит там
+
+    def test_window_command_is_local(self):
+        drain(commands)
+        Api().command("открой загрузки")
+        self.assertEqual(commands.get(timeout=2).where, "local")
 
     def test_panels_work(self):
         code, items = self.call("journal_list", "", "", 5, 0)

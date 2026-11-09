@@ -23,7 +23,7 @@ from . import sleep
 from .sleep import start as sleep_watcher
 from .memory import forget_memory, memory, rewrite_memory
 from .settings import settings
-from .signals import busy, commands, heard_q, interrupt, is_stop, state
+from .signals import Typed, busy, commands, heard_q, interrupt, is_stop, state
 from .thinking import ask_short, forget_old, make_client, think
 from .tools import SKILLS
 from .tools.system import tool_open_path
@@ -81,7 +81,8 @@ def assistant(args):
                 pass
 
             if typed:
-                command = typed
+                command = str(typed)
+                state["where"] = getattr(typed, "where", "local")   # с телефона — ответ звучит на телефоне
             elif args.text:
                 command = input("Вы: ").strip()
             else:
@@ -94,6 +95,7 @@ def assistant(args):
                     if time.time() > state["listen_until"]:
                         go_idle()
                     continue
+                state["where"] = "local"        # сказано в микрофон компьютера — компьютер и отвечает
                 began = time.time()             # окно «без Хлоя» проверяем по началу фразы, а не по концу:
                 heard = finish_speech(heard)    # пока она дослушивала (музыка, длинная речь), окно могло закрыться
                 print("Вы:", heard)
@@ -164,12 +166,12 @@ def assistant(args):
 class Api:
     """Вызывается из окна (JavaScript)."""
 
-    def command(self, text):
+    def command(self, text, where="local"):
         if busy.is_set() and is_stop(str(text)):   # «стоп» из строки ввода тоже перебивает
             interrupt.set()
             voice.stop_audio()
             return
-        commands.put(str(text))
+        commands.put(Typed(str(text), "phone" if where == "phone" else "local"))
 
     def save_brain(self, raw):
         snapshots.daily()   # копия дня — до первого сохранения

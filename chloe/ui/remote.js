@@ -199,7 +199,8 @@
       if (!speakOn) stopSpeech();
     };
     var reply = window.chloeReply;   // ответ Chloe — ещё и голосом телефона
-    window.chloeReply = function (text) { if (reply) reply(text); say(text); };
+    // голосом телефона — только ответы на просьбы с телефона; просьбы с компьютера озвучивает компьютер
+    window.chloeReply = function (text, where) { if (reply) reply(text); if (where === "phone") say(text); };
     if (!key) needKey();
     window.dispatchEvent(new Event("pywebviewready"));
     poll();
