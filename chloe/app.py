@@ -60,6 +60,21 @@ def work_mode_phrase(low):
     return None
 
 
+def startup_notices():
+    """При включении — о пакете Qwen: исчерпан или подходит к концу (это не задачи, поэтому всегда)."""
+    try:
+        from . import config, qwen_plan
+
+        if not config.QWEN_KEY:
+            return ""
+        if qwen_plan.exhausted():
+            return " Кредиты Qwen закончились — пока отвечаю через запасную модель."
+        w = qwen_plan.warning(qwen_plan.from_cli(timeout=8))
+        return " " + w if w else ""
+    except Exception:
+        return ""
+
+
 def startup_reminder():
     """При включении — важные задачи проектов (приоритет «важно», не сделаны).
     Только после «приступаем к работе»: пока пользователь этого не сказал, Хлоя о задачах молчит."""
@@ -89,7 +104,7 @@ def assistant(args):
     print("[мозг: {} · быстрый {} · сильный {}]".format(config.PROVIDER, config.MODEL_FAST, config.MODEL_STRONG))
     client = make_client()
     messages = []
-    voice.say("Привет, я Хлоя. Слушаю." + startup_reminder())
+    voice.say("Привет, я Хлоя. Слушаю." + startup_notices() + startup_reminder())
     state["listen_until"] = time.time() + ACTIVE_WINDOW
     if voice.enabled and not args.text:
         threading.Thread(target=recorder, daemon=True).start()

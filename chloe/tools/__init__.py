@@ -45,6 +45,7 @@ SKILLS = {
     "project_overview": ("Проекты", "Задачи, решения и цели проектов, следующий шаг", "Проекты"),
     "project_task": ("Проекты", "", "Проекты"),
     "project_note": ("Проекты", "", "Проекты"),
+    "qwen_credits": ("Расходы", "", "Система"),
     "phone": ("Телефон", "Управляет телефоном Android: экран, нажатия, приложения, ссылки", "Устройства"),
     "calendar": ("Календарь", "Google Calendar: смотрит, добавляет и удаляет события", "Интернет"),
     "transcribe_audio": ("Расшифровка", "Превращает аудиозаписи в текст", "Знания"),
@@ -144,6 +145,9 @@ TOOLS = [
                                             "«это цель проекта». delete — номер записи, чтобы удалить.",
      "input_schema": schema({"project": S, "kind": {"type": "string", "enum": ["decision", "idea", "goal"]}, "text": S,
                              "delete": {"type": "integer"}}, ["project"])},
+    {"name": "qwen_credits", "description": "Кредиты подписки Qwen Token Plan: исчерпан ли пакет, процент и дата обновления "
+                                            "(если есть Bailian CLI), токены Qwen с начала месяца. «Сколько осталось кредитов Qwen?»",
+     "input_schema": schema({}, [])},
     {"name": "phone", "description": "Телефон Android пользователя (подключён к компьютеру через adb). status — модель и батарея; "
                                      "screen — снимок экрана телефона; elements — надписи и кнопки на экране (быстрее снимка); "
                                      "tap — нажать: text (надпись на кнопке) или x, y по снимку; swipe — direction up/down/left/right; "

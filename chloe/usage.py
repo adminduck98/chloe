@@ -104,3 +104,8 @@ def tool_brain_usage(a):
     period = "сегодня" if days == 1 else "за {} дн.".format(days)
     return "Расходы на мышление {} (оценка по прайсу; точно — в кабинетах Anthropic и DeepSeek): всего ≈${:.3f}.\n{}".format(
         period, total, "\n".join(lines))
+
+
+def tool_qwen_credits(a):
+    from . import qwen_plan
+    return qwen_plan.status_text()

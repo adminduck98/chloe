@@ -12,7 +12,7 @@ import base64
 import os
 import time
 
-from .. import config, usage
+from .. import config, qwen_plan, usage
 from ..brain import brain
 from ..signals import STOPPED, interrupt
 from ..tools import TOOLS, run_tool
@@ -98,6 +98,8 @@ def backups(model):
             seen.add(m)
             out.append(m)
     now = time.time()
+    if qwen_plan.exhausted(now) and any(provider_of(m) != "qwen" for m in out):
+        out = [m for m in out if provider_of(m) != "qwen"]   # пакет Qwen исчерпан — сразу запасные
     ready = [m for m in out if cooldown.get(m, 0) <= now]
     return ready or sorted(out, key=lambda m: cooldown.get(m, 0))[:1]
 
@@ -158,6 +160,8 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
                     **({"tools": tool_specs()} if tools else {}), **extra)
                 msg = resp.choices[0].message
                 usage.from_openai(m, getattr(resp, "usage", None), time.time() - started)
+                if provider == "qwen" and qwen_plan.mark_ok():
+                    print("[кредиты Qwen снова есть — Qwen отвечает]")
             print("[{} · {:.1f} с]".format(m, time.time() - started))
             return msg, m
         except (openai.APIStatusError, openai.APIConnectionError,
@@ -167,10 +171,28 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
             if code is not None and code not in COOLDOWN or refused and i == len(models) - 1:
                 raise
             wait = 0 if refused else COOLDOWN.get(code, 60)
+            if provider == "qwen" and qwen_plan.is_quota_error(e):
+                wait = qwen_plan.RETRY_AFTER
+                if qwen_plan.mark_exhausted():
+                    tell_quota_over(models[i + 1] if i + 1 < len(models) else None)
             cooldown[m] = time.time() + wait
             if i == len(models) - 1:
                 raise
             print("[{} недоступна ({}), пропускаю её на {} с, пробую {}]".format(m, code or ("отказ" if refused else "нет связи"), wait, models[i + 1]))
+
+
+def tell_quota_over(next_model):
+    """Один раз: пакет Qwen закончился — кто отвечает дальше."""
+    text = "Кредиты Qwen закончились. " + ("Пока отвечаю через {}.".format(
+        "DeepSeek" if next_model.startswith("deepseek") else "Claude") if next_model else "Запасной модели нет.")
+    print("[{}]".format(text))
+    try:
+        from ..journal import journal
+        journal.add("system", "Мышление", text, ok=False)
+        from ..voice import voice
+        voice.say(text)
+    except Exception:
+        pass
 
 
 def as_history(msg):
