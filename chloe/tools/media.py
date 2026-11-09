@@ -96,8 +96,10 @@ def tool_create_media(a):
                 qm._image_ref(source)
             except qm.MediaError as e:
                 return "Не могу: {}.".format(e)
-        if not confirm("Сделать видео {} секунд{}? Видео тратит заметно больше кредитов Qwen, чем картинка.".format(
-                seconds, " из картинки" if source else "")):
+        # замер 10.11.2026: 5 с 720P ≈ 4,5 % месячного Token Plan; 1080P у Alibaba ≈ в 1,8 раза дороже
+        cost = 0.9 * seconds * (1.8 if res == "1080P" else 1)
+        if not confirm("Сделать видео {} секунд{}? Это примерно {:.0f} % месячного пакета Qwen.".format(
+                seconds, " из картинки" if source else "", max(1, cost))):
             return "Не делаю видео."
         try:
             task = qm.video_start(prompt, source, seconds, res, a.get("ratio") or "16:9")
