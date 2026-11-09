@@ -149,6 +149,7 @@ def forget_memory(mid):
     m = memory.delete(mid)
     if m:
         brain.js("chloeForget", m["text"])
+        brain.expect_reload()   # окно сохранит мозг без нейрона и перезагрузится — следующие события подождут
     return m
 
 

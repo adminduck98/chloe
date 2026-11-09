@@ -419,7 +419,7 @@ def main():
                 except Exception:
                     pass
                 time.sleep(0.1)
-            brain.ready = True
+            brain.resume()   # и показать события, пришедшие, пока окно грузилось
             for name, desc, zone in {v[0]: v for v in SKILLS.values() if v[1]}.values():
                 brain.ensure(name, desc, zone)
             for s in skillbook.all_skills():   # навыки Claude — тоже нейроны
@@ -430,6 +430,7 @@ def main():
                                    background_color="#04101a", fullscreen=args.fullscreen)
     brain.window = window
     window.events.loaded += on_loaded
+    window.events.before_load += brain.pause   # перезагрузка окна (после «забудь») — события ждут, а не теряются
     threading.Thread(target=assistant, args=(args,), daemon=True).start()
     webview.start(private_mode=False, storage_path=str(DATA / "webview"))
     os._exit(0)
