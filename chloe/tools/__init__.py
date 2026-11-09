@@ -47,6 +47,7 @@ SKILLS = {
     "list_windows": ("Окна", "Переключает, закрывает, сворачивает и разворачивает окна", "Компьютер"),
     "window": ("Окна", "", "Компьютер"),
     "media": ("Музыка", "Пауза, следующий трек, что сейчас играет", "Компьютер"),
+    "play_youtube": ("Музыка", "", "Компьютер"),
     "clipboard": ("Буфер обмена", "Читает и копирует текст в буфер обмена", "Компьютер"),
     "power": ("Питание", "Выключает, перезагружает, усыпляет компьютер и блокирует экран", "Компьютер"),
     "set_reminder": ("Напоминания", "Напоминания и таймеры", "Время"),
@@ -131,6 +132,10 @@ TOOLS = [
                                       "программы или заголовка (firefox, telegram, «Документы»).",
      "input_schema": schema({"action": {"type": "string", "enum": ["focus", "close", "minimize", "maximize", "close_all"]},
                              "name": S}, ["action"])},
+    {"name": "play_youtube", "description": "Включить песню или видео на YouTube: находит настоящий ролик поиском видео и открывает его. "
+                                            "Для «включи песню …», «поставь клип …» — только этот инструмент, а не open_url с угаданной ссылкой. "
+                                            "query — исполнитель и название как можно точнее (латиницей, если так пишется: «ROSÉ On The Ground»).",
+     "input_schema": schema({"query": S}, ["query"])},
     {"name": "media", "description": "Музыка и видео в любом плеере и в браузере (YouTube): play_pause, play, pause, next, previous; "
                                      "status — что сейчас играет.",
      "input_schema": schema({"action": {"type": "string", "enum": ["play_pause", "play", "pause", "next", "previous", "status"]}}, ["action"])},

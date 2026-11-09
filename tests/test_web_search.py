@@ -40,5 +40,34 @@ class WebSearch(unittest.TestCase):
             self.search(ConnectionError("нет связи"))
 
 
+
+class PlayYoutube(unittest.TestCase):
+    def play(self, videos):
+        opened = []
+
+        class Videos(FakeDDGS):
+            def videos(self, query, max_results=10):
+                a = FakeDDGS.answers.pop(0)
+                if isinstance(a, Exception):
+                    raise a
+                return a
+
+        FakeDDGS.answers = list(videos)
+        with mock.patch("ddgs.DDGS", Videos), mock.patch("chloe.tools.system.tool_open_url", lambda a: opened.append(a["url"])):
+            out = web.tool_play_youtube({"query": "ROSÉ On The Ground"})
+        return out, opened
+
+    def test_opens_the_real_video_not_a_guess(self):
+        out, opened = self.play([[{"content": "https://vimeo.com/1", "title": "чужое"},
+                                  {"content": "https://www.youtube.com/watch?v=CKZvWhCqx1s", "title": "ROSÉ - 'On The Ground' M/V"}]])
+        self.assertEqual(opened, ["https://www.youtube.com/watch?v=CKZvWhCqx1s"])
+        self.assertIn("On The Ground", out)
+
+    def test_nothing_found_opens_youtube_search(self):
+        out, opened = self.play([Exception("No results found."), []])
+        self.assertTrue(opened[0].startswith("https://www.youtube.com/results?search_query="))
+        self.assertIn("не нашла", out)
+
+
 if __name__ == "__main__":
     unittest.main()

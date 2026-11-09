@@ -75,5 +75,27 @@ class Declined(unittest.TestCase):
         self.assertIn("hi", out)
 
 
+class ReadOnlyCommands(unittest.TestCase):
+    def test_only_looking_runs_without_asking(self):
+        from chloe.tools.system import read_only
+        for cmd in ("xdg-settings get default-web-browser", "ls -la", "df -h", "gsettings get org.gnome.desktop.interface gtk-theme",
+                    "pactl get-sink-volume @DEFAULT_SINK@", "systemctl --user status pipewire", "date"):
+            self.assertTrue(read_only(cmd), cmd)
+
+    def test_anything_that_changes_or_chains_still_asks(self):
+        from chloe.tools.system import read_only
+        for cmd in ("xdg-settings set default-web-browser brave-browser.desktop", "gsettings set a b c", "rm -rf ~",
+                    "ls; rm -rf ~", "ls && reboot", "ls | sh", "ls > /etc/passwd", "ls $(reboot)", "ls `reboot`",
+                    "date -s 2020-01-01", "systemctl stop ssh", "pactl set-sink-volume 0 10%", "echo hi", "sudo ls",
+                    "xdg-settings", "ls\nreboot", "ls 'unclosed"):
+            self.assertFalse(read_only(cmd), cmd)
+
+    def test_read_only_runs_without_input(self):
+        with mock.patch("builtins.input", side_effect=AssertionError("не должна спрашивать")):
+            out, _, failed = run_tool("run_command", {"command": "pwd"})
+        self.assertFalse(failed)
+        self.assertIn("Код 0", out)
+
+
 if __name__ == "__main__":
     unittest.main()

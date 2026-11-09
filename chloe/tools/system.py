@@ -57,9 +57,44 @@ def tool_open_path(a):
     return "Открыто: " + short(p)
 
 
+# Команды, которые только смотрят и ничего не меняют, — без «да, делай». Список короткий и строгий:
+# имя программы и (для некоторых) первое слово-подкоманда. Всё остальное — с подтверждением, как раньше.
+READ_ONLY = {"ls": None, "pwd": None, "whoami": None, "uptime": None, "df": None, "du": None, "free": None,
+             "uname": None, "hostname": None, "which": None, "id": None, "nproc": None, "lscpu": None, "lsblk": None,
+             "lsb_release": None, "date": None,
+             "xdg-settings": {"get", "check"}, "xdg-mime": {"query"},
+             "gsettings": {"get", "list-keys", "list-schemas", "list-recursively"},
+             "pactl": {"info", "list", "get-default-sink", "get-sink-volume", "get-sink-mute"},
+             "systemctl": {"status", "is-active", "is-enabled", "list-units"}}
+SHELL_TRICKS = re.compile(r"[;&|<>`$(){}\\\n*?!~]")
+
+
+def read_only(cmd):
+    """True — команда только читает: её можно выполнить без вопроса. Любой спецсимвол оболочки — сразу False."""
+    import shlex
+
+    if SHELL_TRICKS.search(cmd):
+        return False
+    try:
+        words = shlex.split(cmd)
+    except ValueError:
+        return False
+    if not words or words[0] not in READ_ONLY:
+        return False
+    if words[0] == "date" and any(w in ("-s", "--set") or w.startswith("--set=") for w in words[1:]):
+        return False   # date -s меняет время
+    sub = READ_ONLY[words[0]]
+    if sub is None:
+        return True
+    rest = [w for w in words[1:] if not w.startswith("-")]
+    return bool(rest) and rest[0] in sub
+
+
 def tool_run_command(a):
     cmd = a["command"]
-    if not confirm("Выполнить команду: " + cmd + "?"):
+    if read_only(cmd):
+        print("[команда только читает — без вопроса]")
+    elif not confirm("Выполнить команду: " + cmd + "?"):
         return "Пользователь отклонил команду."
     try:
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
