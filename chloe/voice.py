@@ -375,18 +375,23 @@ voice = Voice(enabled=True)
 
 LONG_WORDS = 8          # после стольких слов речь считается длинной: ждём паузу дольше — человек может задуматься
 LONG_PAUSE_EXTRA = 0.8  # секунды к PAUSE для длинной речи; короткие команды по-прежнему отвечают быстро
+NO_NEW_WORDS = 8.0      # секунды: громко, но новых слов нет (играет музыка, телевизор) — человек уже договорил
 
 
 def finish_speech(text):
     """Ждёт, пока человек договорит: части, сказанные с паузами, склеиваются в одну просьбу.
     Конец — когда тишина длится дольше PAUSE (у длинной речи — чуть дольше) и всё записанное уже распознано."""
     deadline = time.time() + max(PHRASE_LIMIT, CONTINUE_MAX)
+    last_words = time.time()
     while time.time() < deadline:
         try:
             text += " " + heard_q.get(timeout=0.2)
+            last_words = time.time()
             continue
         except queue.Empty:
             pass
+        if time.time() - last_words > NO_NEW_WORDS and not voice.recognizing:
+            break   # в микрофоне громко, но слов не прибавляется — это музыка, а не речь
         pause = PAUSE + (LONG_PAUSE_EXTRA if len(words(text)) >= LONG_WORDS else 0)
         still_talking = time.time() - voice.last_loud < pause
         if not still_talking and audio_q.empty() and not voice.recognizing:

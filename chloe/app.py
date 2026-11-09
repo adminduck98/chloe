@@ -94,10 +94,11 @@ def assistant(args):
                     if time.time() > state["listen_until"]:
                         go_idle()
                     continue
-                heard = finish_speech(heard)   # дослушать до конца
+                began = time.time()             # окно «без Хлоя» проверяем по началу фразы, а не по концу:
+                heard = finish_speech(heard)    # пока она дослушивала (музыка, длинная речь), окно могло закрыться
                 print("Вы:", heard)
                 command, woke = strip_wake(heard)
-                if not woke and time.time() > state["listen_until"]:
+                if not woke and began > state["listen_until"]:
                     go_idle()
                     continue   # не обращались к Хлое
                 brain.heard(heard)

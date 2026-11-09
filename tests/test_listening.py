@@ -4,6 +4,7 @@ import threading
 import time
 import types
 import unittest
+from unittest import mock
 
 from chloe import config, signals, voice as voice_mod
 from chloe.signals import audio_q, busy, drain, heard_q, interrupt, is_stop
@@ -110,7 +111,9 @@ class FinishSpeechTest(unittest.TestCase):
 
         feeder = threading.Thread(target=feed, daemon=True)
         feeder.start()
+        began = time.time()
         result = finish_speech(start)
+        self.elapsed = time.time() - began
         feeder.join()   # опоздавшая часть не должна попасть в следующий тест
         drain(heard_q)
         return result
@@ -129,6 +132,14 @@ class FinishSpeechTest(unittest.TestCase):
         started = time.time()
         self.assertEqual(self.run_script([]), "открой папку")
         self.assertLess(time.time() - started, 1.8)
+
+    def test_music_does_not_hold_the_phrase(self):
+        # играет музыка: микрофон всё время «громкий», но слов не прибавляется — дослушивание не тянется минуту
+        from chloe import voice as vm
+        script = [(0.4, "loud", 0)] * 20
+        with mock.patch.object(vm, "NO_NEW_WORDS", 2.0):
+            self.assertEqual(self.run_script(script), "открой папку")
+            self.assertLess(self.elapsed, 3.0)
 
     def test_long_silence_ends_the_phrase(self):
         self.assertEqual(self.run_script([(3.0, "loud", 0), (0.3, "text", "спасибо")]), "открой папку")

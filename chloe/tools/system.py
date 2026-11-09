@@ -18,7 +18,11 @@ def tool_open_url(a):
     url = a["url"]
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    webbrowser.open(url)
+    if OS_NAME == "Linux" and shutil.which("xdg-open"):
+        # браузер на Linux пишет в терминал служебный шум (zygote … Обрыв канала) — в лог Chloe он не нужен
+        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    else:
+        webbrowser.open(url)
     return "Открыт сайт " + url
 
 
