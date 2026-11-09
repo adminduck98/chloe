@@ -9,7 +9,7 @@ from ..experience import things_of
 from .. import skillbook
 from ..journal import journal
 from ..permissions import permissions
-from ..signals import state
+from ..signals import seen_text, state
 from . import access, controls, desktop, files, kb, learn, transcribe, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
 from ..secret import redact
 from .. import usage as usage_mod
@@ -251,7 +251,8 @@ TOOLS = [
                                         "Вызывай, когда он назвал свой город или переехал.",
      "input_schema": schema({"city": S}, ["city"])},
     {"name": "remember", "description": "Запомнить важный факт о пользователе надолго (имя, предпочтения, где что лежит).",
-     "input_schema": schema({"text": S, "zone": {"type": "string", "description": "Тема: Люди, Работа, Магазин, Личное, Компьютер…"}}, ["text"])},
+     "input_schema": schema({"text": S, "zone": {"type": "string", "description": "Тема по смыслу: Личное, Люди, Работа, Проекты, Интернет (сайты и сервисы), Компьютер, Здоровье, Учёба. "
+                                                                                 "Подходящей нет — Личное. Новую тему заводи, только если записей о ней будет много."}}, ["text"])},
     {"name": "list_changes", "description": "Последние изменения файлов, которые ты сделала (с номерами) — чтобы найти, что отменить.",
      "input_schema": schema({"count": {"type": "integer"}})},
     {"name": "undo_change", "description": "Отменить изменение файлов: вернуть перемещённое, удалённое в корзину, заменённое; "
@@ -272,6 +273,44 @@ def repeat_key(name, args):
         return name + ":" + json.dumps(args, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
         return name + ":" + str(args)
+
+
+URL_SOURCES = {"web_search", "read_web_page", "play_youtube", "ask_knowledge", "tg_read", "tg_unread", "read_text_file",
+               "conversation_log", "project_overview", "list_knowledge"}
+
+
+def _bare(url):
+    import re
+    import urllib.parse
+
+    u = urllib.parse.unquote(str(url)).strip().lower()
+    u = re.sub(r"^[a-z]+://", "", u)
+    u = re.sub(r"^www\.", "", u)
+    return u.rstrip("/")
+
+
+def url_allowed(url):
+    """Главная страница сайта — можно всегда; конкретная страница — только если её адрес встречался:
+    в словах пользователя, результатах поиска, прочитанной странице, базе знаний или памяти."""
+    import urllib.parse
+
+    u = str(url).strip()
+    parsed = urllib.parse.urlparse(u if "://" in u else "https://" + u)
+    if parsed.path in ("", "/") and not parsed.query:
+        return True
+    want = _bare(u)
+    from ..memory import memory
+
+    texts = list(seen_text) + [m.get("text", "") for m in getattr(memory, "items", [])]
+    return any(want in _bare_all(t) for t in texts)
+
+
+def _bare_all(text):
+    import re
+    import urllib.parse
+
+    t = urllib.parse.unquote(str(text)).lower()
+    return re.sub(r"(?:[a-z]+://)?(?:www\.)?", "", t)
 
 
 def run_tool(name, args):
@@ -295,6 +334,9 @@ def run_tool(name, args):
     started = time.time()
     state["declined"] = False
     verdict = permissions.check(name, args)   # карта прав и Private Vault — перед каждым действием модели
+    if not verdict and name == "open_url" and isinstance(args, dict) and not url_allowed(args.get("url", "")):
+        verdict = ("block", "адрес этой страницы не встречался ни в поиске, ни в словах пользователя — адреса страниц "
+                           "не составляй сама: найди нужную страницу через web_search (или открой главную сайта)")
     if verdict and verdict[0] == "ask":
         from ..voice import confirm
 
@@ -318,6 +360,8 @@ def run_tool(name, args):
         if not state["declined"]:   # «нет» пользователя — не ошибка инструмента, его повтор и так запрещён
             fails[key] = fails.get(key, 0) + 1
     text, png = out, None
+    if name in URL_SOURCES and not failed:
+        seen_text.append(" ".join(c["text"] for c in out if c.get("type") == "text") if isinstance(out, list) else str(out)[:20000])
     if isinstance(out, list):   # скриншот: картинка отдельно, текст отдельно
         text = " ".join(c["text"] for c in out if c["type"] == "text")
         png = next((base64.standard_b64decode(c["source"]["data"]) for c in out if c["type"] == "image"), None)

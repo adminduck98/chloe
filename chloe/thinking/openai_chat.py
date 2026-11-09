@@ -35,7 +35,9 @@ def qwen_base_url(key=None):
 
 
 PROVIDERS = {
-    "qwen": {"base_url": qwen_base_url(), "key": lambda: config.QWEN_KEY, "images": True},
+    # Qwen обычно отвечает за 2–5 с, но бывает и 17–29 с на шаг: дольше QWEN_TIMEOUT не ждём — отвечает запасная модель
+    "qwen": {"base_url": qwen_base_url(), "key": lambda: config.QWEN_KEY, "images": True,
+             "timeout": float(os.environ.get("CHLOE_QWEN_TIMEOUT", "15"))},
     "deepseek": {"base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
                  "key": lambda: config.DEEPSEEK_KEY, "images": False},
     "anthropic": {"key": lambda: config.ANTHROPIC_KEY, "images": True},   # официальная библиотека Anthropic
@@ -65,7 +67,7 @@ def make_clients():
             clients[name] = Anthropic(api_key=p["key"](), timeout=30, max_retries=0)
         else:
             # gzip, а не brotli: со старой библиотекой Brotli (<1.2) ответ сервера не распаковывается
-            clients[name] = OpenAI(api_key=p["key"](), base_url=p["base_url"], timeout=30, max_retries=0,
+            clients[name] = OpenAI(api_key=p["key"](), base_url=p["base_url"], timeout=p.get("timeout", 30), max_retries=0,
                                    default_headers={"Accept-Encoding": "gzip, deflate"})
     return clients
 

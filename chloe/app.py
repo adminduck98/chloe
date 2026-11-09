@@ -23,7 +23,7 @@ from . import sleep
 from .sleep import start as sleep_watcher
 from .memory import forget_memory, memory, rewrite_memory
 from .settings import settings
-from .signals import Typed, busy, commands, heard_q, interrupt, is_stop, state
+from .signals import Typed, busy, commands, heard_q, interrupt, is_stop, seen_text, state
 from .thinking import ask_short, forget_old, make_client, think
 from .tools import SKILLS
 from .tools.system import tool_open_path
@@ -45,6 +45,23 @@ def strip_wake(text):
     return text, has_wake(text)
 
 
+def startup_reminder():
+    """При включении — важные задачи проектов (приоритет «важно», не сделаны): пользователь просил напоминать."""
+    try:
+        from .permissions import permissions
+        from .project_memory import project_memory
+
+        if permissions.level("projects") == "block":
+            return ""
+        tasks = project_memory.important_open(3)
+    except Exception:
+        return ""
+    if not tasks:
+        return ""
+    return " Напоминаю важное: " + "; ".join(
+        ("{} (проект {})".format(t["title"], t["project"]) if len({x["project"] for x in tasks}) > 1 else t["title"]) for t in tasks) + "."
+
+
 def assistant(args):
     if not config.has_key():
         voice.say("Не задан ключ: нужен DASHSCOPE_API_KEY (Qwen), DEEPSEEK_API_KEY, GEMINI_API_KEY или ANTHROPIC_API_KEY. "
@@ -53,7 +70,7 @@ def assistant(args):
     print("[мозг: {} · быстрый {} · сильный {}]".format(config.PROVIDER, config.MODEL_FAST, config.MODEL_STRONG))
     client = make_client()
     messages = []
-    voice.say("Привет, я Хлоя. Слушаю.")
+    voice.say("Привет, я Хлоя. Слушаю." + startup_reminder())
     state["listen_until"] = time.time() + ACTIVE_WINDOW
     if voice.enabled and not args.text:
         threading.Thread(target=recorder, daemon=True).start()
@@ -115,6 +132,7 @@ def assistant(args):
                 continue
             idle["sent"] = False   # дальше — думает и говорит; потом снова «спокойна»
             journal.add("heard", "Голос", command, {"typed": bool(typed or args.text)})
+            seen_text.append(command)   # адрес, названный пользователем, можно открыть
             if low in EXIT_WORDS:
                 voice.say("До встречи!")
                 os._exit(0)

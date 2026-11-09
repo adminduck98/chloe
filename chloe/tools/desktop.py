@@ -113,32 +113,48 @@ MEDIA_KEYS = {"play_pause": "playpause", "play": "playpause", "pause": "playpaus
 MPRIS_METHOD = {"play_pause": "PlayPause", "play": "Play", "pause": "Pause", "next": "Next", "previous": "Previous"}
 
 
-def players():
-    """Плееры, которые сейчас открыты (имена служб MPRIS). Играющий — первым."""
-    out = run(["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
-               "--method", "org.freedesktop.DBus.ListNames"])
-    names = re.findall(r"'(" + re.escape(MPRIS) + r"\.[^']+)'", out)
-    return sorted(names, key=lambda n: player_status(n) != "Playing")
+def _prop(name, iface, prop):
+    try:
+        return run(["gdbus", "call", "--session", "--dest", name, "--object-path", "/org/mpris/MediaPlayer2", "--method",
+                    "org.freedesktop.DBus.Properties.Get", iface, prop]) or ""
+    except Exception:
+        return ""
 
 
 def player_status(name):
-    try:
-        out = run(["gdbus", "call", "--session", "--dest", name, "--object-path", "/org/mpris/MediaPlayer2", "--method",
-                   "org.freedesktop.DBus.Properties.Get", MPRIS + ".Player", "PlaybackStatus"])
-        return re.search(r"'(\w+)'", out).group(1)
-    except Exception:
-        return ""
+    m = re.search(r"'(\w+)'", _prop(name, MPRIS + ".Player", "PlaybackStatus"))
+    return m.group(1) if m else ""
+
+
+def player_title(name):
+    """Как плеер себя называет: Brave, VLC, Spotify… (а не «chromium.instance123»)."""
+    m = re.search(r"'([^']+)'", _prop(name, MPRIS, "Identity"))
+    return m.group(1) if m else name.split(".")[3]
 
 
 def now_playing(name):
-    try:
-        out = run(["gdbus", "call", "--session", "--dest", name, "--object-path", "/org/mpris/MediaPlayer2", "--method",
-                   "org.freedesktop.DBus.Properties.Get", MPRIS + ".Player", "Metadata"])
-    except Exception:
-        return ""
+    out = _prop(name, MPRIS + ".Player", "Metadata")
     title = re.search(r"'xesam:title': <'([^']*)'>", out)
     artist = re.search(r"'xesam:artist': <\['([^']*)'", out)
     return " — ".join(x.group(1) for x in (artist, title) if x and x.group(1))
+
+
+def players():
+    """Настоящие плееры: [(служба, имя, статус, трек)], играющий — первым. Программы на движке Chromium без трека
+    и «остановленные» (например, приложение Claude) — не плееры: раньше из-за них Chloe говорила «ничего не играет»."""
+    out = run(["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
+               "--method", "org.freedesktop.DBus.ListNames"])
+    found = []
+    for name in re.findall(r"'(" + re.escape(MPRIS) + r"\.[^']+)'", out or ""):
+        status, track = player_status(name), now_playing(name)
+        if status == "Stopped" and not track:
+            continue
+        found.append((name, player_title(name), status, track))
+    order = {"Playing": 0, "Paused": 1}
+    return sorted(found, key=lambda p: order.get(p[2], 2))
+
+
+STATUS_RU = {"Playing": "играет", "Paused": "на паузе", "Stopped": "остановлено"}
 
 
 def tool_media(a):
@@ -148,20 +164,22 @@ def tool_media(a):
             found = players()
         except Exception:
             found = []
+        if action == "status":
+            if not found:
+                return ("Плеера, который сообщает о себе, не вижу. Браузер сообщает о видео не всегда — "
+                        "если важно, посмотри на экран (screenshot), а не говори, что ничего не играет.")
+            return "; ".join("{}: {}{}".format(title, STATUS_RU.get(st, st or "?"), " — " + tr if tr else "")
+                             for _, title, st, tr in found)
         if found:
-            name = found[0]
-            if action == "status":
-                track = now_playing(name)
-                status = {"Playing": "играет", "Paused": "на паузе", "Stopped": "остановлено"}.get(player_status(name), "")
-                return "{}: {}{}".format(name.split(".")[3], status, (" — " + track) if track else "")
+            # «пауза» — тому, что играет; «играть» — тому, что на паузе; остальное — первому (играющему)
+            want = {"pause": "Playing", "play": "Paused"}.get(action)
+            name, title, _, _ = next((p for p in found if p[2] == want), found[0])
             run(["gdbus", "call", "--session", "--dest", name, "--object-path", "/org/mpris/MediaPlayer2",
                  "--method", MPRIS + ".Player." + MPRIS_METHOD[action]])
             track = now_playing(name) if action in ("next", "previous", "play") else ""
-            return "Готово ({}){}.".format(name.split(".")[3], ": " + track if track else "")
-        if action == "status":
-            return "Сейчас ничего не играет: открытых плееров нет."
+            return "Готово ({}: {}){}.".format(title, STATUS_RU.get(player_status(name), "?"), " — " + track if track else "")
     if action == "status":
-        return "Не могу узнать, что играет, на этой системе."
+        return "Не могу узнать, что играет, на этой системе — посмотри на экран (screenshot)."
     import pyautogui
 
     pyautogui.press(MEDIA_KEYS[action])

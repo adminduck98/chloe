@@ -107,6 +107,12 @@ class ProjectMemory:
             return [dict(r) for r in self.db.execute("SELECT * FROM proj_notes WHERE project = ? ORDER BY ts DESC LIMIT ?",
                                                       (self.resolve(project), limit))]
 
+    def important_open(self, limit=3):
+        """Важные незакрытые задачи всех проектов — Chloe называет их при включении."""
+        with self.lock:
+            return [dict(r) for r in self.db.execute(
+                "SELECT * FROM proj_tasks WHERE priority = 1 AND status != 'done' ORDER BY status = 'doing' DESC, created LIMIT ?", (limit,))]
+
     def delete_note(self, nid):
         with self.lock:
             self.db.execute("DELETE FROM proj_notes WHERE id = ?", (nid,))
