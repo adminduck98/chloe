@@ -56,6 +56,15 @@ class Telegram(unittest.TestCase):
         self.assertEqual(tg.find_chat("Алене", DIALOGS)[0]["id"], 6)       # ё и е
         self.assertEqual(tg.find_chat("Ахмеду Каримову", DIALOGS)[0]["id"], 2)
 
+    def test_other_alphabet_spaces_and_extra_words(self):
+        # голосом «Облако UZ», а канал называется «Oblakouz – Новости Узбекистана»
+        dialogs = DIALOGS + [{"id": 7, "name": "Oblakouz – Новости Узбекистана", "unread": 0, "kind": "канал", "muted": False}]
+        for said in ("Облако UZ", "Облако", "Oblako UZ", "облако новости Узбекистана"):
+            self.assertEqual(tg.find_chat(said, dialogs)[0]["id"], 7, said)
+        chat, problem = tg.find_chat("Opel", dialogs)
+        self.assertIsNone(chat)
+        self.assertIn("Похожие", problem)                                    # варианты вместо выдуманного названия
+
     def test_ambiguous_name_is_not_guessed(self):
         chat, problem = tg.find_chat("Ахмеду", DIALOGS)
         self.assertIsNone(chat)

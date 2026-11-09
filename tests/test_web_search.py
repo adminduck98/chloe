@@ -42,8 +42,13 @@ class WebSearch(unittest.TestCase):
 
 
 class PlayYoutube(unittest.TestCase):
-    def play(self, videos):
+    def play(self, videos, page=None):
         opened = []
+
+        def search_page(query, count=5):
+            if page is None:
+                raise ConnectionError("YouTube не ответил")
+            return page
 
         class Videos(FakeDDGS):
             def videos(self, query, max_results=10):
@@ -53,7 +58,8 @@ class PlayYoutube(unittest.TestCase):
                 return a
 
         FakeDDGS.answers = list(videos)
-        with mock.patch("ddgs.DDGS", Videos), mock.patch("chloe.tools.system.tool_open_url", lambda a: opened.append(a["url"])):
+        with mock.patch("ddgs.DDGS", Videos), mock.patch.object(web, "youtube_search_page", search_page), \
+             mock.patch("chloe.tools.system.tool_open_url", lambda a: opened.append(a["url"])):
             out = web.tool_play_youtube({"query": "ROSÉ On The Ground"})
         return out, opened
 
@@ -62,6 +68,19 @@ class PlayYoutube(unittest.TestCase):
                                   {"content": "https://www.youtube.com/watch?v=CKZvWhCqx1s", "title": "ROSÉ - 'On The Ground' M/V"}]])
         self.assertEqual(opened, ["https://www.youtube.com/watch?v=CKZvWhCqx1s"])
         self.assertIn("On The Ground", out)
+
+    def test_youtube_own_search_comes_first(self):
+        out, opened = self.play([], page=[("https://www.youtube.com/watch?v=CKZvWhCqx1s", "ROSÉ - 'On The Ground' M/V")])
+        self.assertEqual(opened, ["https://www.youtube.com/watch?v=CKZvWhCqx1s"])
+
+    def test_parses_youtube_results_page(self):
+        html = ('..."videoRenderer":{"videoId":"CKZvWhCqx1s","thumbnail":{}, "title":{"runs":[{"text":"ROS\\u00c9 - \'On The Ground\' M/V"}]}...'
+                '"videoRenderer":{"videoId":"z6CSW2yu8Mg","title":{"runs":[{"text":"Dance \\"Performance\\""}]}...')
+        resp = mock.Mock(text=html, raise_for_status=lambda: None)
+        with mock.patch("requests.get", return_value=resp):
+            found = web.youtube_search_page("ROSÉ On The Ground")
+        self.assertEqual(found[0], ("https://www.youtube.com/watch?v=CKZvWhCqx1s", "ROSÉ - 'On The Ground' M/V"))
+        self.assertEqual(found[1][1], 'Dance "Performance"')
 
     def test_nothing_found_opens_youtube_search(self):
         out, opened = self.play([Exception("No results found."), []])

@@ -76,6 +76,13 @@ class Desktop(unittest.TestCase):
         closed = {c[-1] for c in self.d.sent("-c")}
         self.assertEqual(closed, {"0x02", "0x03", "0x05"})
 
+    def test_close_all_with_a_name_closes_only_that_program(self):
+        # «закрой браузер» → close_all с именем: только окна firefox, без вопроса про все окна
+        with mock.patch("builtins.input", side_effect=AssertionError("не должна спрашивать")):
+            out, _, failed = run_tool("window", {"action": "close_all", "name": "firefox"})
+        self.assertFalse(failed)
+        self.assertEqual({c[-1] for c in self.d.sent("-c")}, {"0x02"})
+
     def test_unknown_window_lists_what_is_open(self):
         out, _, failed = run_tool("window", {"action": "focus", "name": "Photoshop"})
         self.assertTrue(failed)

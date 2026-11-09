@@ -64,6 +64,14 @@ def tool_window(a):
     if err:
         return err
     action, name = a["action"], a.get("name", "")
+    if action == "close_all" and name:
+        # «закрой браузер» с именем — все окна только этой программы (как close по одному, без вопроса), а не всё подряд
+        targets = [w for w in find_windows(name) if w["title"] != OWN_TITLE]
+        if not targets:
+            return "Не найдено окно «{}». Открыты: {}.".format(name, ", ".join(sorted({w["cls"] for w in windows()})) or "ничего")
+        for w in targets:
+            run(["wmctrl", "-i", "-c", w["id"]])
+        return "Закрыла окна «{}»: {}. Остальные не трогала.".format(name, len(targets))
     if action == "close_all":
         targets = [w for w in windows() if w["title"] != OWN_TITLE]
         if not targets:

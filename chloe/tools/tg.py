@@ -16,6 +16,28 @@ def norm(text):
     return re.sub(r"\s+", " ", text.lower().replace("ё", "е")).strip()
 
 
+LATIN = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+                 ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r", "s", "t", "u",
+                  "f", "h", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"]))
+
+
+def compact(text):
+    """«Облако UZ» и «Oblakouz – Новости» в одном виде: латиница, без пробелов и знаков — так голос и название сходятся."""
+    return re.sub(r"[^a-z0-9]", "", "".join(LATIN.get(c, c) for c in norm(text)))
+
+
+def loose(query, dialogs):
+    """Запасной поиск: вся фраза — частью названия, или каждое слово (без окончания) — где-то в названии."""
+    q = compact(query)
+    if len(q) < 3:
+        return []
+    found = [d for d in dialogs if q in compact(d["name"])]
+    if found:
+        return found
+    stems = [compact(w)[:max(3, len(compact(w)) - 2)] for w in norm(query).split() if len(compact(w)) >= 3]
+    return [d for d in dialogs if stems and all(s in compact(d["name"]) for s in stems)]
+
+
 def find_chat(query, dialogs=None):
     """(чат, None) — нашёлся один; (None, текст) — не нашёлся или похожих несколько (тогда — варианты, без угадывания)."""
     dialogs = telegram.dialogs() if dialogs is None else dialogs
@@ -28,10 +50,18 @@ def find_chat(query, dialogs=None):
         stems = [w[:-2] if len(w) > 5 else w[:-1] if len(w) > 3 else w for w in q.split()]
         found = [d for d in dialogs
                  if all(any(word.startswith(s) for word in norm(d["name"]).split()) for s in stems)]
+    if not found:   # «Облако UZ» → «Oblakouz – Новости Узбекистана»: другой алфавит, пробелы, лишние слова
+        found = loose(query, dialogs)
     if len(found) == 1:
         return found[0], None
     if not found:
-        return None, "Не найдено чата «{}» в Telegram.".format(query)
+        import difflib
+
+        q = compact(query)
+        close = sorted(dialogs, key=lambda d: -difflib.SequenceMatcher(None, q, compact(d["name"])[:len(q) + 6]).ratio())[:5]
+        hint = " Похожие: {}. Не выдумывай название — спроси пользователя или посмотри на экране.".format(
+            "; ".join(d["name"] for d in close)) if close else ""
+        return None, "Не найдено чата «{}» в Telegram.{}".format(query, hint)
     return None, "Не уверена, какой чат: {}. Уточни у пользователя.".format(
         "; ".join("{} ({})".format(d["name"], d["kind"]) for d in found[:6]))
 
