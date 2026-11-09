@@ -148,10 +148,13 @@ class Voice:
             pool.shutdown(wait=False)
             try:
                 text = qwen.result(timeout=QWEN_ASR_WAIT)
-                brain.voice(0, "user")
-                return text
+                if text:
+                    brain.voice(0, "user")
+                    return text
             except Late:
                 print("[слух Qwen не успел за {:.1f} с — беру Google]".format(QWEN_ASR_WAIT))
+            except qwen_audio.NoSpeech:
+                pass   # обрывок или тишина — Qwen не сломан; что-то услышал Google — возьмём его ответ
             except Exception as e:   # нет связи, кредиты кончились — слушаем через Google, Qwen попробуем через минуту
                 print("[слух Qwen: " + str(e)[:80] + " — распознаю через Google]")
                 self.asr_down_until = time.time() + 60

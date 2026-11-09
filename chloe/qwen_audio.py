@@ -6,6 +6,7 @@
 import base64
 import json
 import os
+import urllib.error
 import urllib.request
 
 from . import config
@@ -14,6 +15,10 @@ TTS_MODEL = os.environ.get("CHLOE_QWEN_TTS_MODEL", "qwen-audio-3.0-tts-plus")
 ASR_MODEL = os.environ.get("CHLOE_QWEN_ASR_MODEL", "qwen-audio-3.0-asr-flash")
 VOICE = os.environ.get("CHLOE_QWEN_VOICE", "longanlingxin")   # многоязычный женский голос; по-русски говорит разборчиво
 RATE = 24000
+
+
+class NoSpeech(Exception):
+    """Сервер не нашёл в записи речи: обрывок короче ~0,3 с или тишина (он отвечает на это «400 {}»). Не поломка."""
 
 
 def available():
@@ -31,7 +36,11 @@ def _request(path, body, stream=False, timeout=30):
     headers = {"Authorization": "Bearer " + config.QWEN_KEY, "Content-Type": "application/json",
                "X-DashScope-SSE": "enable" if stream else "disable"}
     req = urllib.request.Request(native_base() + path, data=json.dumps(body).encode(), headers=headers, method="POST")
-    return urllib.request.urlopen(req, timeout=timeout)
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as e:   # «400 Bad Request» сам по себе ничего не говорит — нужен ответ сервера
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError("HTTP {}: {}".format(e.code, detail)) from None
 
 
 def tts_stream(text, voice=None, timeout=30):
@@ -64,7 +73,13 @@ def asr(wav_bytes, language="ru", timeout=20):
             "input": {"messages": [{"role": "user", "content": [
                 {"type": "input_audio", "input_audio": {"data": "data:audio/wav;base64," + base64.b64encode(wav_bytes).decode()}}]}]},
             "parameters": {"format": "wav", "sample_rate": "16000", **({"language_hints": [language]} if language else {})}}
-    with _request("/api/v1/services/aigc/multimodal-generation/generation", body, timeout=timeout) as r:
+    try:
+        r = _request("/api/v1/services/aigc/multimodal-generation/generation", body, timeout=timeout)
+    except RuntimeError as e:
+        if str(e).startswith("HTTP 400"):
+            raise NoSpeech(str(e)) from None
+        raise
+    with r:
         data = json.load(r)
     out = data.get("output") or {}
     text = out.get("text")

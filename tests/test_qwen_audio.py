@@ -68,6 +68,28 @@ class QwenAudio(unittest.TestCase):
             self.assertGreater(v.asr_down_until, 0)                # минуту Qwen не дёргаем зря
             self.assertEqual(v.recognize(audio), "через гугл")
 
+    def test_fragment_or_silence_is_not_a_breakdown(self):
+        # Qwen отвечает «400 {}» на обрывок короче ~0,3 с и на тишину: это «речи нет», а не поломка
+        v = Voice(enabled=True)
+        v.recognizer = mock.Mock()
+        v.recognizer.recognize_google.return_value = "да"
+        audio = mock.Mock()
+        audio.get_wav_data.return_value = b"RIFF"
+        with mock.patch.object(config, "ASR", "qwen"), \
+             mock.patch("urllib.request.urlopen", mock.Mock(side_effect=__import__("urllib.error").error.HTTPError(
+                 "u", 400, "Bad Request", {}, io.BytesIO(b"{}")))):
+            self.assertEqual(v.recognize(audio), "да")               # Google что-то услышал — берём
+        self.assertEqual(v.asr_down_until, 0)                        # и Qwen не выключаем на минуту
+
+    def test_empty_qwen_answer_uses_google(self):
+        v = Voice(enabled=True)
+        v.recognizer = mock.Mock()
+        v.recognizer.recognize_google.return_value = "стоп"
+        audio = mock.Mock()
+        audio.get_wav_data.return_value = b"RIFF"
+        with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(qwen_audio, "asr", lambda wav, lang: ""):
+            self.assertEqual(v.recognize(audio), "стоп")
+
     def test_slow_qwen_loses_the_race_to_google(self):
         import time
         v = Voice(enabled=True)

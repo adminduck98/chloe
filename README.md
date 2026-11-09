@@ -70,7 +70,7 @@ python run.py --text        # без микрофона, с клавиатуры
 | `CHLOE_MODEL_STRONG` | `qwen3.8-flash+thinking` / `deepseek-v4-pro` (с ключом Claude — `claude-haiku-5-5`) / `claude-sonnet-5-5` / `gemini-3.5-flash` | сильный мозг — для экрана, файлов, команд, текстов, многих шагов |
 | `CHLOE_MODEL` | — | одна модель на всё, без переключения; если модель перегружена, Chloe сама берёт запасную; `+thinking` — та же модель Qwen с раздумьями |
 | `CHLOE_LANG` | `ru-RU` | язык распознавания (`uz-UZ`, `en-US`) |
-| `CHLOE_TTS` | `edge` | `edge` — Светлана (Microsoft, нужен интернет); `piper` — офлайн-голос, озвучка за доли секунды; `svetlana` — только Светлана: без интернета Chloe молчит, ответ виден в окне; `qwen` — голос Qwen (`CHLOE_QWEN_VOICE`, по умолчанию `longanlingxin`), не ответил — Светлана |
+| `CHLOE_TTS` | `qwen`, если есть ключ Qwen, иначе `edge` | `edge` — Светлана (Microsoft, нужен интернет); `piper` — офлайн-голос, озвучка за доли секунды; `svetlana` — только Светлана: без интернета Chloe молчит, ответ виден в окне; `qwen` — голос Qwen (`CHLOE_QWEN_VOICE`, по умолчанию `longanlingxin`), не ответил — Светлана |
 | `CHLOE_ASR` | `qwen`, если есть ключ Qwen, иначе `google` | слух: `qwen` — распознавание Qwen (лучше с английскими названиями посреди русской речи), спрашивается вместе с Google; Qwen ждём `CHLOE_QWEN_ASR_WAIT` = 3,5 с, потом берём Google |
 | `CHLOE_VOICE` | `ru-RU-SvetlanaNeural` | голос Microsoft, например `en-US-AvaMultilingualNeural` (многоязычная Ava) или `uz-UZ-MadinaNeural` |
 | `CHLOE_STREAM_VOICE` | `on` | `on` — Светлана начинает говорить с первого кусочка звука, не дожидаясь всей фразы (нужен `miniaudio`); `off` — целым файлом, как раньше |
