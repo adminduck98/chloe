@@ -37,13 +37,14 @@ CATEGORIES = {
     "telegram":     ("Telegram", "читать и отправлять сообщения", {"tg_read", "tg_unread", "tg_send"}, "allow"),
     "phone":        ("Телефон", "экран, нажатия, приложения и ссылки на телефоне Android", {"phone"}, "allow"),
     "calendar":     ("Календарь Google", "смотреть, добавлять и удалять события (добавление и удаление — с подтверждением)", {"calendar"}, "allow"),
+    "media":        ("Картинки и видео", "рисовать картинки и делать видео через Qwen (видео — с подтверждением)", {"create_media"}, "allow"),
     "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now"}, "allow"),
     "knowledge":    ("База знаний", "изучать документы и отвечать по ним", {"learn_document", "ask_knowledge", "list_knowledge", "forget_document"}, "allow"),
     "projects":     ("Проекты", "задачи, решения и состояние проектов (git, GitHub)", {"projects", "project_overview", "project_task", "project_note"}, "allow"),
     "power":        ("Питание", "выключение, перезагрузка, сон, блокировка", {"power"}, "allow"),   # выключение и так спрашивает
 }
 TOOL_CATEGORY = {t: key for key, (_, _, tools, _) in CATEGORIES.items() for t in tools}
-PATH_ARGS = ("path", "src", "dst", "folder", "source", "target", "destination")
+PATH_ARGS = ("path", "src", "dst", "folder", "source", "target", "destination", "image")
 
 
 class Permissions:
