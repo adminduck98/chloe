@@ -83,8 +83,8 @@ def startup_reminder():
 
 def assistant(args):
     if not config.has_key():
-        voice.say("Не задан ключ: нужен DASHSCOPE_API_KEY (Qwen), DEEPSEEK_API_KEY, GEMINI_API_KEY или ANTHROPIC_API_KEY. "
-                  "Я не могу думать без него.")
+        voice.say("Не задан ключ: нужен DASHSCOPE_API_KEY (Qwen), DEEPSEEK_API_KEY, GEMINI_API_KEY или ANTHROPIC_API_KEY "
+                  "в файле ~/.config/chloe/keys.env. Я не могу думать без него.")
         return
     print("[мозг: {} · быстрый {} · сильный {}]".format(config.PROVIDER, config.MODEL_FAST, config.MODEL_STRONG))
     client = make_client()

@@ -24,6 +24,46 @@ UI_DIR = pathlib.Path(__file__).resolve().parent / "ui"   # страница м�
 OS_NAME = platform.system()  # Windows / Darwin / Linux
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
+# Ключи — в отдельном файле только для владельца (права 600), а не в ~/.bashrc, который читают все программы.
+# Строки вида NAME=значение (можно с export и кавычками). Ключ из файла главнее старой переменной окружения:
+# терминал, открытый до смены ключа, не подсунет устаревший. Chloe этот файл не читает и не показывает.
+KEYS_DIR = HOME / ".config" / "chloe"
+KEYS_FILE = KEYS_DIR / "keys.env"
+KEY_NAMES = ("DASHSCOPE_API_KEY", "QWEN_API_KEY", "QWEN_BASE_URL", "DEEPSEEK_API_KEY",
+             "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")
+
+
+def parse_keys(text):
+    out = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        name, sep, value = line.partition("=")
+        name, value = name.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if sep and name in KEY_NAMES and value:
+            out[name] = value
+    return out
+
+
+def load_keys(path=KEYS_FILE):
+    """Ключи из защищённого файла — в окружение (клиенты API берут их оттуда). Возвращает имена загруженных."""
+    try:
+        if os.name == "posix" and path.stat().st_mode & 0o077:
+            path.chmod(0o600)   # файл с ключами видит только владелец
+        keys = parse_keys(path.read_text(encoding="utf-8"))
+    except OSError:
+        return []
+    os.environ.update(keys)
+    return sorted(keys)
+
+
+load_keys()
+
 
 def user_dir(xdg_name, default):
     """Папка пользователя. На Linux берётся из xdg-user-dir: там она может называться «Загрузки»."""

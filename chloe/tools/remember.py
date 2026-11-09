@@ -8,7 +8,7 @@ from ..secret import has_secret
 def tool_remember(a):
     if has_secret(a["text"]):
         return ("Отказано: ключи, токены и пароли я не запоминаю — память уходит модели с каждой просьбой "
-                "и видна в окне и на телефоне. Ключ уже хранится там, где его взяли (например, в ~/.bashrc).")
+                "и видна в окне и на телефоне. Ключ уже хранится там, где его взяли (например, в ~/.config/chloe/keys.env).")
     zone = a.get("zone") or "Память"
     item, what, before = memory.remember(a["text"], zone)
     if what == "same":

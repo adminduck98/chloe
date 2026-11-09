@@ -14,11 +14,14 @@ Private Vault — приватные папки: внутрь Chloe не заг�
 """
 import json
 import pathlib
+import re
 import threading
 
-from .config import DATA, HOME
+from .config import DATA, HOME, KEYS_DIR
 
 FILE = DATA / "permissions.json"
+# команда, которая может показать ключи: файл с ними, копии ~/.bashrc, переменные окружения
+SECRET_HINTS = re.compile(r"keys\.env|\.config/chloe|\.bashrc\.bak|_API_KEY|\bprintenv\b|\benv\b|/environ\b|\bdeclare\s+-x|\bexport\s+-p", re.I)
 LEVELS = ("allow", "ask", "block")
 LEVEL_RU = {"allow": "разрешено", "ask": "спрашивать", "block": "запрещено"}
 STRICT = {"allow": 0, "ask": 1, "block": 2}
@@ -106,7 +109,16 @@ class Permissions:
                 return True
         return False
 
+    @classmethod
+    def locked(cls, path):
+        """Файл с ключами и копии ~/.bashrc со старыми ключами закрыты всегда — карта прав их не открывает."""
+        p = cls._norm(path)
+        keys = cls._norm(KEYS_DIR)
+        return p == keys or keys in p.parents or p.name.startswith(".bashrc.bak")
+
     def in_vault(self, path):
+        if path and self.locked(path):
+            return True
         if not self.vault or not path:
             return False
         p = self._norm(path)
@@ -118,14 +130,16 @@ class Permissions:
 
     def mentions_vault(self, text):
         """Путь к приватной папке внутри текста команды: `cat ~/Личное/паспорт.pdf`."""
+        t = str(text or "").replace("~", str(HOME))
+        if SECRET_HINTS.search(t):
+            return True   # ключи: файл с ними, копии ~/.bashrc, переменные окружения
         if not self.vault or not text:
             return False
-        t = str(text).replace("~", str(HOME))
         return any(v in t for v in self.vault)
 
     def vault_names(self):
         """Имена приватных папок — окна с ними в заголовке Chloe не смотрит."""
-        return [pathlib.Path(v).name for v in self.vault if pathlib.Path(v).name]
+        return [pathlib.Path(v).name for v in self.vault if pathlib.Path(v).name] + ["keys.env"]
 
     # --- проверка перед действием ---
     def check(self, tool, args):
@@ -134,6 +148,8 @@ class Permissions:
         for k in PATH_ARGS:
             if isinstance(args.get(k), str) and self.in_vault(args[k]):
                 return "block", "это приватная папка (Private Vault): туда я не заглядываю"
+        if tool == "run_command" and SECRET_HINTS.search(str(args.get("command", ""))):
+            return "block", "команда касается ключей API — их я не читаю и не показываю"
         if tool == "run_command" and self.mentions_vault(args.get("command", "")):
             return "block", "команда касается приватной папки (Private Vault)"
         key = TOOL_CATEGORY.get(tool)

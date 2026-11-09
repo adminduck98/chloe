@@ -53,7 +53,7 @@
      сложные и всё, где нужен экран, — Claude Haiku 5.5 (`claude-haiku-5-5`); он же подхватывает,
      когда основной мозг недоступен. Для голоса Claude думает быстро: без раздумий, effort low.
    - **Gemini** — ключ на aistudio.google.com: `export GEMINI_API_KEY="ваш_ключ"`
-   Ключи — в `~/.bashrc` (строкой `export …`), потом новый терминал. Windows PowerShell: `$env:DASHSCOPE_API_KEY="ваш_ключ"`.
+   Ключи — в `~/.config/chloe/keys.env` (строками `DASHSCOPE_API_KEY=…`, права 600: `chmod 600 ~/.config/chloe/keys.env`). Windows PowerShell: `$env:DASHSCOPE_API_KEY="ваш_ключ"`.
 
 ## Запуск
 ```
