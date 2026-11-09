@@ -4,6 +4,7 @@ import shutil
 
 from ..changes import changes
 from ..voice import confirm
+from ..permissions import permissions
 from .paths import P, PROTECTED, _target, is_sensitive, short
 
 
@@ -28,7 +29,8 @@ def tool_search_files(a):
     q = a["query"].lower()
     found = []
     for root, dirs, files in os.walk(folder):
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS
+                   and not permissions.in_vault(os.path.join(root, d))]   # в Private Vault не ищу
         for name in dirs + files:
             if q in name.lower():
                 found.append(short(os.path.join(root, name)))

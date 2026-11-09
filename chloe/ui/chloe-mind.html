@@ -222,6 +222,17 @@
   #phonePanel .qr svg { width: 100%; height: 100%; display: block; }
   #phonePanel ol { margin: 8px 0; padding-left: 18px; }
   #phonePanel code { color: var(--ink); word-break: break-all; font-size: 12px; }
+  /* карта прав: три уровня на каждую категорию */
+  #accessPanel .cat { padding: 10px 0; border-bottom: 1px solid #161616; }
+  #accessPanel .cat .t { color: var(--ink); }
+  #accessPanel .cat .d { color: var(--iron); font-size: 12px; }
+  #accessPanel .seg { display: flex; gap: 0; margin-top: 6px; }
+  #accessPanel .seg button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--iron); font: inherit;
+    font-size: 12px; padding: 5px 0; cursor: pointer; margin-left: -1px; }
+  #accessPanel .seg button:hover { color: var(--ink); }
+  #accessPanel .seg button.on { color: var(--ink); border-color: var(--bone); position: relative; z-index: 1; }
+  #accessPanel .seg button.on.block { color: var(--coral); border-color: var(--coral); }
+  #accessPanel .vault input { width: 100%; box-sizing: border-box; margin: 6px 0; }
 
   /* чистый вид: только мозг, имя и ответ; всё остальное — по кнопке «Все функции» */
   body.clean #stats, body.clean #filters, body.clean #search, body.clean #zoom,
@@ -300,6 +311,7 @@
     <div id="memoryPanel" class="panel"></div>
     <div id="filesPanel" class="panel"></div>
     <div id="phonePanel" class="panel"></div>
+    <div id="accessPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -318,6 +330,7 @@
       <button id="memoryBtn">Память</button>
       <button id="filesBtn">Файлы</button>
       <button id="phoneBtn">Телефон</button>
+      <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
       <button id="micBtn">Микрофон</button>
@@ -2183,7 +2196,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2319,7 +2332,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2458,7 +2471,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2530,7 +2543,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2550,6 +2563,70 @@
   };
 
   // =======================================================
+  // 14¹⁰. ДОСТУП — карта прав (DATA PERMISSION MAP) и Private Vault
+  // Что Chloe может видеть и делать: у каждой категории «разрешено / спрашивать / запрещено»,
+  // приватные папки, куда она не заглядывает, и сколько раз за неделю она пользовалась доступом.
+  // =======================================================
+  var accessPanel = document.getElementById("accessPanel"), accessBtn = document.getElementById("accessBtn"), accessOpen = false;
+  window.closeAccess = function () { accessOpen = false; accessBtn.classList.remove("on"); accessPanel.style.display = "none"; };
+  function aApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.permissions_get ? window.pywebview.api : null; }
+  var LEVEL_BTN = [["allow", "Разрешено"], ["ask", "Спрашивать"], ["block", "Запрещено"]];
+  function renderAccess(m) {
+    if (!accessOpen) return;
+    if (!m || m.error) {
+      accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>" + escapeHtml((m && m.error) || "Нет связи с Chloe.");
+      document.getElementById("aClose").onclick = window.closeAccess; return;
+    }
+    var h = ["<span class='close' id='aClose'>✕</span><b>Доступ</b> · карта прав",
+             "<div style='color:#8A8A8A'>Что Chloe может видеть и делать. «Спрашивать» — перед каждым таким действием она спросит «да, делай». " +
+             "Ослабить защиту голосом можно только с подтверждением.</div>"];
+    m.categories.forEach(function (c) {
+      h.push("<div class='cat'><div class='t'>" + escapeHtml(c.title) + "</div><div class='d'>" + escapeHtml(c.desc) +
+             (c.uses ? " · за неделю: " + c.uses : "") + "</div><div class='seg'>" +
+             LEVEL_BTN.map(function (l) {
+               return "<button data-k='" + c.key + "' data-l='" + l[0] + "' class='" + (c.level === l[0] ? "on " + l[0] : "") + "'>" + l[1] + "</button>";
+             }).join("") + "</div></div>");
+    });
+    h.push("<h4>Private Vault · приватные папки</h4>",
+           "<div style='color:#8A8A8A'>Внутрь Chloe не заглядывает: не читает, не ищет, не изучает и не меняет, окна с ними на экране не смотрит.</div>");
+    m.vault.forEach(function (v) {
+      h.push("<div class='row'><span title='" + escapeHtml(v) + "'>" + escapeHtml(v) + "</span><button class='small' data-rm='" + escapeHtml(v) + "'>убрать</button></div>");
+    });
+    if (!m.vault.length) h.push("<div class='row'><span style='color:#8A8A8A'>пока пусто</span></div>");
+    h.push("<div class='vault'><input id='vaultPath' placeholder='~/Личное — путь к папке'><button class='small' id='vaultAdd'>сделать приватной</button>" +
+           "<div id='vaultErr' style='color:#FF7777'></div></div>");
+    accessPanel.innerHTML = h.join("");
+    document.getElementById("aClose").onclick = window.closeAccess;
+    var api = aApi();
+    accessPanel.querySelectorAll(".seg button").forEach(function (b) {
+      b.onclick = function () { api.permission_set(b.getAttribute("data-k"), b.getAttribute("data-l")).then(renderAccess); };
+    });
+    accessPanel.querySelectorAll("[data-rm]").forEach(function (b) {
+      b.onclick = function () { api.vault_remove(b.getAttribute("data-rm")).then(renderAccess); };
+    });
+    document.getElementById("vaultAdd").onclick = function () {
+      api.vault_add(document.getElementById("vaultPath").value).then(function (r) {
+        if (r && r.error) { document.getElementById("vaultErr").textContent = r.error; return; }
+        renderAccess(r);
+      });
+    };
+  }
+  accessBtn.onclick = function () {
+    touch();
+    if (accessOpen) { window.closeAccess(); return; }
+    var api = aApi();
+    if (!api) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone();
+    accessOpen = true; accessBtn.classList.add("on");
+    accessPanel.style.display = "block";
+    accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
+    document.getElementById("aClose").onclick = window.closeAccess;
+    api.permissions_get().then(renderAccess).catch(function () { renderAccess(null); });
+  };
+
+  // =======================================================
   // 15. СТАТИСТИКА
   // =======================================================
   var statsOpen = false, clearArmed = false;
@@ -2558,7 +2635,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -3492,7 +3569,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

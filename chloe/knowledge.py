@@ -170,11 +170,15 @@ class Knowledge:
                "bm25(kb_chunks) AS score FROM kb_chunks JOIN kb_docs ON kb_docs.id = kb_chunks.doc_id "
                "WHERE kb_chunks MATCH ?" + (" AND kb_chunks.doc_id = ?" if doc_id else "") + " ORDER BY score LIMIT ?")
         args = (q, doc_id, limit) if doc_id else (q, limit)
+        from .permissions import permissions
+
+        args = args[:-1] + (limit * 4,)   # с запасом: документы из Private Vault ниже отбрасываются
         with self.lock:
             try:
-                return [dict(r) for r in self.db.execute(sql, args)]
+                rows = [dict(r) for r in self.db.execute(sql, args)]
             except sqlite3.OperationalError:
                 return []
+        return [r for r in rows if not permissions.in_vault(r["path"])][:limit]
 
     # --- список и удаление ---
     def docs(self):

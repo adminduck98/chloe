@@ -259,6 +259,37 @@ class Api:
             return {"error": "Голос Светланы сейчас недоступен"}
         return {"audio": base64.b64encode(data).decode()}
 
+    # карта прав и Private Vault — только в окне на компьютере (телефону эти методы не доступны: менять права — за компьютером)
+    def permissions_get(self):
+        from .permissions import permissions, usage
+
+        return permissions.map(usage(7))
+
+    def permission_set(self, key, level):
+        from .permissions import CATEGORIES, LEVEL_RU, permissions
+
+        permissions.set_level(key, level)
+        journal.add("brain", "Доступ", "Права: «{}» — {}".format(CATEGORIES[key][0], LEVEL_RU[level]), {"key": key, "level": level})
+        return self.permissions_get()
+
+    def vault_add(self, path):
+        from .permissions import permissions
+        from .tools.paths import P
+
+        p = P(str(path).strip())
+        if not str(path).strip() or not p.is_dir():
+            return {"error": "Нет такой папки: " + str(path)}
+        permissions.vault_add(p)
+        journal.add("brain", "Доступ", "Private Vault: добавлена папка " + str(p), {"vault_add": str(p)})
+        return self.permissions_get()
+
+    def vault_remove(self, path):
+        from .permissions import permissions
+
+        permissions.vault_remove(path)
+        journal.add("brain", "Доступ", "Private Vault: убрана папка " + str(path), {"vault_remove": str(path)})
+        return self.permissions_get()
+
     # телефон-пульт: ссылка с кодом и QR-код (только в окне на компьютере, телефону этот метод не доступен)
     def phone_link(self):
         if not remote.ENABLED:

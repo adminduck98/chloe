@@ -120,7 +120,10 @@ class Vision:
     # ---------- включено ли ----------
     @property
     def enabled(self):
-        return bool(settings.get("vision", True))
+        # экран в карте прав не «разрешено» — постоянного зрения нет (спрашивать про каждый кадр нельзя)
+        from .permissions import permissions
+
+        return bool(settings.get("vision", True)) and permissions.screen_allowed()
 
     def set_enabled(self, on):
         settings.set("vision", bool(on))
@@ -130,7 +133,10 @@ class Vision:
         return self.enabled
 
     def private_words(self):
-        return [str(w) for w in settings.get("vision_private", []) if str(w).strip()]
+        from .permissions import permissions
+
+        words = [str(w) for w in settings.get("vision_private", []) if str(w).strip()]
+        return words + permissions.vault_names()   # окна с приватной папкой в заголовке — тоже не смотрю
 
     # ---------- глаза ----------
     def start(self):

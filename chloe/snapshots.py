@@ -16,7 +16,7 @@ from .config import BRAIN_FILE, DATA, JOURNAL_FILE, MEMORY_FILE
 SNAP_DIR = DATA / "snapshots"
 KEEP_DAYS = 14
 KEEP_LATEST = 3                 # столько последних копий дня остаётся всегда
-FILES = (BRAIN_FILE, MEMORY_FILE)
+FILES = (BRAIN_FILE, MEMORY_FILE, DATA / "permissions.json")   # карта прав и Private Vault — тоже
 SKILLS_DIR = DATA / "skills"    # навыки, которым пользователь научил Chloe
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}$")
 
