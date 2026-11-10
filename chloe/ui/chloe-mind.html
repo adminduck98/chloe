@@ -298,6 +298,15 @@
   #connPanel .cn .b { margin-top: 7px; } #connPanel .cn button { background: transparent; border: 1px solid var(--line); color: var(--bone); font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; }
   #connPanel .cn button:hover { color: var(--coral); border-color: var(--coral); }
   #connPanel .chip { border: 1px solid var(--line); color: var(--bone); padding: 1px 8px; font-size: 11px; cursor: pointer; }
+  #projectsPanel .goal { border: 1px solid #1c1c1c; padding: 9px 11px; margin: 6px 0; }
+  #projectsPanel .goal .gh { display: flex; justify-content: space-between; gap: 8px; cursor: pointer; } #projectsPanel .goal .gh .t { color: var(--ink); }
+  #projectsPanel .goal .gh .d { color: var(--iron); font-size: 12px; white-space: nowrap; }
+  #projectsPanel .goal .bar { display: block; width: 100%; height: 2px; background: var(--line); margin: 7px 0 5px; } #projectsPanel .goal .bar i { display: block; height: 2px; background: var(--coral); }
+  #projectsPanel .goal .nx { color: var(--bone); font-size: 12px; margin-bottom: 4px; }
+  #projectsPanel .goal .gs { color: var(--bone); margin-top: 6px; font-size: 13px; } #projectsPanel .goal .gs .m { color: var(--iron); font-size: 11px; margin-right: 6px; }
+  #projectsPanel .goal .gx { display: block; color: var(--ink); font-size: 13px; padding: 2px 0 2px 16px; cursor: pointer; }
+  #projectsPanel .goal .done { color: var(--iron); text-decoration: line-through; }
+  #projectsPanel .goal input[type=checkbox] { width: auto; margin: 0 6px 0 0; vertical-align: -1px; accent-color: #ff7777; }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -2736,13 +2745,44 @@
     var back = document.getElementById("prBack");
     if (back) back.onclick = function () { projName = null; loadProjects(); };
   }
+  // большие цели: дерево «цель → этапы → шаги», галочка — шаг сделан
+  var goalsData = null, goalOpen = {};
+  function goalHtml(g) {
+    var open = goalOpen[g.id] !== false, h = "<div class='goal'><div class='gh' data-goal='" + g.id + "'><span class='t'>" + escapeHtml(g.title) +
+      "</span><span class='d'>" + g.progress + "%" + (g.deadline ? " · до " + escapeHtml(g.deadline) : "") + (g.status === "paused" ? " · пауза" : "") + "</span></div>" +
+      "<div class='bar'><i style='width:" + g.progress + "%'></i></div>";
+    if (g.next) h += "<div class='nx'>дальше: " + escapeHtml(g.next.step) + "</div>";
+    if (open) g.stages.forEach(function (st) {
+      var stDone = st.done_n === st.total_n;
+      h += "<div class='gs" + (stDone ? " done" : "") + "'>" + (st.steps.length ? "<span class='m'>" + st.done_n + "/" + st.total_n + "</span>" :
+           "<input type='checkbox' data-step='" + st.id + "'" + (stDone ? " checked" : "") + ">") + escapeHtml(st.title) + "</div>";
+      st.steps.forEach(function (x) {
+        h += "<label class='gx" + (x.status === "done" ? " done" : "") + "'><input type='checkbox' data-step='" + x.id + "'" + (x.status === "done" ? " checked" : "") + ">" + escapeHtml(x.title) + "</label>";
+      });
+    });
+    return h + "</div>";
+  }
+  function wireGoals() {
+    projPanel.querySelectorAll("[data-goal]").forEach(function (el) {
+      el.onclick = function () { var id = +el.getAttribute("data-goal"); goalOpen[id] = goalOpen[id] === false; loadProjects(); };
+    });
+    projPanel.querySelectorAll("input[data-step]").forEach(function (cb) {
+      cb.onchange = function () { pApi().goal_step_set(+cb.getAttribute("data-step"), cb.checked ? "done" : "todo").then(loadProjects); };
+    });
+  }
   function loadProjects() {
     var api = pApi(); if (!api) return;
     if (projName) { api.project_get(projName).then(renderProject); return; }
+    if (api.goals_list) api.goals_list().then(function (g) { var was = JSON.stringify(goalsData); goalsData = g; if (was !== JSON.stringify(g) && projOpen && !projName) loadProjects(); }).catch(function () {});
     api.projects_list().then(function (list) {
       if (!projOpen) return;
       var h = [pHead("Проекты", false), "<div style='color:#8A8A8A'>Задачи, решения и цели. Голосом: «Хлоя, продолжим проект…» — " +
                "она соберёт картину (с git и документами) и предложит следующий шаг.</div>"];
+      if (goalsData && goalsData.length) {
+        h.push("<h4>Большие цели</h4>");
+        goalsData.forEach(function (g) { h.push(goalHtml(g)); });
+        h.push("<h4>Проекты</h4>");
+      }
       list.forEach(function (p) {
         h.push("<div class='prow' data-p='" + escapeHtml(p.name) + "'><span class='t'>" + escapeHtml(p.name) + "</span><span class='d'>" +
                (p.doing ? p.doing + " в работе · " : "") + p.todo + " сделать · " + p.done + " готово</span></div>");
@@ -2752,6 +2792,7 @@
              "<button class='small' id='prCreate'>создать</button>");
       projPanel.innerHTML = h.join("");
       pWire();
+      wireGoals();
       projPanel.querySelectorAll(".prow").forEach(function (r) {
         r.onclick = function () { projName = r.getAttribute("data-p"); loadProjects(); };
       });
@@ -2828,7 +2869,7 @@
   // 14б. СВЯЗИ: история (Timeline) и граф знаний
   var linksPanel = document.getElementById("linksPanel"), linksBtn = document.getElementById("linksBtn"), linksOpen = false;
   var lTab = "time", lNode = null, lTrail = [];
-  var L_TYPE = { project: "проект", task: "задача", decision: "решение", idea: "идея", goal: "цель", doc: "документ", memory: "память" };
+  var L_TYPE = { project: "проект", bigoal: "цель", gstep: "этап", task: "задача", decision: "решение", idea: "идея", goal: "цель", doc: "документ", memory: "память" };
   window.closeLinks = function () { linksOpen = false; linksBtn.classList.remove("on"); linksPanel.style.display = "none"; };
   function lApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.graph_overview ? window.pywebview.api : null; }
   function lHead() {
@@ -3126,7 +3167,7 @@
     o.waiting.forEach(function (x) {
       if (x.kind === "question") h.push("<div class='ask'>" + escapeHtml(x.what) + "<br><button data-ans='1'>да, делай</button> <button data-ans='0'>нет</button></div>");
       else h.push("<div class='arow'><span class='k'>" + acTime(x.since) + "</span><span class='t'>" + escapeHtml(x.what) + "</span><span></span>" +
-                  "<span class='w'>" + (x.kind === "lab" ? "скажите «внедри улучшение " + x.id + "» или «покажи улучшение " + x.id + "»" : "скажите «покажи пост " + x.id + "»") + "</span></div>");
+                  "<span class='w'>" + (x.kind === "lab" ? "скажите «внедри улучшение " + x.id + "» или «покажи улучшение " + x.id + "»" : x.kind === "goal" ? "скажите «что дальше по цели " + x.id + "?»" : "скажите «покажи пост " + x.id + "»") + "</span></div>");
     });
     if (o.upcoming.length) {
       h.push("<h4>Скоро</h4>");

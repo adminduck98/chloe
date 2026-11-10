@@ -17,7 +17,7 @@ import time
 from .config import JOURNAL_FILE
 from .knowledge import STOP, _stem
 
-TYPES = {"project": "проект", "task": "задача", "decision": "решение", "idea": "идея", "goal": "цель",
+TYPES = {"project": "проект", "bigoal": "большая цель", "gstep": "этап цели", "task": "задача", "decision": "решение", "idea": "идея", "goal": "цель",
          "doc": "документ", "memory": "воспоминание"}
 MAX_AUTO = 4             # авто-связей на узел: больше — уже шум
 MIN_SCORE = 2.2          # порог похожести (сумма редкости общих слов)
@@ -67,6 +67,21 @@ class Graph:
             for n in pm.notes(name, 500):
                 nodes.append({"id": "note:{}".format(n["id"]), "type": n["kind"] if n["kind"] in TYPES else "idea",
                               "title": n["text"][:90], "text": n["text"], "ts": n["ts"], "project": name})
+        try:
+            from .goals import goals
+
+            for g in goals.all(True):
+                nodes.append({"id": "bigoal:{}".format(g["id"]), "type": "bigoal", "title": g["title"], "text": g["why"] or "",
+                              "ts": g["created"], "project": g["project"], "status": g["status"], "done_at": g["done_at"]})
+                for st in g["stages"]:
+                    nodes.append({"id": "gstep:{}".format(st["id"]), "type": "gstep", "title": st["title"],
+                                  "text": " ".join(x["title"] for x in st["steps"]), "ts": st["created"], "goal": g["id"],
+                                  "status": st["status"], "done_at": st["done_at"]})
+                    for x in st["steps"]:
+                        if x["task_id"]:
+                            nodes[-1].setdefault("tasks", []).append(x["task_id"])
+        except Exception:
+            pass
         for d in knowledge.docs():
             with knowledge.lock:
                 rows = knowledge.db.execute("SELECT text FROM kb_chunks WHERE doc_id = ? LIMIT 2", (d["id"],)).fetchall()
@@ -100,6 +115,10 @@ class Graph:
             for n in nodes.values():
                 if n.get("project"):
                     add(n["id"], "project:" + n["project"], "project", "в проекте")
+                if n.get("goal"):
+                    add(n["id"], "bigoal:{}".format(n["goal"]), "project", "этап цели")
+                for t in n.get("tasks", []):
+                    add(n["id"], "task:{}".format(t), "manual", "шаг цели связан с задачей")
             self._auto(nodes, add)
             hidden = {tuple(r) for r in self.db.execute("SELECT a, b FROM graph_hidden")}
             for key in [k for k, e in edges.items() if e["kind"] == "auto" and k in hidden]:
@@ -214,12 +233,14 @@ class Graph:
                 continue
             if keep is not None and n["id"] not in keep:
                 continue
-            verb = {"task": "появилась задача", "decision": "решили", "idea": "идея", "goal": "цель",
+            verb = {"task": "появилась задача", "decision": "решили", "idea": "идея", "goal": "цель", "bigoal": "поставлена цель",
+                    "gstep": "этап цели",
                     "doc": "изучен документ", "memory": "запомнила"}[n["type"]]
             if n.get("ts"):
                 events.append({"ts": n["ts"], "what": verb, "node": n})
             if n.get("done_at"):
-                events.append({"ts": n["done_at"], "what": "сделана задача", "node": n})
+                events.append({"ts": n["done_at"], "what": {"bigoal": "цель достигнута", "gstep": "этап пройден"}.get(n["type"], "сделана задача"),
+                               "node": n})
         if days:
             events = [e for e in events if now - e["ts"] <= days * 86400]
         return sorted(events, key=lambda e: -e["ts"])[:limit]

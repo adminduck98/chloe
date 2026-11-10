@@ -522,6 +522,18 @@ class Api:
         c = connectors.BY_ID.get(str(cid))
         return c.forget() if c and c.can_forget else "нечего забывать"
 
+    # большие цели
+    def goals_list(self):
+        from .goals import goals
+
+        goals.sync_tasks()
+        return goals.all()
+
+    def goal_step_set(self, sid, status):
+        from .goals import goals
+
+        return goals.set_step(int(sid), str(status))
+
     # автоматизации
     def workflows_list(self):
         from .workflows import workflows

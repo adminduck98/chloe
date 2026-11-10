@@ -70,6 +70,14 @@ def waiting():
     except Exception:
         pass
     try:
+        from .goals import goals
+
+        for x in goals.attention():
+            out.append({"kind": "goal", "id": x["goal"]["id"], "what": "цель «{}»: {}".format(x["goal"]["title"][:60], x["why"]),
+                        "since": x["goal"]["updated"]})
+    except Exception:
+        pass
+    try:
         from .social import NETWORKS, social
 
         for p in social.posts():
