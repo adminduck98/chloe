@@ -42,6 +42,7 @@ CATEGORIES = {
     "media":        ("Картинки и видео", "рисовать картинки и делать видео через Qwen (видео и ролики — с подтверждением)", {"create_media", "make_film"}, "allow"),
     "voice_studio": ("Озвучка", "озвучивать тексты и документы в mp3 (аудиокниги)", {"narrate"}, "allow"),
     "news":         ("Новости", "читать свежие новости из открытых лент и утреннюю сводку", {"news", "morning_brief"}, "allow"),
+    "finance":      ("Финансы", "список подписок и платежей пользователя (к банку не подключается)", {"subscriptions"}, "allow"),
     "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now"}, "allow"),
     "knowledge":    ("База знаний", "изучать документы и отвечать по ним", {"learn_document", "ask_knowledge", "list_knowledge", "forget_document"}, "allow"),
     "projects":     ("Проекты", "задачи, решения и состояние проектов (git, GitHub)", {"projects", "project_overview", "project_task", "project_note"}, "allow"),

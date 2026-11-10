@@ -70,6 +70,12 @@ def _calendar():
     return "Календарь: " + tool_calendar({"action": "list"})
 
 
+def _payments():
+    from ..finance import finance, upcoming_text
+
+    return upcoming_text(finance.due(1))
+
+
 def _weather():
     from .weather import tool_weather
 
@@ -79,12 +85,13 @@ def _weather():
 def tool_morning_brief(a):
     now = datetime.datetime.now()
     head = "Сегодня {}, {} {}, {:%H:%M}.".format(DAYS[now.weekday()], now.day, MONTHS[now.month - 1], now)
-    parts = [head, _part("Погода", _weather), _part("Календарь", _calendar), _part("Напоминания", _today_reminders)]
+    parts = [head, _part("Погода", _weather), _part("Календарь", _calendar), _part("Напоминания", _today_reminders),
+             _part("Платежи", _payments)]
     topics = news.topics()[:3]
     parts.append(_part("Новости", lambda: tool_news({"topics": topics, "count": 4})))
     return ("\n\n".join(p for p in parts if p) +
             "\n\nЭто утренняя сводка: расскажи её голосом коротко и тепло, за минуту — дата, погода (одной фразой), "
-            "дела на сегодня, 3–5 главных новостей по одной фразе. Без списков и ссылок.")
+            "дела на сегодня, скорые списания денег, если есть, 3–5 главных новостей по одной фразе. Без списков и ссылок.")
 
 
 def morning_due(now=None):

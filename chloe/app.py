@@ -75,6 +75,24 @@ def startup_notices():
         return ""
 
 
+def payment_notice(today=None):
+    """При включении, раз в день — что спишется сегодня или завтра (утренняя сводка говорит об этом сама)."""
+    try:
+        import datetime
+
+        from .finance import finance, upcoming_text
+
+        today = today or datetime.date.today()
+        if settings.get("pay_notice_day") == today.isoformat():
+            return ""
+        text = upcoming_text(finance.due(1, today), today)
+        if text:
+            settings.set("pay_notice_day", today.isoformat())
+        return " " + text if text else ""
+    except Exception:
+        return ""
+
+
 def startup_reminder():
     """При включении — важные задачи проектов (приоритет «важно», не сделаны).
     Только после «приступаем к работе»: пока пользователь этого не сказал, Хлоя о задачах молчит."""
@@ -110,7 +128,7 @@ def assistant(args):
         voice.say("Доброе утро! Сейчас расскажу, что сегодня." + startup_notices())
         commands.put(Typed("Утренняя сводка", "local"))
     else:
-        voice.say("Привет, я Хлоя. Слушаю." + startup_notices() + startup_reminder())
+        voice.say("Привет, я Хлоя. Слушаю." + startup_notices() + payment_notice() + startup_reminder())
     state["listen_until"] = time.time() + ACTIVE_WINDOW
     if voice.enabled and not args.text:
         threading.Thread(target=recorder, daemon=True).start()
