@@ -144,6 +144,9 @@ def assistant(args):
     from . import proactive
 
     proactive.start(voice.say)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
+    from . import visual as visual_mem
+
+    visual_mem.start()             # визуальная память: новые скриншоты и картинки — описание и поиск
     vision.on_window = lambda title, private: brain.js("chloeSee", "" if private else title[:80], bool(private), vision.enabled)
     vision.start()   # постоянное зрение: глаза смотрят на экран в фоне
     sleep.namer = lambda prompt: ask_short(client, prompt)   # названия тем во сне
@@ -536,6 +539,31 @@ class Api:
         from .goals import goals
 
         return goals.set_step(int(sid), str(status))
+
+    # визуальная память: галерея и поиск
+    def visual_search(self, query="", limit=40):
+        import base64 as b64
+
+        from . import visual as vm
+
+        out = []
+        for r in vm.visual.search(str(query or ""), limit=int(limit or 40)):
+            full = vm.visual.get(r["id"], thumb=True)
+            out.append(dict(r, thumb="data:image/jpeg;base64," + b64.standard_b64encode(full["thumb"]).decode() if full and full["thumb"] else "",
+                            source_name=vm.SOURCES.get(r["source"], r["source"])))
+        return {"items": out, "stats": vm.visual.stats()}
+
+    def visual_open(self, vid):
+        from . import visual as vm
+        from .tools.pics import open_item
+
+        item = vm.visual.get(int(vid))
+        return open_item(item) if item else None
+
+    def visual_forget(self, vid):
+        from . import visual as vm
+
+        return vm.visual.forget(int(vid))
 
     # подсказки
     def proactive_get(self):

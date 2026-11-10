@@ -310,6 +310,17 @@
   #actionsPanel .modes { display: flex; gap: 0; margin: 4px 0 8px; border: 1px solid var(--line); width: max-content; }
   #actionsPanel .modes span { padding: 4px 10px; font-size: 12px; color: var(--iron); cursor: pointer; }
   #actionsPanel .modes span.on { color: var(--ink); background: #1c1c1c; }
+  #picsPanel input { width: 100%; box-sizing: border-box; margin: 10px 0 8px; }
+  #picsPanel .pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  #picsPanel .pc { position: relative; cursor: pointer; border: 1px solid #1c1c1c; aspect-ratio: 4 / 3; overflow: hidden; background: #0d0d0d; }
+  #picsPanel .pc img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .85; } #picsPanel .pc:hover img, #picsPanel .pc.sel img { opacity: 1; }
+  #picsPanel .pc.sel { border-color: var(--coral); }
+  #picsPanel .pc span { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; color: var(--bone); background: rgba(0,0,0,.6); padding: 2px 5px; }
+  #picsPanel .pcard { border: 1px solid var(--line); padding: 8px; margin-bottom: 10px; }
+  #picsPanel .pcard img { width: 100%; display: block; margin-bottom: 6px; } #picsPanel .pcard .t { color: var(--ink); font-size: 13px; }
+  #picsPanel .pcard .d { color: var(--iron); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
+  #picsPanel .pcard button { background: transparent; border: 1px solid var(--line); color: var(--bone); font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; margin-top: 6px; }
+  #picsPanel .pcard button:hover { color: var(--coral); border-color: var(--coral); }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -411,6 +422,7 @@
     <div id="worldPanel" class="panel"></div>
     <div id="actionsPanel" class="panel"></div>
     <div id="connPanel" class="panel"></div>
+    <div id="picsPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -434,6 +446,7 @@
       <button id="worldBtn">Мир</button>
       <button id="actionsBtn">Действия</button>
       <button id="connBtn">Подключения</button>
+      <button id="picsBtn">Картинки</button>
       <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
@@ -2300,7 +2313,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2436,7 +2449,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2575,7 +2588,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2647,7 +2660,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2722,7 +2735,7 @@
     if (!api) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     accessOpen = true; accessBtn.classList.add("on");
     accessPanel.style.display = "block";
     accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
@@ -2859,7 +2872,7 @@
     if (!pApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     projOpen = true; projBtn.classList.add("on");
     projPanel.style.display = "block";
     projPanel.innerHTML = "<span class='close' id='prClose'>✕</span><b>Проекты</b><br>Загружаю…";
@@ -2987,7 +3000,7 @@
     if (!lApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closeConn) window.closeConn();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     linksOpen = true; linksBtn.classList.add("on");
     linksPanel.style.display = "block";
     linksPanel.innerHTML = "<span class='close' id='lkClose'>✕</span><b>Связи</b><br>Загружаю…";
@@ -3138,7 +3151,7 @@
     if (!wApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics(); if (window.closePics) window.closePics();
     worldOpen = true; worldBtn.classList.add("on");
     worldPanel.style.display = "block";
     renderWorld(); loadWorld(false);
@@ -3235,7 +3248,7 @@
     if (!acApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); if (window.closeConn) window.closeConn();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     actionsOpen = true; actionsBtn.classList.add("on");
     actionsPanel.style.display = "block";
     renderActions(); loadActions();
@@ -3306,10 +3319,69 @@
     if (!cnApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); window.closeActions();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); window.closeActions(); if (window.closePics) window.closePics();
     connOpen = true; connBtn.classList.add("on");
     connPanel.style.display = "block";
     renderConn(); loadConn(false);
+  };
+
+
+  // =======================================================
+  // 14е. КАРТИНКИ (визуальная память)
+  var picsPanel = document.getElementById("picsPanel"), picsBtn = document.getElementById("picsBtn"), picsOpen = false, pcData = null, pcQuery = "", pcSel = null;
+  window.closePics = function () { picsOpen = false; picsBtn.classList.remove("on"); picsPanel.style.display = "none"; };
+  function pcApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.visual_search ? window.pywebview.api : null; }
+  function pcWhen(ts) { var d = new Date(ts * 1000); return ("0" + d.getDate()).slice(-2) + "." + ("0" + (d.getMonth() + 1)).slice(-2) + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function renderPics() {
+    if (!picsOpen) return;
+    var h = ["<span class='close' id='pcClose'>✕</span><b>Картинки</b>"];
+    var total = pcData ? Object.keys(pcData.stats).reduce(function (s, k) { return s + pcData.stats[k]; }, 0) : 0;
+    h.push("<div style='color:#8A8A8A'>Что Хлоя видела: скриншоты, экран телефона, свои картинки. В памяти: " + total +
+           ". Голосом: «найди скриншот с…», «покажи картинку с прошлой недели».</div>");
+    h.push("<input id='pcFind' placeholder='что на картинке: кот, ошибка, логотип…' value='" + escapeHtml(pcQuery) + "'>");
+    if (!pcData) h.push("<div>Загружаю…</div>");
+    else if (!pcData.items.length) h.push("<div style='color:#8A8A8A'>" + (pcQuery ? "ничего похожего" : "пока пусто — скриншоты появятся сами") + "</div>");
+    else {
+      if (pcSel) {
+        var s = pcData.items.filter(function (x) { return x.id === pcSel; })[0];
+        if (s) h.push("<div class='pcard'><img src='" + s.thumb + "'><div class='t'>" + escapeHtml(s.caption) + "</div>" +
+                      (s.seen_text ? "<div class='d'>текст: " + escapeHtml(s.seen_text) + "</div>" : "") +
+                      "<div class='d'>" + escapeHtml(s.source_name) + " · " + pcWhen(s.ts) + (s.title ? " · " + escapeHtml(s.title) : "") + "</div>" +
+                      "<div class='b'><button data-pc-open='" + s.id + "'>открыть</button> <button data-pc-forget='" + s.id + "'>забыть</button></div></div>");
+      }
+      h.push("<div class='pgrid'>");
+      pcData.items.forEach(function (x) {
+        h.push("<div class='pc" + (x.id === pcSel ? " sel" : "") + "' data-pc='" + x.id + "' title='" + escapeHtml(x.caption) + "'><img src='" + x.thumb + "'><span>" + pcWhen(x.ts) + "</span></div>");
+      });
+      h.push("</div>");
+    }
+    picsPanel.innerHTML = h.join("");
+    document.getElementById("pcClose").onclick = window.closePics;
+    var inp = document.getElementById("pcFind"), timer = null;
+    inp.oninput = function () { clearTimeout(timer); timer = setTimeout(function () { pcQuery = inp.value.trim(); pcSel = null; loadPics(true); }, 300); };
+    picsPanel.querySelectorAll("[data-pc]").forEach(function (el) { el.onclick = function () { pcSel = +el.getAttribute("data-pc"); renderPics(); }; });
+    picsPanel.querySelectorAll("[data-pc-open]").forEach(function (b) { b.onclick = function () { pcApi().visual_open(+b.getAttribute("data-pc-open")); }; });
+    picsPanel.querySelectorAll("[data-pc-forget]").forEach(function (b) {
+      b.onclick = function () { if (!window.confirm("Забыть эту картинку? Сам файл останется.")) return; pcApi().visual_forget(+b.getAttribute("data-pc-forget")).then(function () { pcSel = null; loadPics(); }); };
+    });
+  }
+  function loadPics(keepFocus) {
+    var api = pcApi(); if (!api || !picsOpen) return;
+    api.visual_search(pcQuery, 60).then(function (r) {
+      pcData = r; renderPics();
+      if (keepFocus) { var i = document.getElementById("pcFind"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+    });
+  }
+  picsBtn.onclick = function () {
+    touch();
+    if (picsOpen) { window.closePics(); return; }
+    if (!pcApi()) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); window.closeActions(); window.closeConn();
+    picsOpen = true; picsBtn.classList.add("on");
+    picsPanel.style.display = "block";
+    renderPics(); loadPics();
   };
 
   // =======================================================
@@ -3321,7 +3393,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -4256,7 +4328,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closePics) window.closePics();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

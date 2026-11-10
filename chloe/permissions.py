@@ -44,13 +44,13 @@ CATEGORIES = {
     "news":         ("Новости", "читать свежие новости из открытых лент и утреннюю сводку", {"news", "morning_brief", "world"}, "allow"),
     "finance":      ("Финансы", "список подписок и платежей пользователя (к банку не подключается)", {"subscriptions"}, "allow"),
     "social":       ("Соцсети", "контент-план и посты; публикация в Telegram-канал — только после «да»", {"social"}, "allow"),
-    "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now"}, "allow"),
+    "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now", "visual_memory"}, "allow"),
     "knowledge":    ("База знаний", "изучать документы и отвечать по ним", {"learn_document", "ask_knowledge", "list_knowledge", "forget_document", "knowledge_map"}, "allow"),
     "projects":     ("Проекты", "задачи, решения и состояние проектов (git, GitHub)", {"projects", "project_overview", "project_task", "project_note", "goals"}, "allow"),
     "power":        ("Питание", "выключение, перезагрузка, сон, блокировка", {"power"}, "allow"),   # выключение и так спрашивает
 }
 TOOL_CATEGORY = {t: key for key, (_, _, tools, _) in CATEGORIES.items() for t in tools}
-PATH_ARGS = ("path", "src", "dst", "folder", "source", "target", "destination", "image")
+PATH_ARGS = ("path", "src", "dst", "folder", "source", "target", "destination", "image")   # folder — и папки для визуальной памяти
 
 
 class Permissions:
