@@ -29,3 +29,4 @@ python-pptx
 pandas
 qrcode  # QR-код для телефона-пульта
 miniaudio  # голос потоком: говорить с первого кусочка звука
+imageio-ffmpeg  # ffmpeg без sudo: склейка роликов (make_film)

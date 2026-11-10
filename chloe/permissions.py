@@ -39,7 +39,7 @@ CATEGORIES = {
     "telegram":     ("Telegram", "читать и отправлять сообщения", {"tg_read", "tg_unread", "tg_send"}, "allow"),
     "phone":        ("Телефон", "экран, нажатия, приложения и ссылки на телефоне Android", {"phone"}, "allow"),
     "calendar":     ("Календарь Google", "смотреть, добавлять и удалять события (добавление и удаление — с подтверждением)", {"calendar"}, "allow"),
-    "media":        ("Картинки и видео", "рисовать картинки и делать видео через Qwen (видео — с подтверждением)", {"create_media"}, "allow"),
+    "media":        ("Картинки и видео", "рисовать картинки и делать видео через Qwen (видео и ролики — с подтверждением)", {"create_media", "make_film"}, "allow"),
     "memory":       ("Память", "запоминать, забывать, история разговоров", {"remember", "forget", "conversation_log", "sleep_now"}, "allow"),
     "knowledge":    ("База знаний", "изучать документы и отвечать по ним", {"learn_document", "ask_knowledge", "list_knowledge", "forget_document"}, "allow"),
     "projects":     ("Проекты", "задачи, решения и состояние проектов (git, GitHub)", {"projects", "project_overview", "project_task", "project_note"}, "allow"),

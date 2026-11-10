@@ -1,10 +1,12 @@
-"""Инструмент create_media — нарисовать картинку или сделать видео (Qwen). Работает в фоне: Chloe не молчит минуту."""
+"""Инструменты create_media (картинка или видео через Qwen) и make_film (ролик из идеи: сцены, озвучка, склейка).
+Работают в фоне: Chloe не молчит минуты, а говорит, когда готово."""
 import itertools
 import subprocess
 import threading
 import time
 
 from .. import qwen_media as qm
+from .. import studio
 from ..voice import confirm
 
 jobs = {}                 # номер → {"kind", "prompt", "state": "работаю"/"готово"/"ошибка", "result", "started"}
@@ -26,20 +28,23 @@ def _say(text):
     voice.say(text)
 
 
+NAMES = {"image": ("Картинка", "готова", "не получилась"), "video": ("Видео", "готово", "не получилось"),
+         "film": ("Ролик", "готов", "не получился")}
+
+
 def _run(job_id, kind, work, open_result=True):
     job = jobs[job_id]
+    name, ok, bad = NAMES[kind]
     try:
         paths = work()
         paths = paths if isinstance(paths, list) else [paths]
         job.update(state="готово", result=[qm.short(p) for p in paths])
         if open_result:
             show(paths[0])
-        _say("{} готов{}: {}.".format("Картинка" if kind == "image" else "Видео", "а" if kind == "image" else "о",
-                                       ", ".join(job["result"])))
-    except qm.MediaError as e:
+        _say("{} {}: {}.".format(name, ok, ", ".join(job["result"])))
+    except (qm.MediaError, studio.StudioError) as e:
         job.update(state="ошибка", result=str(e))
-        _say("{} не получил{}: {}.".format("Картинка" if kind == "image" else "Видео", "ась" if kind == "image" else "ось",
-                                          str(e).rstrip(".")))
+        _say("{} {}: {}.".format(name, bad, str(e).rstrip(".")))
     except Exception as e:   # фоновая работа не должна молча умирать
         job.update(state="ошибка", result=repr(e)[:200])
         _say("Что-то сломалось при создании: {}.".format(type(e).__name__))
@@ -62,9 +67,9 @@ def tool_create_media(a):
         for i, j in sorted(jobs.items())[-10:]:
             mins = int((time.time() - j["started"]) // 60)
             res = j["result"] if j["state"] != "готово" else ", ".join(j["result"])
-            lines.append("#{} {} «{}» — {}{}".format(i, "картинка" if j["kind"] == "image" else "видео", j["prompt"][:50],
-                                                    j["state"], " ({} мин)".format(mins) if j["state"] == "работаю"
-                                                    else ": {}".format(res)))
+            lines.append("#{} {} «{}» — {}{}{}".format(i, NAMES[j["kind"]][0].lower(), j["prompt"][:50], j["state"],
+                                                      " ({} мин)".format(mins) if j["state"] == "работаю" else ": {}".format(res),
+                                                      ", " + j["step"] if j.get("step") and j["state"] == "работаю" else ""))
         return "\n".join(lines)
 
     if not qm.available():
@@ -109,3 +114,39 @@ def tool_create_media(a):
         return ("Видео поставлено в очередь Alibaba (#{}): обычно 2–5 минут. Когда будет готово — скажу и открою. "
                 "Файлы — в {}.".format(job, qm.short(qm.VIDEO_DIR)))
     return "Неизвестное действие: " + action
+
+
+def tool_make_film(a):
+    if not qm.available():
+        return "Нет ключа Qwen (DASHSCOPE_API_KEY в ~/.config/chloe/keys.env) — рисовать сцены не на чем."
+    scenes = studio.clean_scenes(a.get("scenes"))
+    if not scenes:
+        return ("Нужен сценарий: scenes — список сцен, у каждой picture (подробное описание кадра) и narration "
+                "(закадровая фраза). Напиши 3–6 сцен сама по идее пользователя и вызови снова.")
+    title = (a.get("title") or "").strip() or scenes[0]["picture"][:40]
+    mode = "live" if a.get("mode") == "live" else "slides"
+    ratio = a.get("ratio") if a.get("ratio") in studio.FRAMES else "16:9"
+    try:
+        studio.ffmpeg()
+    except studio.StudioError as e:
+        return "Не могу собрать ролик: {}.".format(e)
+    cost = studio.estimate(scenes, mode)
+    plan = "; ".join("{}) {}".format(i + 1, s["narration"] or s["picture"][:60]) for i, s in enumerate(scenes))
+    if not confirm("Сделать ролик «{}» из {} сцен, {}? Это примерно {:.0f} % месячного пакета Qwen. Сцены: {}".format(
+            title, len(scenes), "с живым видео" if mode == "live" else "слайдами с озвучкой", max(1, cost), plan)):
+        return "Не делаю ролик."
+    open_result = a.get("open", True) is not False
+    holder = {}
+
+    def progress(text):
+        job = jobs.get(holder.get("id"))
+        if job:
+            job["done"] = job.get("done", 0) + 1
+            job["step"] = "готово сцен: {} из {}".format(job["done"], len(scenes))
+
+    job = _start("film", title, lambda: studio.make_film(title, scenes, (a.get("style") or "").strip(), ratio, mode, progress),
+                 open_result)
+    holder["id"] = job
+    return ("Начала ролик (#{}): {} сцен, {}. Когда будет готово — скажу и открою. Файл — в {}. "
+            "Как идёт — create_media status.".format(job, len(scenes), "это 10–20 минут" if mode == "live" else "это 2–4 минуты",
+                                                    qm.short(qm.VIDEO_DIR)))
