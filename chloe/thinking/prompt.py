@@ -30,6 +30,15 @@ def recent_talk():
             "опирайся на него, когда пользователь говорит «это», «как я говорил», «продолжи»):\n" + "\n".join(lines) + "\n")
 
 
+def security_rules():
+    try:
+        from ..security import security
+
+        return security.prompt()
+    except Exception:
+        return ""
+
+
 def system_prompt():
     return (
         "Ты Chloe — личный голосовой ассистент владельца этого компьютера. ОС: {os}. "
@@ -81,12 +90,13 @@ def system_prompt():
         "save_skill (шаги — конкретно: адреса, клавиши, программы). «Неправильно, надо было…», «впредь…», «никогда…», "
         "«всегда…» — learn_lesson. Если по выученному навыку что-то не сработало и ты нашла другой путь — обнови навык.\n"
         "{lessons}"
+        "{security}"
         "{skills}"
         "Что ты помнишь о пользователе (долгосрочная память, номер в скобках):\n{mem}\n"
         "{recent}"
     ).format(os=OS_NAME + " " + platform.release(), home=HOME, dl=DOWNLOADS, desk=DESKTOP,
              today=time.strftime("%Y-%m-%d"), mem=memory.prompt(), skills=skillbook.prompt(), city=city_text(),
-             recent=recent_talk(), lessons=lessons_prompt())
+             recent=recent_talk(), lessons=lessons_prompt(), security=security_rules())
 
 
 def start_thinking(user_text):

@@ -201,8 +201,15 @@ def rights():
     return item("Права", "Карта прав", "ok", detail)
 
 
+def safety():
+    from .security import audit
+
+    return audit()
+
+
 FAST = (("Мозг", "Мозг", brains), ("Голос", "Голос", voice_ears), ("Сервисы", "Сервисы", services),
-        ("Система", "Система", system), ("Ошибки", "Ошибки", errors), ("Права", "Права", rights))
+        ("Система", "Система", system), ("Ошибки", "Ошибки", errors), ("Права", "Права", rights),
+        ("Безопасность", "Безопасность", safety))
 
 
 def quick():
@@ -339,7 +346,7 @@ def deep():
     found = [x for r in results for x in r]
     names = {(x["area"], x["name"]) for x in found}
     merged = [x for x in base if (x["area"], x["name"]) not in names]
-    order = {a: i for i, a in enumerate(["Мозг", "Голос", "Слух", "Сервисы", "Система", "Ошибки", "Права"])}
+    order = {a: i for i, a in enumerate(["Мозг", "Голос", "Слух", "Сервисы", "Система", "Ошибки", "Права", "Безопасность"])}
     return sorted(merged + found, key=lambda x: order.get(x["area"], 99))
 
 
