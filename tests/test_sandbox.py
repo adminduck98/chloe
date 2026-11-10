@@ -65,6 +65,7 @@ class Trial(unittest.TestCase):
         self.assertEqual(lines[-2], "1")                               # только lo
         self.assertLess(int(lines[-1]), 8)                             # чужих процессов не видно
 
+    @unittest.skipIf(os.environ.get("CHLOE_IN_SANDBOX"), "внутри песочницы вне дома и так только чтение — создать папку для проверки негде")
     def test_outside_home_is_read_only(self):
         """Команда из папки вне домашней (проект, диск, /var/tmp) не должна менять там ничего."""
         import tempfile

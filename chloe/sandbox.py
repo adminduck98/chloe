@@ -238,7 +238,7 @@ def try_command(cmd, cwd=None, timeout=SIM_TIMEOUT, _probe=False):
     env = {k: v for k, v in os.environ.items()
            if k not in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY", "SSH_AUTH_SOCK")
            and not k.endswith(("_API_KEY", "_TOKEN", "_SECRET"))}        # ключи пробе не нужны
-    env.update(SIM_UP=up, SIM_WORK=work, SIM_UID=str(os.getuid()), SIM_GID=str(os.getgid()), SIM_CMD=cmd,
+    env.update(CHLOE_IN_SANDBOX="1", SIM_UP=up, SIM_WORK=work, SIM_UID=str(os.getuid()), SIM_GID=str(os.getgid()), SIM_CMD=cmd,
                SIM_CWD=str(cwd or os.getcwd()), HOME=str(HOME))
     try:
         # --kill-child: вместе с unshare умирает и всё, что команда запустила внутри (иначе «sleep 30» жил бы дальше)
