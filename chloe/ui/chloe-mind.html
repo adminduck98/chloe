@@ -162,6 +162,10 @@
     font-size: 14px; letter-spacing: -.01em; cursor: pointer; transition: color .15s, border-color .15s; }
   #toggles button:hover { color: var(--ink); }
   #toggles button.on { color: var(--ink); border-bottom-color: var(--coral); }
+  #moreTogglesBtn { display: none; }                      /* на широком экране «Ещё» не нужно: все кнопки в ряд */
+  #moreTogglesBtn::after { content: " ▴"; font-size: 10px; }
+  #moreTogglesBtn.open::after { content: " ▾"; }
+  #moreMenu { display: contents; }
 
   input { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0;
     font: 400 16px var(--font); letter-spacing: -.01em; color: var(--ink); outline: none; transition: border-color .15s; }
@@ -349,6 +353,15 @@
 
   /* ===== мобильная версия: телефон-пульт и узкое окно =====
      Снизу вверх: панель ввода → разделы → активность → ответ Chloe. Мозг — за всем этим, на весь экран. */
+  /* окно уже 1700 px (а таким оно и бывает): основные кнопки — в ряд, остальные — в меню «Ещё», иначе ряд налезает на строку ввода */
+  @media (max-width: 1699px) {
+    #toggles { position: relative; }
+    #moreTogglesBtn { display: block; }
+    #moreMenu { display: none; position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 20; grid-template-columns: 1fr 1fr; gap: 0 22px;
+      padding: 8px 18px; background: rgba(12,12,12,.97); border: 1px solid var(--line); }
+    #moreMenu.open { display: grid; }
+    #moreMenu button { text-align: left; white-space: nowrap; padding: 10px 0; }
+  }
   @media (max-width: 900px) {
     :root { --sa: env(safe-area-inset-bottom, 0px); }
     header { height: calc(56px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 20px 0; box-sizing: border-box; }
@@ -371,9 +384,9 @@
     /* панель ввода: на телефоне — #phoneBar из remote.js, в узком окне — #cmd */
     #cmd { left: 20px; right: 20px; width: auto; bottom: calc(var(--sa) + 16px); }
     #bottom { left: 0; right: 0; bottom: calc(var(--sa) + 80px); padding: 0 20px; }
-    #toggles { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; justify-content: flex-start; gap: 0 20px; width: 100%; }
-    #toggles::-webkit-scrollbar { display: none; }
-    #toggles button { flex: none; min-height: 44px; font-size: 15px; }
+    #toggles { position: relative; flex-wrap: nowrap; justify-content: space-between; gap: 0 10px; width: 100%; }
+    #toggles > button { flex: none; min-height: 44px; font-size: 15px; }
+    #moreMenu button { flex: none; min-height: 44px; font-size: 15px; text-align: left; white-space: nowrap; }
     #eeg { left: 20px; right: 20px; width: auto; bottom: calc(var(--sa) + 132px); gap: 4px; padding-top: 8px; }
     #eegCanvas { height: 28px; }
     #eegInfo { font-size: 10px; }
@@ -437,21 +450,24 @@
   <div id="bottom">
     <div id="legend"><span><i style="background:#D6D6D6"></i>навык</span><span><i style="background:#8F8F8F"></i>память</span><span><i style="background:#FF7777"></i>мысль</span></div>
     <div id="toggles">
-      <button id="journalBtn">Журнал</button>
-      <button id="memoryBtn">Память</button>
-      <button id="filesBtn">Файлы</button>
-      <button id="phoneBtn">Телефон</button>
-      <button id="projectsBtn">Проекты</button>
-      <button id="linksBtn">Связи</button>
-      <button id="worldBtn">Мир</button>
       <button id="actionsBtn">Действия</button>
-      <button id="connBtn">Подключения</button>
-      <button id="picsBtn">Картинки</button>
-      <button id="accessBtn">Доступ</button>
-      <button id="statsBtn">Статистика</button>
-      <button id="wallBtn">Обои</button>
-      <button id="micBtn">Микрофон</button>
-      <button id="soundBtn">Звук</button>
+      <button id="projectsBtn">Проекты</button>
+      <button id="memoryBtn">Память</button>
+      <button id="journalBtn">Журнал</button>
+      <button id="linksBtn">Связи</button>
+      <button id="moreTogglesBtn" aria-haspopup="true" aria-expanded="false">Ещё</button>
+      <div id="moreMenu">
+        <button id="worldBtn">Мир</button>
+        <button id="connBtn">Подключения</button>
+        <button id="picsBtn">Картинки</button>
+        <button id="filesBtn">Файлы</button>
+        <button id="phoneBtn">Телефон</button>
+        <button id="accessBtn">Доступ</button>
+        <button id="statsBtn">Статистика</button>
+        <button id="wallBtn">Обои</button>
+        <button id="micBtn">Микрофон</button>
+        <button id="soundBtn">Звук</button>
+      </div>
     </div>
   </div>
   <input id="cmd" placeholder="Команда или «запомни …» — Chloe вырастит нейрон" autocomplete="off">
@@ -4453,6 +4469,16 @@
   }
   // любая другая панель открылась — панель ядра закрывается
   document.getElementById("toggles").addEventListener("click", function () { closeCore(); }, true);
+  // «Ещё» в узком окне: меню с остальными кнопками; закрывается по выбору, по клику мимо и по Esc; «Ещё» горит, если открыта панель из меню
+  (function () {
+    var more = document.getElementById("moreTogglesBtn"), menu = document.getElementById("moreMenu");
+    function setOpen(on) { menu.classList.toggle("open", on); more.classList.toggle("open", on); more.setAttribute("aria-expanded", on ? "true" : "false"); }
+    more.addEventListener("click", function (e) { e.stopPropagation(); setOpen(!menu.classList.contains("open")); });
+    menu.addEventListener("click", function (e) { if (e.target.closest("button")) setTimeout(function () { setOpen(false); }, 0); });
+    document.addEventListener("click", function (e) { if (!e.target.closest("#moreMenu")) setOpen(false); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") setOpen(false); });
+    setInterval(function () { more.classList.toggle("on", !!menu.querySelector("button.on")); }, 500);
+  })();
   // главные отделы подписаны сразу, ещё до первых нейронов: это кнопки центра управления
   ["stem", "thal", "hippo", "frontal", "motor", "temporalL"].forEach(regionLabel);
 
