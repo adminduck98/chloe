@@ -169,6 +169,12 @@ def _voice_check():
     return x["level"], x["detail"]
 
 
+def _ha_status():
+    from .home import status_text
+
+    return status_text()
+
+
 def _remote_status():
     from .config import DATA
 
@@ -207,8 +213,11 @@ REGISTRY = [
     Connector("deepseek", "Мозг DeepSeek", "запасной мозг", kind=CORE, status=_key_status("DEEPSEEK_KEY", "DEEPSEEK_API_KEY"),
               check=_brain_check("DeepSeek")),
     Connector("voice", "Голос", "как Хлоя говорит", kind=CORE, status=_voice_status, check=_voice_check),
-    Connector("home_assistant", "Home Assistant", "умный дом: свет, климат, датчики", kind="planned"),
-    Connector("glasses", "Rokid Glasses", "умные очки", kind="planned"),
+    Connector("home_assistant", "Home Assistant", "умный дом и офис: комнаты, свет, климат, датчики, сцены (важное — с вопросом)",
+              {"home"}, status=_ha_status, connect_hint="HA_URL и HA_TOKEN (долгосрочный токен) в ~/.config/chloe/keys.env",
+              data="токен — ~/.config/chloe/keys.env"),
+    Connector("glasses", "Rokid Glasses", "умные очки: экран перед глазами, камера, голос — через Android-приложение на телефоне "
+              "(Rokid CXR-M SDK)", kind="planned"),
 ]
 BY_ID = {c.id: c for c in REGISTRY}
 ALIASES = {"календарь": "google_calendar", "гугл календарь": "google_calendar", "calendar": "google_calendar",

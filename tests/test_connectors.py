@@ -39,7 +39,7 @@ class Registry(unittest.TestCase):
 
     def test_core_and_planned_cannot_be_switched(self):
         self.assertFalse(cn.set_on("qwen", False))
-        self.assertFalse(cn.set_on("home_assistant", True))
+        self.assertFalse(cn.set_on("glasses", True))
         self.assertIn("основа", conn.tool_connectors({"action": "off", "name": "мозг claude"}))
 
     def test_broken_status_does_not_break_list(self):

@@ -65,6 +65,7 @@ OUTWARD = {
     "download_file": ("medium", True, "скачивает файл из интернета на диск"),
     "open_url": ("low", True, "открывает страницу в браузере"),
     "subscriptions": ("low", True, "меняет только ваши записи о подписках"),
+    "home": ("medium", True, "меняет устройства умного дома; замки, сигнализация, ворота — с отдельным вопросом"),
 }
 
 
@@ -167,6 +168,8 @@ def analyse(tool, args):
             return result("low", True, "контент-план", ["наружу ничего не уходит: черновики"])
         if tool == "calendar" and action in (None, "list", "status"):
             return result("low", True, "календарь — только чтение", [])
+        if tool == "home" and action in (None, "status", "rooms", "devices", "state"):
+            return result("low", True, "умный дом — только посмотреть", [])
         if tool == "phone" and action in (None, "status", "screen", "elements", "mirror"):
             return result("low", True, "телефон — только посмотреть", [])
         if tool == "create_media" and action == "video":

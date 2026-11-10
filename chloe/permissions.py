@@ -23,7 +23,7 @@ BAILIAN_DIR = HOME / ".bailian"
 
 FILE = DATA / "permissions.json"
 # команда, которая может показать ключи: файл с ними, копии ~/.bashrc, переменные окружения
-SECRET_HINTS = re.compile(r"keys\.env|\.config/chloe|\.bashrc\.bak|\.bailian|\bbl\s+(?:auth|config)\b|_API_KEY|\bprintenv\b|\benv\b|/environ\b|\bdeclare\s+-x|\bexport\s+-p", re.I)
+SECRET_HINTS = re.compile(r"keys\.env|\.config/chloe|\.bashrc\.bak|\.bailian|\bbl\s+(?:auth|config)\b|_API_KEY|HA_TOKEN|\bprintenv\b|\benv\b|/environ\b|\bdeclare\s+-x|\bexport\s+-p", re.I)
 LEVELS = ("allow", "ask", "block")
 LEVEL_RU = {"allow": "разрешено", "ask": "спрашивать", "block": "запрещено"}
 STRICT = {"allow": 0, "ask": 1, "block": 2}
@@ -38,6 +38,7 @@ CATEGORIES = {
     "internet":     ("Интернет", "поиск, сайты, YouTube, скачивание", {"web_search", "read_web_page", "open_url", "play_youtube", "download_file", "weather"}, "allow"),
     "telegram":     ("Telegram", "читать и отправлять сообщения", {"tg_read", "tg_unread", "tg_send"}, "allow"),
     "phone":        ("Телефон", "экран, нажатия, приложения и ссылки на телефоне Android", {"phone"}, "allow"),
+    "home":         ("Умный дом", "Home Assistant: смотреть и управлять устройствами (важные — с вопросом)", {"home", "devices"}, "allow"),
     "calendar":     ("Календарь Google", "смотреть, добавлять и удалять события (добавление и удаление — с подтверждением)", {"calendar"}, "allow"),
     "media":        ("Картинки и видео", "рисовать картинки и делать видео через Qwen (видео и ролики — с подтверждением)", {"create_media", "make_film"}, "allow"),
     "voice_studio": ("Озвучка", "озвучивать тексты и документы в mp3 (аудиокниги)", {"narrate"}, "allow"),

@@ -34,7 +34,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 KEYS_DIR = HOME / ".config" / "chloe"
 KEYS_FILE = KEYS_DIR / "keys.env"
 KEY_NAMES = ("DASHSCOPE_API_KEY", "QWEN_API_KEY", "QWEN_BASE_URL", "DEEPSEEK_API_KEY",
-             "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")
+             "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "HA_URL", "HA_TOKEN")
 
 
 def parse_keys(text):
