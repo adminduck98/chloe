@@ -187,6 +187,7 @@ done
 case "$HOME/" in /tmp/*) ;; *) mount -t tmpfs tmpfs /tmp ;; esac
 mount -t tmpfs tmpfs /dev/shm 2>/dev/null
 mount -t tmpfs tmpfs "/run/user/$SIM_UID" 2>/dev/null
+ip link set lo up 2>/dev/null                      # localhost внутри песочницы (своя сеть, наружу не ведёт)
 cd "$SIM_CWD" 2>/dev/null || cd "$HOME"
 exec unshare -U --map-user="$SIM_UID" --map-group="$SIM_GID" sh -c "$SIM_CMD"
 """
