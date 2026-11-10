@@ -19,9 +19,11 @@ import threading
 
 from .config import DATA, HOME, KEYS_DIR
 
+BAILIAN_DIR = HOME / ".bailian"
+
 FILE = DATA / "permissions.json"
 # команда, которая может показать ключи: файл с ними, копии ~/.bashrc, переменные окружения
-SECRET_HINTS = re.compile(r"keys\.env|\.config/chloe|\.bashrc\.bak|_API_KEY|\bprintenv\b|\benv\b|/environ\b|\bdeclare\s+-x|\bexport\s+-p", re.I)
+SECRET_HINTS = re.compile(r"keys\.env|\.config/chloe|\.bashrc\.bak|\.bailian|\bbl\s+(?:auth|config)\b|_API_KEY|\bprintenv\b|\benv\b|/environ\b|\bdeclare\s+-x|\bexport\s+-p", re.I)
 LEVELS = ("allow", "ask", "block")
 LEVEL_RU = {"allow": "разрешено", "ask": "спрашивать", "block": "запрещено"}
 STRICT = {"allow": 0, "ask": 1, "block": 2}
@@ -114,10 +116,13 @@ class Permissions:
 
     @classmethod
     def locked(cls, path):
-        """Файл с ключами и копии ~/.bashrc со старыми ключами закрыты всегда — карта прав их не открывает."""
+        """Файл с ключами, копии ~/.bashrc со старыми ключами и вход Bailian CLI (~/.bailian: ключ и токен консоли
+        Alibaba) закрыты всегда — карта прав их не открывает."""
         p = cls._norm(path)
-        keys = cls._norm(KEYS_DIR)
-        return p == keys or keys in p.parents or p.name.startswith(".bashrc.bak")
+        for d in (cls._norm(KEYS_DIR), cls._norm(BAILIAN_DIR)):
+            if p == d or d in p.parents:
+                return True
+        return p.name.startswith(".bashrc.bak")
 
     def in_vault(self, path):
         if path and self.locked(path):

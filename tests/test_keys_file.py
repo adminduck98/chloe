@@ -40,7 +40,7 @@ class KeysFile(unittest.TestCase):
 class ChloeCannotReadKeys(unittest.TestCase):
     def test_file_tools_refuse(self):
         read = mock.Mock(return_value="секрет")
-        for path in ("~/.config/chloe/keys.env", str(config.KEYS_DIR), "~/.bashrc.bak-before-qwen"):
+        for path in ("~/.config/chloe/keys.env", str(config.KEYS_DIR), "~/.bashrc.bak-before-qwen", "~/.bailian/config.json", "~/.bailian"):
             with mock.patch.dict(HANDLERS, {"read_file": read}):
                 out, _, failed = run_tool("read_file", {"path": path})
             self.assertTrue(failed, path)
@@ -48,7 +48,7 @@ class ChloeCannotReadKeys(unittest.TestCase):
 
     def test_commands_refuse(self):
         for cmd in ("cat ~/.config/chloe/keys.env", "printenv", "env", "echo $DEEPSEEK_API_KEY",
-                    "cat /proc/self/environ", "grep KEY ~/.bashrc.bak-before-deepseek"):
+                    "cat /proc/self/environ", "grep KEY ~/.bashrc.bak-before-deepseek", "cat ~/.bailian/config.json", "bl auth status", "bl config show"):
             verdict = permissions.check("run_command", {"command": cmd})
             self.assertEqual(verdict[0], "block", cmd)
         self.assertIsNone(permissions.check("run_command", {"command": "ls ~/venv"}))

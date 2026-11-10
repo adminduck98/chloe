@@ -13,6 +13,10 @@ if "unittest" in sys.modules and os.environ.get("CHLOE_TEST_HOME") != str(HOME):
                        "(иначе они работали бы с настоящей ~/.chloe)")
 DATA = HOME / ".chloe"
 DATA.mkdir(exist_ok=True)
+try:
+    os.chmod(DATA, 0o700)   # журнал, память и база — личные: другим пользователям компьютера не видны
+except OSError:
+    pass
 for _stale in DATA.glob("tmp*.mp3"):   # озвучка, оставшаяся после прерванного запуска
     _stale.unlink(missing_ok=True)
 BRAIN_FILE = DATA / "brain.json"

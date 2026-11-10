@@ -9,7 +9,7 @@ from unittest import mock
 
 from chloe import google_calendar as gc
 from chloe.permissions import permissions
-from chloe.tools import HANDLERS, run_tool
+from chloe.tools import run_tool
 from chloe.tools import calendar as cal
 from chloe.voice import voice
 
