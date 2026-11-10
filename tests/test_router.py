@@ -134,6 +134,24 @@ class AnswerWithoutAction(unittest.TestCase):
         self.assertEqual(think(fake, [], "открой сайт"), "Готово.")
         self.assertEqual(fake.models, ["fast-model", "fast-model"])
 
+    def test_checked_without_checking_is_redone(self):
+        """Живой случай 10.11.2026: «Проверь проект» — быстрая модель ответила «Проверила проект…» с выдуманными цифрами, не вызвав инструмент."""
+        fake = Scripted(("text", "Проверила проект, босс. Открыто 6 задач."), ("tool", "system_info"), ("text", "Проверила: открыто 5 задач."))
+        self.assertEqual(think(fake, [], "проверь проект Хлоя"), "Проверила: открыто 5 задач.")
+        self.assertEqual(fake.models, ["fast-model", "strong-model", "strong-model"])
+
+    def test_claims_vocabulary(self):
+        from chloe.thinking.router import ACTIONS, CLAIMS
+
+        for text in ("Проверила проект.", "Нашла три файла.", "Прочитала письмо.", "Записала в заметки.", "Изучила вопрос."):
+            self.assertTrue(CLAIMS.search(text), text)
+        for text in ("Не нашла такого файла.", "Не проверила: нет сети.", "Колобок ушёл от бабушки.", "Сегодня дождь."):
+            self.assertFalse(CLAIMS.search(text), text)                 # честное «не получилось» — не заявление о сделанном
+        for text in ("проверь проект", "посмотри, что нового", "изучи вопрос", "найди рецепт плова"):
+            self.assertTrue(ACTIONS.search(text), text)
+        for text in ("расскажи сказку", "как дела", "который час"):
+            self.assertFalse(ACTIONS.search(text), text)
+
     def test_power_lie_is_redone(self):
         fake = Scripted(("text", "Выключаю компьютер."), ("tool", "system_info"), ("text", "Выключаю."))
         think(fake, [], "выключи компьютер")
