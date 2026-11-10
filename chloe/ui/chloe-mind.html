@@ -263,6 +263,18 @@
   #linksPanel svg text { fill: var(--iron); font-size: 9px; pointer-events: none; }
   #linksPanel input { width: 100%; box-sizing: border-box; margin: 8px 0 4px; }
   #linksPanel .body { color: var(--bone); margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 13px; }
+  #worldPanel canvas { width: 100%; aspect-ratio: 1 / 1; display: block; margin: 8px 0; cursor: grab; touch-action: none; }
+  #worldPanel canvas:active { cursor: grabbing; }
+  #worldPanel .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  #worldPanel .chip { border: 1px solid var(--line); color: var(--iron); padding: 2px 8px; font-size: 11px; cursor: pointer; user-select: none; }
+  #worldPanel .chip.on { color: var(--ink); border-color: var(--bone); }
+  #worldPanel .chip i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; }
+  #worldPanel .wrow { padding: 7px 0; border-bottom: 1px solid #161616; cursor: pointer; display: grid; grid-template-columns: 10px 1fr; gap: 8px; }
+  #worldPanel .wrow i { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; }
+  #worldPanel .wrow .t { color: var(--ink); overflow-wrap: anywhere; } #worldPanel .wrow:hover .t, #worldPanel .wrow.sel .t { color: var(--coral); }
+  #worldPanel .wrow .w { color: var(--iron); font-size: 11px; }
+  #worldPanel .mk { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 4px 0; font-variant-numeric: tabular-nums; }
+  #worldPanel .mk .up { color: #5fb58a; } #worldPanel .mk .dn { color: var(--coral); } #worldPanel .mk span:first-child { color: var(--bone); }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -361,6 +373,7 @@
     <div id="accessPanel" class="panel"></div>
     <div id="projectsPanel" class="panel"></div>
     <div id="linksPanel" class="panel"></div>
+    <div id="worldPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -381,6 +394,7 @@
       <button id="phoneBtn">Телефон</button>
       <button id="projectsBtn">Проекты</button>
       <button id="linksBtn">Связи</button>
+      <button id="worldBtn">Мир</button>
       <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
@@ -2247,7 +2261,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2383,7 +2397,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2522,7 +2536,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2594,7 +2608,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2669,7 +2683,7 @@
     if (!api) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     accessOpen = true; accessBtn.classList.add("on");
     accessPanel.style.display = "block";
     accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
@@ -2774,7 +2788,7 @@
     if (!pApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     projOpen = true; projBtn.classList.add("on");
     projPanel.style.display = "block";
     projPanel.innerHTML = "<span class='close' id='prClose'>✕</span><b>Проекты</b><br>Загружаю…";
@@ -2902,12 +2916,161 @@
     if (!lApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld();
     linksOpen = true; linksBtn.classList.add("on");
     linksPanel.style.display = "block";
     linksPanel.innerHTML = "<span class='close' id='lkClose'>✕</span><b>Связи</b><br>Загружаю…";
     document.getElementById("lkClose").onclick = window.closeLinks;
     loadLinks();
+  };
+
+
+  // =======================================================
+  // 14в. МИР: глобус событий, рынки, киберугрозы
+  var worldPanel = document.getElementById("worldPanel"), worldBtn = document.getElementById("worldBtn"), worldOpen = false;
+  var wData = null, wRot = { lon: 69, lat: 30 }, wSel = null, wHide = {}, wLandAsked = false, wPts = [];
+  var W_KIND = { quake: ["землетрясения", "#e0a84a"], cyclone: ["циклоны", "#6fb0e0"], storm: ["штормы", "#6fb0e0"], flood: ["наводнения", "#4a8fe0"],
+                 volcano: ["вулканы", "#ff7777"], fire: ["пожары", "#ff9a55"], drought: ["засухи", "#c9b27a"], news: ["новости", "#d6d6d6"], other: ["другое", "#8f8f8f"] };
+  window.closeWorld = function () { worldOpen = false; worldBtn.classList.remove("on"); worldPanel.style.display = "none"; };
+  function wApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.world_get ? window.pywebview.api : null; }
+  function wAgo(ts) { var m = Math.max(1, Math.round((Date.now() / 1000 - ts) / 60)); return m < 60 ? m + " мин назад" : m < 2880 ? Math.floor(m / 60) + " ч назад" : Math.floor(m / 1440) + " дн назад"; }
+  function wProject(lon, lat, R, cx, cy) {
+    var l = (lon - wRot.lon) * Math.PI / 180, p = lat * Math.PI / 180, p0 = wRot.lat * Math.PI / 180;
+    var cosc = Math.sin(p0) * Math.sin(p) + Math.cos(p0) * Math.cos(p) * Math.cos(l);
+    return { x: cx + R * Math.cos(p) * Math.sin(l), y: cy - R * (Math.cos(p0) * Math.sin(p) - Math.sin(p0) * Math.cos(p) * Math.cos(l)), v: cosc > 0 };
+  }
+  function wShown() { return (wData ? wData.events : []).filter(function (e) { return !wHide[e.kind]; }); }
+  function drawGlobe() {
+    var cv = document.getElementById("wGlobe"); if (!cv) return;
+    var dpr = window.devicePixelRatio || 1, size = cv.clientWidth || 300;
+    cv.style.height = size + "px";                                             // квадрат: иначе глобус вытягивается
+    if (cv.width !== Math.round(size * dpr)) { cv.width = cv.height = Math.round(size * dpr); }
+    var g = cv.getContext("2d"), cx = cv.width / 2, cy = cv.height / 2, R = cv.width / 2 - 6 * dpr;
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.fillStyle = "#0d0d0d"; g.fill(); g.strokeStyle = "#2a2a2a"; g.lineWidth = dpr; g.stroke();
+    g.strokeStyle = "#1c1c1c"; g.lineWidth = dpr * 0.7;                       // сетка
+    var a, b, q, pen;
+    for (a = -60; a <= 60; a += 30) { g.beginPath(); pen = false; for (b = -180; b <= 180; b += 6) { q = wProject(b, a, R, cx, cy); if (q.v) { pen ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); pen = true; } else pen = false; } g.stroke(); }
+    for (a = -180; a < 180; a += 30) { g.beginPath(); pen = false; for (b = -90; b <= 90; b += 6) { q = wProject(a, b, R, cx, cy); if (q.v) { pen ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); pen = true; } else pen = false; } g.stroke(); }
+    if (window.WORLD_LAND) {                                                  // берега
+      g.strokeStyle = "#6a6a6a"; g.lineWidth = dpr * 0.9;
+      window.WORLD_LAND.forEach(function (line) {
+        g.beginPath(); pen = false;
+        for (var i = 0; i < line.length; i++) { q = wProject(line[i][0], line[i][1], R, cx, cy); if (q.v) { pen ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); pen = true; } else pen = false; }
+        g.stroke();
+      });
+    }
+    if (wData && wData.home && wData.home.lat != null) {                      // дом
+      q = wProject(wData.home.lon, wData.home.lat, R, cx, cy);
+      if (q.v) { g.strokeStyle = "#ffffff"; g.lineWidth = dpr; g.beginPath(); g.arc(q.x, q.y, 5 * dpr, 0, 2 * Math.PI); g.stroke(); }
+    }
+    wPts = [];
+    wShown().slice().reverse().forEach(function (e) {
+      q = wProject(e.lon, e.lat, R, cx, cy); if (!q.v) return;
+      var r = (e.kind === "news" ? 3 : 2.5 + e.level * 1.5) * dpr, col = (W_KIND[e.kind] || W_KIND.other)[1], sel = wSel === e;
+      if (e.level >= 2 || sel) { g.beginPath(); g.arc(q.x, q.y, r + 4 * dpr, 0, 2 * Math.PI); g.strokeStyle = sel ? "#ffffff" : col; g.globalAlpha = sel ? 1 : 0.5; g.lineWidth = dpr; g.stroke(); g.globalAlpha = 1; }
+      g.beginPath(); g.arc(q.x, q.y, r, 0, 2 * Math.PI); g.fillStyle = col; g.globalAlpha = 0.9; g.fill(); g.globalAlpha = 1;
+      wPts.push({ x: q.x / dpr, y: q.y / dpr, e: e });
+    });
+  }
+  function renderWorld() {
+    if (!worldOpen) return;
+    var h = ["<span class='close' id='wClose'>✕</span><b>Мир</b>"];
+    if (!wData) { worldPanel.innerHTML = h.join("") + "<br>Собираю картину мира…"; document.getElementById("wClose").onclick = window.closeWorld; return; }
+    var d = new Date(wData.at * 1000), kinds = {};
+    wData.events.forEach(function (e) { kinds[e.kind] = (kinds[e.kind] || 0) + 1; });
+    h.push("<div style='color:#8A8A8A'>Открытые источники, обновлено " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) +
+           ". Крутите глобус мышью; точка — событие. <span class='chip' id='wFresh'>обновить</span></div>");
+    if (wData.failed && wData.failed.length) h.push("<div style='color:#e0a84a;font-size:12px'>не ответили: " + escapeHtml(wData.failed.join(", ")) + "</div>");
+    h.push("<canvas id='wGlobe'></canvas><div class='chips'>");
+    Object.keys(kinds).forEach(function (k) {
+      var info = W_KIND[k] || W_KIND.other;
+      h.push("<span class='chip" + (wHide[k] ? "" : " on") + "' data-kind='" + k + "'><i style='background:" + info[1] + "'></i>" + info[0] + " " + kinds[k] + "</span>");
+    });
+    h.push("</div><div id='wList'></div>");
+    if (wData.markets && wData.markets.length) {
+      h.push("<h4>Рынки</h4>");
+      wData.markets.forEach(function (m) {
+        var ch = m.change_pct != null ? m.change_pct : m.change, up = ch >= 0;
+        h.push("<div class='mk'><span>" + escapeHtml(m.name) + "</span><span>" + (m.unit === "$" ? "$" : "") + Number(m.value).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) +
+               "</span><span class='" + (up ? "up" : "dn") + "'>" + (up ? "+" : "") + ch + (m.change_pct != null ? " %" : "") + "</span></div>");
+      });
+    }
+    if (wData.cyber && wData.cyber.length) {
+      h.push("<h4>Киберугрозы за неделю (" + wData.cyber.length + ")</h4><div style='color:#8A8A8A;font-size:12px'>уязвимости, которые уже используют в атаках — CISA KEV</div>");
+      wData.cyber.slice(0, 8).forEach(function (v) {
+        h.push("<div class='wrow' style='cursor:default'><i style='background:" + (v.ransomware ? "#ff7777" : "#8f8f8f") + "'></i><span><span class='t'>" + escapeHtml(v.product) +
+               "</span><br><span class='w'>" + escapeHtml(v.title) + " · " + escapeHtml(v.id) + " · " + escapeHtml(v.added) + (v.ransomware ? " · вымогатели" : "") + "</span></span></div>");
+      });
+    }
+    h.push("<h4>Источники</h4><div class='chips'>");
+    Object.keys(wData.sources || {}).forEach(function (k) {
+      h.push("<span class='chip" + (wData.sources[k] ? " on" : "") + "' data-src='" + k + "'>" + ({ quakes: "землетрясения", disasters: "бедствия", nature: "природа", news: "новости", markets: "рынки", cyber: "киберугрозы" }[k] || k) + "</span>");
+    });
+    h.push("</div>");
+    worldPanel.innerHTML = h.join("");
+    document.getElementById("wClose").onclick = window.closeWorld;
+    document.getElementById("wFresh").onclick = function () { loadWorld(true); };
+    worldPanel.querySelectorAll("[data-kind]").forEach(function (c) { c.onclick = function () { var k = c.getAttribute("data-kind"); wHide[k] = !wHide[k]; renderWorld(); }; });
+    worldPanel.querySelectorAll("[data-src]").forEach(function (c) {
+      c.onclick = function () { var k = c.getAttribute("data-src"); wApi().world_source(k, !wData.sources[k]).then(function (r) { wData = r; renderWorld(); }); };
+    });
+    renderWorldList();
+    var cv = document.getElementById("wGlobe"), drag = null, moved = false;
+    cv.onpointerdown = function (e) { drag = { x: e.clientX, y: e.clientY, lon: wRot.lon, lat: wRot.lat }; moved = false; cv.setPointerCapture(e.pointerId); };
+    cv.onpointermove = function (e) {
+      if (!drag) return;
+      var k = 180 / cv.clientWidth;
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) moved = true;
+      wRot.lon = drag.lon - (e.clientX - drag.x) * k; wRot.lat = Math.max(-85, Math.min(85, drag.lat + (e.clientY - drag.y) * k));
+      drawGlobe();
+    };
+    cv.onpointerup = function (e) {
+      drag = null;
+      if (moved) return;
+      var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, best = null, bd = 14;
+      wPts.forEach(function (p) { var dd = Math.hypot(p.x - x, p.y - y); if (dd < bd) { bd = dd; best = p.e; } });
+      wSel = best; drawGlobe(); renderWorldList();
+    };
+    if (!window.WORLD_LAND && !wLandAsked) {
+      wLandAsked = true;
+      var sc = document.createElement("script"); sc.src = "world-land.js"; sc.onload = drawGlobe; document.head.appendChild(sc);
+    }
+    drawGlobe();
+  }
+  function renderWorldList() {
+    var box = document.getElementById("wList"); if (!box) return;
+    var list = wShown().filter(function (e) { return e.kind !== "news" || true; });
+    if (wSel) list = [wSel].concat(list.filter(function (e) { return e !== wSel; }));
+    box.innerHTML = "<h4>" + (wSel ? "Выбрано и остальные" : "События") + " (" + list.length + ")</h4>" + list.slice(0, 40).map(function (e, i) {
+      var info = W_KIND[e.kind] || W_KIND.other;
+      return "<div class='wrow" + (e === wSel ? " sel" : "") + "' data-i='" + i + "'><i style='background:" + info[1] + "'></i><span><span class='t'>" + escapeHtml(e.title) +
+        "</span><br><span class='w'>" + escapeHtml(e.source) + " · " + wAgo(e.ts) + (e.near ? " · " + e.km + " км от вас" : "") + (e.detail ? " · " + escapeHtml(e.detail) : "") +
+        (e.level >= 3 ? " · высокая тревога" : e.level === 2 ? " · повышенная" : "") + "</span></span></div>";
+    }).join("");
+    box.querySelectorAll(".wrow").forEach(function (r) {
+      r.onclick = function () { wSel = list[+r.getAttribute("data-i")]; wRot.lon = wSel.lon; wRot.lat = Math.max(-85, Math.min(85, wSel.lat)); drawGlobe(); renderWorldList(); };
+    });
+  }
+  function loadWorld(fresh) {
+    var api = wApi(); if (!api) return;
+    if (fresh) { wData = null; renderWorld(); }
+    api.world_get(!!fresh).then(function (r) {
+      wData = r; wSel = null;
+      if (r.home && r.home.lat != null && !loadWorld.centered) { wRot.lon = r.home.lon; wRot.lat = Math.min(60, r.home.lat); loadWorld.centered = true; }
+      renderWorld();
+    }).catch(function () { worldPanel.innerHTML = "<span class='close' id='wClose'>✕</span><b>Мир</b><br>Не получилось собрать картину мира."; document.getElementById("wClose").onclick = window.closeWorld; });
+  }
+  worldBtn.onclick = function () {
+    touch();
+    if (worldOpen) { window.closeWorld(); return; }
+    if (!wApi()) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks();
+    worldOpen = true; worldBtn.classList.add("on");
+    worldPanel.style.display = "block";
+    renderWorld(); loadWorld(false);
   };
 
   // =======================================================
@@ -2919,7 +3082,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -3854,7 +4017,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

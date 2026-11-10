@@ -501,6 +501,18 @@ class Api:
 
         return graph.unlink(str(a), str(b))
 
+    # мир: события для глобуса, рынки, киберугрозы
+    def world_get(self, fresh=False):
+        from . import world
+
+        return world.picture(fresh=bool(fresh))
+
+    def world_source(self, name, on):
+        from . import world
+
+        world.set_source(str(name), bool(on))
+        return world.picture()
+
     # самочувствие: быстрая проверка без сети (каждые полминуты) или глубокая — настоящими запросами (кнопка)
     def system_health(self, deep=False):
         from . import system_state as ss
