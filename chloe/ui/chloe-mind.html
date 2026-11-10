@@ -117,6 +117,15 @@
   .cLayer.hot .track i { background: var(--coral); }
   .cLayer small { color: var(--iron); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
   .cMuted { color: var(--iron); }
+  .cHealth { margin: 10px 0 4px; padding: 9px 11px; border-left: 2px solid var(--line); color: var(--bone); line-height: 1.35; }
+  .cHealth.ok { border-color: #5fb58a; } .cHealth.warn { border-color: #e0a84a; } .cHealth.fail { border-color: var(--coral); }
+  .hRow { display: grid; grid-template-columns: 16px 112px 1fr; gap: 6px; padding: 3px 0; font-size: 13px; }
+  .hRow .i { text-align: center; font-weight: 600; }
+  .hRow .i.ok { color: #5fb58a; } .hRow .i.warn { color: #e0a84a; } .hRow .i.fail { color: var(--coral); } .hRow .i.off { color: var(--iron); }
+  .hRow .d { color: var(--iron); overflow-wrap: anywhere; }
+  #coreLabel[data-health=warn]::after, #coreLabel[data-health=fail]::after { content: ""; display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; margin-left: 6px; vertical-align: middle; background: #e0a84a; }
+  #coreLabel[data-health=fail]::after { background: var(--coral); }
   .cState { font-size: 28px; line-height: 1.05; letter-spacing: -.035em; color: var(--ink); margin: 6px 0 2px; }
 
   /* --- ответ Chloe: крупный заголовок, как в студийной вёрстке --- */
@@ -3688,6 +3697,7 @@
     coreOpen = false;
     corePanel.style.display = "none";
     if (coreTimer) { clearInterval(coreTimer); coreTimer = null; }
+    if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
   }
   function openCore() {
     touch();
@@ -3699,7 +3709,9 @@
     corePanel.style.display = "block";
     renderCore();
     fetchCoreStatus();
+    if (!health || !health.deep || Date.now() / 1000 - health.at > 30) fetchHealth(false);
     if (!coreTimer) coreTimer = setInterval(function () { renderCore(); }, 700);
+    if (!healthTimer) healthTimer = setInterval(function () { if (coreOpen && !(health && health.deep && Date.now() / 1000 - health.at < 120)) fetchHealth(false); }, 30000);
   }
   // расход за сегодня — всегда в шапке: сколько стоили запросы к моделям (обновляется каждые 15 секунд)
   var spendBtn = document.getElementById("spendBtn");
@@ -3718,8 +3730,43 @@
   }
   spendBtn.addEventListener("click", function () { openCore(); });
   window.addEventListener("pywebviewready", fetchSpend);
+  window.addEventListener("pywebviewready", function () { setTimeout(function () { fetchHealth(false); }, 4000); });
+  setInterval(function () { if (!coreOpen) fetchHealth(false); }, 120000);
   setTimeout(fetchSpend, 1500);
   setInterval(fetchSpend, 15000);
+  // самочувствие: быстрая проверка при открытии и каждые 30 с; глубокая — по кнопке (настоящие запросы, ~5 с)
+  var health = null, healthBusy = false, healthOpen = false, healthTimer = null;
+  var H_ICON = { ok: "✓", warn: "!", fail: "✗", off: "–" };
+  function fetchHealth(deep) {
+    var api = window.pywebview && window.pywebview.api && window.pywebview.api.system_health ? window.pywebview.api : null;
+    if (!api || healthBusy) return;
+    if (deep) { healthBusy = true; renderCore(); }
+    api.system_health(!!deep).then(function (r) {
+      health = r; healthBusy = false;
+      var cl = document.getElementById("coreLabel");      // поломка видна и при закрытой панели: точка у «Ядро»
+      if (cl) { cl.setAttribute("data-health", r.level); cl.title = "Ядро Chloe — " + r.summary; }
+      renderCore();
+    })
+      .catch(function () { healthBusy = false; renderCore(); });
+  }
+  function renderHealth(h) {
+    if (!health) { h.push("<div class='cMuted'>Проверяю себя…</div>"); return; }
+    h.push("<div class='cHealth " + esc(health.level) + "'>" + esc(health.summary) + "</div>");
+    var shown = healthOpen ? health.items : health.items.filter(function (x) { return x.level === "fail" || x.level === "warn"; })
+      .sort(function (a, b) { return (a.level === "fail" ? 0 : 1) - (b.level === "fail" ? 0 : 1); });   // поломки — первыми
+    var area = null;
+    shown.forEach(function (x) {
+      if (healthOpen && x.area !== area) { area = x.area; h.push("<div class='cMuted' style='margin-top:6px'>" + esc(area) + "</div>"); }
+      h.push("<div class='hRow'><span class='i " + esc(x.level) + "'>" + (H_ICON[x.level] || "?") + "</span><span>" + esc(x.name) +
+             "</span><span class='d'>" + esc(x.detail) + "</span></div>");
+    });
+    var when = new Date(health.at * 1000);
+    h.push("<div>" +
+      "<button class='small' data-act='hAll'>" + (healthOpen ? "Только важное" : "Всё (" + health.items.length + ")") + "</button>" +
+      "<button class='small' data-act='hDeep'" + (healthBusy ? " disabled" : "") + ">" + (healthBusy ? "Проверяю…" : "Проверить глубже") + "</button>" +
+      "<span class='cMuted' style='font-size:12px'> " + (health.deep ? "глубокая" : "быстрая") + " · " +
+      ("0" + when.getHours()).slice(-2) + ":" + ("0" + when.getMinutes()).slice(-2) + "</span></div>");
+  }
   function fetchCoreStatus() {
     var api = window.pywebview && window.pywebview.api && window.pywebview.api.system_status ? window.pywebview.api : null;
     if (!api) { coreStatus = null; return; }
@@ -3732,6 +3779,8 @@
     h.push("<span class='close' role='button' aria-label='Закрыть' data-act='close'>×</span><b>Ядро Chloe</b>");
     h.push("<div class='cState'>" + esc(STATE_RU[STATE.name] || STATE.name) + "</div>");
     h.push("<div class='cMuted'>сосредоточенность " + Math.round(eeg.focus * 100) + "% · усталость " + Math.round(feel.fatigue * 100) + "%</div>");
+    h.push("<h4>Самочувствие</h4>");
+    renderHealth(h);
     h.push("<h4>Слои</h4>");
     LAYERS.forEach(function (L) {
       var a = L.uni.uAct.value, hot = a > 0.35;
@@ -3765,6 +3814,8 @@
     var t = e.target.closest("[data-open],[data-act]");
     if (!t) return;
     if (t.getAttribute("data-act") === "close") { closeCore(); return; }
+    if (t.getAttribute("data-act") === "hDeep") { fetchHealth(true); return; }
+    if (t.getAttribute("data-act") === "hAll") { healthOpen = !healthOpen; renderCore(); return; }
     openLayer(t.getAttribute("data-open"));
   });
   function openLayer(what) {

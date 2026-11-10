@@ -458,6 +458,16 @@ class Api:
             "busy": busy.is_set(),
         }
 
+    # самочувствие: быстрая проверка без сети (каждые полминуты) или глубокая — настоящими запросами (кнопка)
+    def system_health(self, deep=False):
+        from . import system_state as ss
+
+        items = ss.deep() if deep else ss.quick()
+        if deep:
+            ss.save(items)
+        level, summary = ss.verdict(items)
+        return {"level": level, "summary": summary, "items": items, "deep": bool(deep), "at": time.time()}
+
     # постоянное зрение: включить и выключить из окна
     def vision_get(self):
         return {"on": vision.enabled, "title": "" if vision.private else vision.title[:80], "private": vision.private}
