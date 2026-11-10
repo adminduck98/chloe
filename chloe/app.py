@@ -511,7 +511,19 @@ def main():
                         help="скачать офлайн-слух Vosk для слова «Хлоя» (~45 МБ) и выйти")
     parser.add_argument("--login-telegram", action="store_true",
                         help="один раз войти в Telegram (api_id, api_hash, телефон и код вводите сами) и выйти")
+    parser.add_argument("--autostart", choices=["on", "off", "status"],
+                        help="запускать Chloe вместе с компьютером (после входа в систему): on / off / status — и выйти")
     args = parser.parse_args()
+    if args.autostart:
+        from . import autostart
+
+        if args.autostart == "on":
+            print("Автозапуск включён:", autostart.enable())
+        elif args.autostart == "off":
+            print("Автозапуск выключен." if autostart.disable() else "Автозапуск и не был включён.")
+        else:
+            print("Автозапуск включён." if autostart.enabled() else "Автозапуск выключен.")
+        return
     if args.login_telegram:
         from .telegram import login as telegram_login
 
@@ -537,6 +549,11 @@ def main():
         return
     if args.install_voice:
         install_voice(args.install_voice)
+        return
+    from . import autostart
+
+    if not autostart.single_instance():
+        print("Chloe уже работает — вторая копия не нужна (обе слушали бы микрофон). Выхожу.")
         return
     voice.enabled = not args.text
     if voice.enabled:
