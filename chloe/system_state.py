@@ -46,6 +46,15 @@ def _safe(area, name, fn):
 
 
 # --- быстрые проверки ---
+def safe():
+    from . import safemode
+
+    if not safemode.on():
+        return []
+    return item("Система", "Безопасный режим", "warn", "включён с {} — действия на паузе".format(
+        time.strftime("%d.%m %H:%M", time.localtime(safemode.since() or time.time()))))
+
+
 def brains():
     keys = {"Qwen": config.QWEN_KEY, "DeepSeek": config.DEEPSEEK_KEY, "Claude": config.ANTHROPIC_KEY, "Gemini": config.GEMINI_KEY}
     out = [item("Мозг", "Основной", "ok" if config.has_key() else "fail",
@@ -117,7 +126,8 @@ def system():
 
     days = snapshots.days()
     today = time.strftime("%Y-%m-%d")
-    out.append(item("Система", "Копии памяти", "ok" if days and days[0] == today else "warn",
+    days = sorted(days, key=lambda d: d[:10], reverse=True)
+    out.append(item("Система", "Копии памяти", "ok" if days and days[0].startswith(today) else "warn",
                     "последняя {}, всего {}".format(days[0], len(days)) if days else "копий нет"))
     try:
         from .studio import ffmpeg
@@ -207,7 +217,7 @@ def safety():
     return audit()
 
 
-FAST = (("Мозг", "Мозг", brains), ("Голос", "Голос", voice_ears), ("Сервисы", "Сервисы", services),
+FAST = (("Система", "Безопасный режим", safe), ("Мозг", "Мозг", brains), ("Голос", "Голос", voice_ears), ("Сервисы", "Сервисы", services),
         ("Система", "Система", system), ("Ошибки", "Ошибки", errors), ("Права", "Права", rights),
         ("Безопасность", "Безопасность", safety))
 

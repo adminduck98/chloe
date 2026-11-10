@@ -99,6 +99,8 @@ def morning_due(now=None):
     now = now or time.time()
     t = time.localtime(now)
     today = time.strftime("%Y-%m-%d", t)
+    if settings.get("safe_mode"):
+        return False
     if not settings.get("morning_brief") or not 5 <= t.tm_hour < 12 or settings.get("brief_day") == today:
         return False
     settings.set("brief_day", today)

@@ -275,6 +275,22 @@
   #worldPanel .wrow .w { color: var(--iron); font-size: 11px; }
   #worldPanel .mk { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 4px 0; font-variant-numeric: tabular-nums; }
   #worldPanel .mk .up { color: #5fb58a; } #worldPanel .mk .dn { color: var(--coral); } #worldPanel .mk span:first-child { color: var(--bone); }
+  #actionsPanel .safe { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  #actionsPanel .safe.on { border-color: var(--coral); color: var(--coral); }
+  #actionsPanel .safe button { background: transparent; border: 1px solid var(--bone); color: var(--ink); font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer; }
+  #actionsPanel .safe.on button { border-color: var(--coral); color: var(--coral); }
+  #actionsPanel .nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+  #actionsPanel .nums div { border: 1px solid #1c1c1c; padding: 6px 8px; } #actionsPanel .nums b { display: block; font-size: 18px; font-weight: 400; color: var(--ink); }
+  #actionsPanel .nums span { color: var(--iron); font-size: 11px; } #actionsPanel .nums .bad b { color: var(--coral); }
+  #actionsPanel .arow { padding: 6px 0; border-bottom: 1px solid #161616; display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: baseline; }
+  #actionsPanel .arow .k { color: var(--iron); font-size: 11px; font-variant-numeric: tabular-nums; } #actionsPanel .arow .t { color: var(--ink); overflow-wrap: anywhere; }
+  #actionsPanel .arow.err .t { color: var(--coral); } #actionsPanel .arow .w { grid-column: 2 / 4; color: var(--iron); font-size: 11px; overflow-wrap: anywhere; }
+  #actionsPanel .arow button, #actionsPanel .ask button { background: transparent; border: 1px solid var(--line); color: var(--bone); font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+  #actionsPanel .arow button:hover, #actionsPanel .ask button:hover { color: var(--coral); border-color: var(--coral); }
+  #actionsPanel .ask { border-left: 2px solid var(--coral); padding: 8px 10px; margin: 6px 0; color: var(--ink); }
+  #actionsPanel .tabs { display: flex; gap: 18px; margin: 12px 0 6px; border-bottom: 1px solid var(--line); }
+  #actionsPanel .tabs span { cursor: pointer; color: var(--iron); padding: 6px 0; border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  #actionsPanel .tabs span.on { color: var(--ink); border-color: var(--bone); }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -374,6 +390,7 @@
     <div id="projectsPanel" class="panel"></div>
     <div id="linksPanel" class="panel"></div>
     <div id="worldPanel" class="panel"></div>
+    <div id="actionsPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -395,6 +412,7 @@
       <button id="projectsBtn">Проекты</button>
       <button id="linksBtn">Связи</button>
       <button id="worldBtn">Мир</button>
+      <button id="actionsBtn">Действия</button>
       <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
@@ -2261,7 +2279,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2397,7 +2415,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2536,7 +2554,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2608,7 +2626,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2683,7 +2701,7 @@
     if (!api) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     accessOpen = true; accessBtn.classList.add("on");
     accessPanel.style.display = "block";
     accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
@@ -2788,7 +2806,7 @@
     if (!pApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     projOpen = true; projBtn.classList.add("on");
     projPanel.style.display = "block";
     projPanel.innerHTML = "<span class='close' id='prClose'>✕</span><b>Проекты</b><br>Загружаю…";
@@ -2916,7 +2934,7 @@
     if (!lApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     linksOpen = true; linksBtn.classList.add("on");
     linksPanel.style.display = "block";
     linksPanel.innerHTML = "<span class='close' id='lkClose'>✕</span><b>Связи</b><br>Загружаю…";
@@ -3067,10 +3085,82 @@
     if (!wApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); if (window.closeActions) window.closeActions();
     worldOpen = true; worldBtn.classList.add("on");
     worldPanel.style.display = "block";
     renderWorld(); loadWorld(false);
+  };
+
+
+  // =======================================================
+  // 14г. ДЕЙСТВИЯ (Action Center) и безопасный режим
+  var actionsPanel = document.getElementById("actionsPanel"), actionsBtn = document.getElementById("actionsBtn"), actionsOpen = false;
+  var acTab = "today", acTimer = null, acData = null;
+  window.closeActions = function () { actionsOpen = false; actionsBtn.classList.remove("on"); actionsPanel.style.display = "none"; if (acTimer) { clearInterval(acTimer); acTimer = null; } };
+  function acApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.action_center ? window.pywebview.api : null; }
+  function acTime(ts) { if (!ts) return ""; var d = new Date(ts * 1000); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function renderActions() {
+    if (!actionsOpen) return;
+    var o = acData, h = ["<span class='close' id='acClose'>✕</span><b>Действия</b>"];
+    if (!o) { actionsPanel.innerHTML = h.join("") + "<br>Загружаю…"; document.getElementById("acClose").onclick = window.closeActions; return; }
+    h.push("<div class='safe" + (o.safe_mode ? " on" : "") + "'><span>" + (o.safe_mode ? "Безопасный режим включён с " + acTime(o.safe_since) +
+      " — действия, подключения и автоматизации на паузе" : "Безопасный режим: одним нажатием поставить всё на паузу") + "</span><button id='acSafe'>" +
+      (o.safe_mode ? "выключить" : "включить") + "</button></div>");
+    var c = o.counts;
+    h.push("<div class='nums'><div><b>" + c.steps + "</b><span>шагов сегодня</span></div><div><b>" + c.ok + "</b><span>удачных</span></div>" +
+           "<div class='" + (c.errors ? "bad" : "") + "'><b>" + c.errors + "</b><span>ошибок</span></div><div><b>" + c.asked + "</b><span>вопросов «да/нет»</span></div></div>");
+    h.push("<h4>Сейчас</h4>");
+    h.push(o.now.length ? o.now.map(function (x) { return "<div class='arow'><span class='k'>" + acTime(x.since) + "</span><span class='t'>" + escapeHtml(x.what) + "</span><span></span></div>"; }).join("")
+                        : "<div style='color:#8A8A8A'>ничего не выполняю</div>");
+    h.push("<h4>Ждёт решения</h4>");
+    if (!o.waiting.length) h.push("<div style='color:#8A8A8A'>ничего</div>");
+    o.waiting.forEach(function (x) {
+      if (x.kind === "question") h.push("<div class='ask'>" + escapeHtml(x.what) + "<br><button data-ans='1'>да, делай</button> <button data-ans='0'>нет</button></div>");
+      else h.push("<div class='arow'><span class='k'>" + acTime(x.since) + "</span><span class='t'>" + escapeHtml(x.what) + "</span><span></span>" +
+                  "<span class='w'>" + (x.kind === "lab" ? "скажите «внедри улучшение " + x.id + "» или «покажи улучшение " + x.id + "»" : "скажите «покажи пост " + x.id + "»") + "</span></div>");
+    });
+    if (o.upcoming.length) {
+      h.push("<h4>Скоро</h4>");
+      o.upcoming.slice(0, 6).forEach(function (x) { h.push("<div class='arow'><span class='k'>" + acTime(x.at) + "</span><span class='t'>" + escapeHtml(x.what) + "</span><span></span></div>"); });
+    }
+    h.push("<div class='tabs'><span data-tab='today' class='" + (acTab === "today" ? "on" : "") + "'>Сегодня</span><span data-tab='errors' class='" +
+           (acTab === "errors" ? "on" : "") + "'>Ошибки</span><span data-tab='undo' class='" + (acTab === "undo" ? "on" : "") + "'>Отменить</span></div>");
+    if (acTab === "undo") {
+      if (!o.undo.length) h.push("<div style='color:#8A8A8A'>изменений файлов, которые можно отменить, нет</div>");
+      o.undo.forEach(function (x) { h.push("<div class='arow'><span class='k'>" + acTime(x.ts) + "</span><span class='t'>" + escapeHtml(x.text) + "</span><button data-undo='" + x.id + "'>отменить</button></div>"); });
+    } else {
+      var rows = o.today.filter(function (x) { return acTab === "today" || x.error; });
+      if (!rows.length) h.push("<div style='color:#8A8A8A'>" + (acTab === "errors" ? "ошибок сегодня не было" : "сегодня ещё ничего не делала") + "</div>");
+      rows.slice(0, 80).forEach(function (x) {
+        h.push("<div class='arow" + (x.error ? " err" : "") + "'><span class='k'>" + acTime(x.ts) + "</span><span class='t'>" + escapeHtml(x.title) + "</span>" +
+               "<span class='k'>" + (x.kind === "confirm" ? "вопрос" : x.ok ? "✓" : x.error ? "✗" : "отказ") + "</span>" + (x.error && x.result ? "<span class='w'>" + escapeHtml(x.result) + "</span>" : "") + "</div>");
+      });
+    }
+    actionsPanel.innerHTML = h.join("");
+    document.getElementById("acClose").onclick = window.closeActions;
+    document.getElementById("acSafe").onclick = function () {
+      var api = acApi(); if (!api) return;
+      if (o.safe_mode && !window.confirm("Выключить безопасный режим и вернуть действия?")) return;
+      api.safe_mode_set(!o.safe_mode).then(loadActions);
+    };
+    actionsPanel.querySelectorAll("[data-tab]").forEach(function (t) { t.onclick = function () { acTab = t.getAttribute("data-tab"); renderActions(); }; });
+    actionsPanel.querySelectorAll("[data-ans]").forEach(function (b) { b.onclick = function () { acApi().answer_pending(b.getAttribute("data-ans") === "1").then(function () { setTimeout(loadActions, 600); }); }; });
+    actionsPanel.querySelectorAll("[data-undo]").forEach(function (b) {
+      b.onclick = function () { window.pywebview.api.change_undo(+b.getAttribute("data-undo")).then(function (r) { b.textContent = r && r.ok ? "отменено" : "не вышло"; setTimeout(loadActions, 900); }); };
+    });
+  }
+  function loadActions() { var api = acApi(); if (!api || !actionsOpen) return; api.action_center().then(function (o) { acData = o; renderActions(); }); }
+  actionsBtn.onclick = function () {
+    touch();
+    if (actionsOpen) { window.closeActions(); return; }
+    if (!acApi()) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld();
+    actionsOpen = true; actionsBtn.classList.add("on");
+    actionsPanel.style.display = "block";
+    renderActions(); loadActions();
+    acTimer = setInterval(loadActions, 3000);                     // «сейчас» и «ждёт решения» меняются на глазах
   };
 
   // =======================================================
@@ -3082,7 +3172,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -4017,7 +4107,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

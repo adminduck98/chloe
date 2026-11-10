@@ -157,6 +157,14 @@ class Permissions:
     def check(self, tool, args):
         """None — можно; ("block", причина) — нельзя; ("ask", вопрос) — сначала спросить."""
         args = args if isinstance(args, dict) else {}
+        try:                                              # безопасный режим — раньше карты прав
+            from .safemode import blocks
+
+            why = blocks(tool)
+            if why:
+                return "block", why
+        except ImportError:
+            pass
         for k in PATH_ARGS:
             if isinstance(args.get(k), str) and self.in_vault(args[k]):
                 return "block", "это приватная папка (Private Vault): туда я не заглядываю"

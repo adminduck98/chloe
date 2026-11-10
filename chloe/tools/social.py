@@ -133,7 +133,9 @@ def tool_social(a):
 def watcher(say, every=60, stop=None):
     """В срок: одобренный Telegram-пост уходит сам; для остальных — напоминание и пакет. Неодобренный — только напоминание."""
     while not (stop and stop.is_set()):
-        for p in social.due_now():
+        from ..safemode import on as safe_on
+
+        for p in ([] if safe_on() else social.due_now()):          # безопасный режим — посты ждут
             try:
                 if p["network"] == "telegram" and p["status"] == "approved":
                     say("Пост в канале: " + release(p))

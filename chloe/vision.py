@@ -123,6 +123,8 @@ class Vision:
         # экран в карте прав не «разрешено» — постоянного зрения нет (спрашивать про каждый кадр нельзя)
         from .permissions import permissions
 
+        if settings.get("safe_mode"):                      # безопасный режим — глаза закрыты, настройку не трогаем
+            return False
         return bool(settings.get("vision", True)) and permissions.screen_allowed()
 
     def set_enabled(self, on):

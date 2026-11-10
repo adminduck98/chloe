@@ -502,6 +502,22 @@ class Api:
 
         return graph.unlink(str(a), str(b))
 
+    # Action Center и безопасный режим
+    def action_center(self):
+        from . import actions
+
+        return actions.overview()
+
+    def safe_mode_set(self, on):
+        from . import safemode
+
+        return {"on": safemode.on(), "done": safemode.enable("кнопка в окне") if on else safemode.disable()}
+
+    def answer_pending(self, yes):
+        """Ответ на вопрос «да/нет» кнопкой в окне — как будто сказан голосом."""
+        commands.put(Typed("да" if yes else "нет", "local"))
+        return True
+
     # мир: события для глобуса, рынки, киберугрозы
     def world_get(self, fresh=False):
         from . import world

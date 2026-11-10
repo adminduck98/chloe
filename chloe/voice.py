@@ -49,6 +49,7 @@ class Voice:
 
     def __init__(self, enabled):
         self.enabled = enabled
+        self.pending = None          # вопрос «да/нет», который сейчас ждёт ответа
         self.recognizer = None
         self.mic = None
         self.tts_engine = None
@@ -356,6 +357,7 @@ class Voice:
 
     def ask_yes_no(self, question):
         """Подтверждение голосом (или с клавиатуры в текстовом режиме)."""
+        self.pending = {"question": question, "since": time.time()}   # Action Center показывает, что ждёт ответа
         self.say(question + " Скажите «да, делай» или «нет».")
         ans = ""
         if self.enabled:
@@ -377,6 +379,7 @@ class Voice:
             print("Вы (подтверждение):", ans or "— не услышала ответа")
         else:
             ans = input("(да/нет) > ").lower()
+        self.pending = None
         said = set(words(ans))
         return bool(said & YES_WORDS) and not (said & NO_WORDS)
 

@@ -31,7 +31,7 @@ ENABLED = os.environ.get("CHLOE_PHONE", "on") != "off"
 # что телефону можно вызывать (методы класса Api в app.py)
 ALLOWED = {"command", "system_status", "vision_get", "vision_set", "load_brain", "journal_list", "journal_get", "journal_delete", "journal_clear",
            "memory_list", "memory_add", "memory_edit", "memory_delete", "changes_list", "change_undo",
-           "city_get", "city_set", "tts"}
+           "city_get", "city_set", "tts", "action_center", "system_health"}
 QUIET = {"chloeVoice"}   # уровень микрофона компьютера телефону не нужен (шлётся десятки раз в секунду)
 
 
@@ -167,6 +167,10 @@ def make_handler(api, secret):
                 return self.send_json(None)
             if name not in ALLOWED:
                 return self.send_json({"error": "с телефона так нельзя"}, 403)
+            from .safemode import REMOTE_ALLOWED, on as safe_on
+
+            if safe_on() and name not in REMOTE_ALLOWED:
+                return self.send_json({"error": "включён безопасный режим — с телефона только смотреть"}, 403)
             try:
                 size = min(int(self.headers.get("Content-Length", "0")), 1 << 20)
                 args = json.loads(self.rfile.read(size) or b"{}").get("args", [])
