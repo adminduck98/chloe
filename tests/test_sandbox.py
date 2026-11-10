@@ -65,6 +65,18 @@ class Trial(unittest.TestCase):
         self.assertEqual(lines[-2], "1")                               # только lo
         self.assertLess(int(lines[-1]), 8)                             # чужих процессов не видно
 
+    def test_outside_home_is_read_only(self):
+        """Команда из папки вне домашней (проект, диск, /var/tmp) не должна менять там ничего."""
+        import tempfile
+
+        outside = tempfile.mkdtemp(prefix="chloe-outside-", dir="/var/tmp")
+        try:
+            t = sb.try_command("echo x > made.txt; echo rc=$?", cwd=outside)
+            self.assertIn("rc=1", t["output"].replace("rc=2", "rc=1"))
+            self.assertEqual(os.listdir(outside), [])
+        finally:
+            os.rmdir(outside)
+
     def test_timeout_kills_everything(self):
         t = sb.try_command("sleep 60", timeout=1)
         self.assertTrue(t["timeout"])

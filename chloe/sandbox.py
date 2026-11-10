@@ -5,7 +5,7 @@
    Для команд — признаки опасного (rm -r, sudo, dd, git reset --hard, curl | bash…), для файловых инструментов —
    сколько файлов и какого размера, для сообщений и публикаций — что это уйдёт наружу и назад не вернётся.
 2. Проба (для команд, Linux): команда на самом деле выполняется в песочнице — отдельные пространства имён, домашняя
-   папка накрыта слоем overlay (всё записанное уходит во временный слой, настоящие файлы не меняются), без сети,
+   папка накрыта слоем overlay (всё записанное уходит во временный слой), всё вне дома — только чтение, без сети,
    без доступа к чужим процессам, экрану и D-Bus. Потом Chloe читает слой: что было бы создано, изменено, удалено.
    Нужны только unshare и overlay в пользовательском пространстве имён (есть в обычной Ubuntu), прав root не надо.
 Проба показывает след в домашней папке; то, что команда сделала бы в сети или с устройствами, она не покажет.
@@ -176,10 +176,20 @@ def analyse(tool, args):
 
 
 # --- проба в песочнице ---
-INNER = ('mount -t overlay overlay -o "lowerdir=$HOME,upperdir=$SIM_UP,workdir=$SIM_WORK" "$HOME" || exit 97; '
-         'case "$HOME/" in /tmp/*) ;; *) mount -t tmpfs tmpfs /tmp ;; esac; '          # /tmp — пустой (если дом не внутри него)
-         'mount -t tmpfs tmpfs "/run/user/$SIM_UID" 2>/dev/null; cd "$SIM_CWD" 2>/dev/null || cd "$HOME"; '
-         'exec unshare -U --map-user="$SIM_UID" --map-group="$SIM_GID" sh -c "$SIM_CMD"')
+# Внутри пространства имён: дом — слоем overlay (запись уходит во временный слой), ВСЁ остальное — только чтение
+# (диски, /media, /var/tmp, папки вне дома), /tmp и /dev/shm — пустые. Потом — обратно в своего пользователя.
+INNER = r"""
+mount -t overlay overlay -o "lowerdir=$HOME,upperdir=$SIM_UP,workdir=$SIM_WORK" "$HOME" || exit 97
+awk '{print $2}' /proc/self/mounts | sort -u | while read -r m; do
+  case "$m" in "$HOME"|"$HOME"/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/pts|/dev/mqueue) continue ;; esac
+  mount -o remount,bind,ro "$m" 2>/dev/null
+done
+case "$HOME/" in /tmp/*) ;; *) mount -t tmpfs tmpfs /tmp ;; esac
+mount -t tmpfs tmpfs /dev/shm 2>/dev/null
+mount -t tmpfs tmpfs "/run/user/$SIM_UID" 2>/dev/null
+cd "$SIM_CWD" 2>/dev/null || cd "$HOME"
+exec unshare -U --map-user="$SIM_UID" --map-group="$SIM_GID" sh -c "$SIM_CMD"
+"""
 _can = {"checked": False, "ok": False}
 
 
