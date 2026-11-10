@@ -6,7 +6,7 @@ import threading
 import time
 
 from .. import qwen_media as qm
-from .. import studio
+from .. import audiobook, studio
 from ..voice import confirm
 
 jobs = {}                 # номер → {"kind", "prompt", "state": "работаю"/"готово"/"ошибка", "result", "started"}
@@ -29,7 +29,7 @@ def _say(text):
 
 
 NAMES = {"image": ("Картинка", "готова", "не получилась"), "video": ("Видео", "готово", "не получилось"),
-         "film": ("Ролик", "готов", "не получился")}
+         "film": ("Ролик", "готов", "не получился"), "audio": ("Озвучка", "готова", "не получилась")}
 
 
 def _run(job_id, kind, work, open_result=True):
@@ -42,7 +42,7 @@ def _run(job_id, kind, work, open_result=True):
         if open_result:
             show(paths[0])
         _say("{} {}: {}.".format(name, ok, ", ".join(job["result"])))
-    except (qm.MediaError, studio.StudioError) as e:
+    except (qm.MediaError, studio.StudioError, audiobook.AudioError) as e:
         job.update(state="ошибка", result=str(e))
         _say("{} {}: {}.".format(name, bad, str(e).rstrip(".")))
     except Exception as e:   # фоновая работа не должна молча умирать
@@ -150,3 +150,50 @@ def tool_make_film(a):
     return ("Начала ролик (#{}): {} сцен, {}. Когда будет готово — скажу и открою. Файл — в {}. "
             "Как идёт — create_media status.".format(job, len(scenes), "это 10–20 минут" if mode == "live" else "это 2–4 минуты",
                                                     qm.short(qm.VIDEO_DIR)))
+
+
+LONG = 30        # минут звука: дольше — сначала спросить
+
+
+def tool_narrate(a):
+    text = (a.get("text") or "").strip()
+    path = (a.get("path") or "").strip()
+    if not text and not path:
+        return "Нужен text (что озвучить) или path (документ или книга: PDF, Word, EPUB, FB2, TXT, Markdown, HTML)."
+    try:
+        if path:
+            text = audiobook.read_text(path)
+        studio.ffmpeg()
+    except (audiobook.AudioError, studio.StudioError) as e:
+        return "Не могу: {}.".format(e)
+    import pathlib
+
+    title = (a.get("title") or "").strip() or (pathlib.Path(path).stem if path else text[:40])
+    voice = audiobook.VOICES.get((a.get("voice") or "svetlana").lower().strip(), "ru-RU-SvetlanaNeural")
+    cleaned = audiobook.clean(text)
+    if not cleaned:
+        return "В тексте нечего озвучивать."
+    split = a.get("chapters", True) is not False
+    parts = len(audiobook.chapters(cleaned)) if split else 1
+    mins = audiobook.minutes(len(cleaned) / (float(a.get("speed") or 1) or 1))
+    work = max(1, round(mins / 6))   # замер 10.11.2026: 4 куска параллельно — в 6 раз быстрее звучания (Qwen — по одному)
+    if voice == "qwen":
+        work = max(1, round(mins / 1.5))
+    what = "{} мин звука{}, запись займёт около {} мин".format(mins, ", {} глав".format(parts) if parts > 1 else "", work)
+    if voice == "qwen" or mins > LONG:
+        extra = " Голос Qwen тратит кредиты Token Plan." if voice == "qwen" else ""
+        if not confirm("Озвучить «{}»: {}.{} Начать?".format(title, what, extra)):
+            return "Не озвучиваю."
+    holder = {}
+
+    def progress(done, total):
+        job = jobs.get(holder.get("id"))
+        if job:
+            job["step"] = "озвучено {} %".format(done * 100 // total)
+
+    job = _start("audio", title, lambda: audiobook.record(cleaned, title, voice, a.get("speed") or 1.0, progress,
+                                                          split_chapters=split),
+                 a.get("open", False) is True)
+    holder["id"] = job
+    return ("Начала озвучку (#{}): «{}», {}. Когда будет готово — скажу. Файлы — в {}. "
+            "Как идёт — create_media status.".format(job, title, what, qm.short(audiobook.AUDIO_DIR)))
