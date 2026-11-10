@@ -174,14 +174,15 @@ def errors(hours=24):
 
     db = sqlite3.connect(str(config.JOURNAL_FILE), timeout=5)
     try:
-        rows = db.execute("SELECT skill, detail FROM events WHERE kind = 'tool' AND ok = 0 AND ts > ?",
+        rows = db.execute("SELECT skill, detail, ts FROM events WHERE kind = 'tool' AND ok = 0 AND ts > ?",
                           (time.time() - hours * 3600,)).fetchall()
     except sqlite3.Error:
         rows = []
     finally:
         db.close()
     real = {}
-    for skill, detail in rows:
+    last_ts = {}
+    for skill, detail, ts in rows:
         try:
             data = json.loads(detail or "{}")
             if isinstance(data, str):              # записано строкой внутри JSON
@@ -192,13 +193,14 @@ def errors(hours=24):
         if result.startswith(("Пользователь", "Не ", "Отказано")) and "Ошибка" not in result[:20]:
             continue      # «Пользователь отклонил», «Не публикую», «Отказано: приватная папка» — это работа защиты, а не поломка
         real.setdefault(skill or "?", []).append(result[:80])
+        last_ts[skill or "?"] = max(last_ts.get(skill or "?", 0), ts)
     n = sum(len(v) for v in real.values())
     if not n:
         return item("Ошибки", "За сутки", "ok", "ошибок нет")
     worst = sorted(real.items(), key=lambda kv: -len(kv[1]))[:3]
-    last = "; ".join("{}: {}".format(k, v[-1][:70]) for k, v in worst)
+    last = "; ".join("{}: {} (последняя в {})".format(k, v[-1][:70], time.strftime("%H:%M", time.localtime(last_ts[k]))) for k, v in worst)
     return dict(item("Ошибки", "За сутки", "warn" if n < 10 else "fail",
-                "{}: {}".format(n, ", ".join("{} ×{}".format(k, len(v)) for k, v in worst))), last=last)   # тексты ошибок — в отчёте для мозга
+                "{}: {}".format(n, ", ".join("{} ×{} (до {})".format(k, len(v), time.strftime("%H:%M", time.localtime(last_ts[k]))) for k, v in worst))), last=last)   # тексты ошибок — в отчёте для мозга
 
 
 def rights():

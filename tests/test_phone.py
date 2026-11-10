@@ -147,5 +147,66 @@ class Errors(unittest.TestCase):
         self.assertIn("sudo apt install", out)
 
 
+
+class WifiConnect(unittest.TestCase):
+    """Подключение по Wi-Fi без вопросов «какой адрес»: телефон сам объявляет себя (adb mdns). Живой случай 10.11.2026:
+    Хлоя десять минут пыталась подключиться по старому адресу из памяти и просила назвать цифры голосом."""
+
+    MDNS = ("List of discovered mdns services\n"
+            "adb-i7ssc6aqeudmmrz5-AbC\t_adb-tls-connect._tcp.\t192.168.1.6:34711\n"
+            "adb-i7ssc6aqeudmmrz5\t_adb-tls-pairing._tcp.\t192.168.1.6:37123\n")
+
+    def fake_run(self, outputs):
+        calls = []
+
+        def run(args, timeout=15, binary=False, serial=None):
+            calls.append(list(args))
+            return outputs.get(args[0], "")
+        return run, calls
+
+    def test_discover(self):
+        run, _ = self.fake_run({"mdns": self.MDNS})
+        with mock.patch.object(android, "run", run):
+            self.assertEqual(android.discover(), {"connect": ["192.168.1.6:34711"], "pairing": ["192.168.1.6:37123"]})
+
+    def test_connect_finds_address_itself(self):
+        run, calls = self.fake_run({"devices": "List of devices attached\n", "mdns": self.MDNS, "connect": "connected to 192.168.1.6:34711"})
+        with mock.patch.object(android, "run", run):
+            self.assertIn("192.168.1.6:34711", android.connect())
+        self.assertIn(["connect", "192.168.1.6:34711"], calls)
+
+    def test_already_connected_and_not_visible(self):
+        run, _ = self.fake_run({"devices": "List of devices attached\nabc\tdevice model:Redmi\n"})
+        with mock.patch.object(android, "run", run):
+            self.assertIn("уже подключён", android.connect())
+        run, _ = self.fake_run({"devices": "List of devices attached\n", "mdns": "List of discovered mdns services\n"})
+        with mock.patch.object(android, "run", run):
+            with self.assertRaises(android.PhoneError) as c:
+                android.connect()
+        self.assertIn("Беспроводная отладка", str(c.exception))
+
+    def test_pair_uses_code_and_found_address(self):
+        run, calls = self.fake_run({"mdns": self.MDNS, "pair": "Successfully paired to 192.168.1.6:37123 [guid=adb-x]"})
+        with mock.patch.object(android, "run", run):
+            self.assertIn("сопряжено", android.pair("645 880"))
+        self.assertIn(["pair", "192.168.1.6:37123", "645880"], calls)
+        with self.assertRaises(android.PhoneError):
+            android.pair("6458")                                   # код — шесть цифр
+        run, _ = self.fake_run({"mdns": "List of discovered mdns services\n"})
+        with mock.patch.object(android, "run", run):
+            with self.assertRaises(android.PhoneError):
+                android.pair("645880")                              # адреса нет — просим открыть экран сопряжения
+
+    def test_tool_actions(self):
+        run, _ = self.fake_run({"devices": "List of devices attached\n", "mdns": self.MDNS, "connect": "connected to 192.168.1.6:34711",
+                                "pair": "Successfully paired"})
+        with mock.patch.object(android, "run", run):
+            self.assertIn("подключила", phone.tool_phone({"action": "connect"}))
+            with mock.patch("chloe.tools.phone.confirm", return_value=False):
+                self.assertEqual(phone.tool_phone({"action": "pair", "code": "645880"}), "Не сопрягаю.")
+            with mock.patch("chloe.tools.phone.confirm", return_value=True):
+                self.assertIn("сопряжено", phone.tool_phone({"action": "pair", "code": "645880"}))
+
+
 if __name__ == "__main__":
     unittest.main()

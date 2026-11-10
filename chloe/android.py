@@ -244,6 +244,50 @@ def open_url(url):
     return url
 
 
+MDNS = re.compile(r"(_adb-tls-(connect|pairing))\S*\s+(\d{1,3}(?:\.\d{1,3}){3}:\d+)")
+
+
+def discover():
+    """Телефоны, которые сами объявили себя в Wi-Fi: {"connect": [ip:port], "pairing": [ip:port]} (Android 11+, «Беспроводная отладка»)."""
+    out = run(["mdns", "services"], timeout=10)
+    found = {"connect": [], "pairing": []}
+    for m in MDNS.finditer(out):
+        key = "connect" if m.group(2) == "connect" else "pairing"
+        if m.group(3) not in found[key]:
+            found[key].append(m.group(3))
+    return found
+
+
+def connect():
+    """Подключить телефон по Wi-Fi: если уже подключён — сказать; иначе найти его адрес в сети и подключиться."""
+    ready = [d for d in devices() if d[1] == "device"]
+    if ready:
+        return "уже подключён: {}".format(ready[0][0])
+    found = discover()["connect"]
+    if not found:
+        raise PhoneError("телефон себя в сети не объявляет: включите «Беспроводная отладка» (Для разработчиков), экран телефона "
+                         "должен быть включён и телефон — в той же Wi-Fi; если он ещё не сопряжён с компьютером — «Сопряжение устройства по коду»")
+    out = run(["connect", found[0]], timeout=15)
+    if "connected" not in out.lower():
+        raise PhoneError("не удалось подключиться к {}: {}".format(found[0], out.strip()[:100]))
+    return "подключила {}".format(found[0])
+
+
+def pair(code, address=None):
+    """Сопряжение по коду с экрана «Сопряжение устройства по коду»: код — 6 цифр, адрес — ip:порт оттуда же (или найдётся сам)."""
+    code = re.sub(r"\D", "", str(code or ""))
+    if len(code) != 6:
+        raise PhoneError("код сопряжения — шесть цифр с экрана телефона «Сопряжение устройства по коду»")
+    address = (address or "").strip() or next(iter(discover()["pairing"]), "")
+    if not re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}:\d+", address):
+        raise PhoneError("не вижу адрес для сопряжения: откройте на телефоне «Сопряжение устройства по коду» и держите экран включённым "
+                         "(или назовите адрес с портом оттуда, например 192.168.1.6:37123)")
+    out = run(["pair", address, code], timeout=20)
+    if "successfully paired" not in out.lower():
+        raise PhoneError("сопряжение не получилось: {}".format(out.strip()[:100]))
+    return "сопряжено с {}; теперь подключаю".format(address)
+
+
 def mirror():
     """Экран телефона в окне на компьютере (scrcpy): мышью и клавиатурой можно управлять телефоном."""
     exe = shutil.which("scrcpy")

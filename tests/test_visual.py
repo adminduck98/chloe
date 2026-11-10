@@ -115,5 +115,21 @@ class Tool(unittest.TestCase):
         self.assertIn("картинки уйдут к нему", c.call_args[0][0])
 
 
+
+class Yielding(unittest.TestCase):
+    def test_indexing_stops_when_user_speaks(self):
+        v = vm.Visual(":memory:")
+        d = tempfile.mkdtemp(prefix="vis-yield-")
+        items = []
+        for i in range(4):
+            p = os.path.join(d, "{}.png".format(i))
+            with open(p, "wb") as f:
+                f.write(png((i * 50, 10, 10)))
+            items.append(("file:" + p, "folder", p, time.time(), str(i)))
+        busy = iter([False, True])                       # вторую картинку уже не берём: Chloe занята
+        n, errs = vm.index(items, v, limit=4, describe=lambda data, hint="": ("x", "", ""), yield_to=lambda: next(busy, True))
+        self.assertEqual((n, errs), (1, []))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -100,5 +100,18 @@ class OnlineVoice(unittest.TestCase):
             self.assertIn("error", Api().tts("Привет"))
 
 
+
+class SpokenText(unittest.TestCase):
+    def test_markdown_removed_for_speech(self):
+        from chloe.voice import spoken
+
+        out = spoken("Проверила, босс.\n\n**Состояние кода:** всё чисто.\n- первое\n- второе\n[ссылка](https://x.ru) и `код`\n## Итог")
+        for mark in ("**", "`", "##", "](", "- "):
+            self.assertNotIn(mark, out)
+        self.assertIn("Состояние кода: всё чисто.", out)
+        self.assertIn("ссылка и код", out)
+        self.assertEqual(spoken("Обычный текст, без разметки: 2 * 3 = 6."), "Обычный текст, без разметки: 2 3 = 6.")
+
+
 if __name__ == "__main__":
     unittest.main()

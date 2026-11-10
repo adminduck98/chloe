@@ -31,6 +31,13 @@ def tool_phone(a):
             i = android.info()
             return "Телефон подключён: {} {}, Android {}, батарея {}%{}.".format(
                 i["maker"], i["model"], i["android"], i["battery"], ", заряжается" if i["charging"] else "")
+        if action == "connect":
+            return "Телефон: " + android.connect() + "."
+        if action == "pair":
+            if not confirm("Сопрячь телефон с этим компьютером по коду?"):
+                return "Не сопрягаю."
+            done = android.pair(a.get("code"), a.get("address"))
+            return "Телефон: {}. {}.".format(done, android.connect())
         if action == "screen":
             return _screen()
         if action == "elements":

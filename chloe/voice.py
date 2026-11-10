@@ -181,6 +181,7 @@ class Voice:
         where = state.get("where", "local")
         brain.reply(text, where)
         self.saying = text
+        text = spoken(text) or text            # озвучиваем без значков разметки; в окне и журнале — как есть
         try:
             if where == "phone":
                 pass   # просьба была с телефона: он и озвучит ответ, компьютер молчит (текст — в окне)
@@ -382,6 +383,17 @@ class Voice:
         self.pending = None
         said = set(words(ans))
         return bool(said & YES_WORDS) and not (said & NO_WORDS)
+
+
+def spoken(text):
+    """Текст для озвучки: без Markdown (**жирный**, # заголовки, `код`, - списки, [ссылка](адрес)) — голос не должен читать значки."""
+    t = re.sub(r"\[([^\]]+)\]\((?:https?://)?[^)]*\)", r"\1", str(text))
+    t = re.sub(r"```.*?```", " ", t, flags=re.S)
+    t = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", t)
+    t = re.sub(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", "", t)
+    t = re.sub(r"[*_`~]{1,3}([^*_`~\n]+)[*_`~]{1,3}", r"\1", t)
+    t = re.sub(r"[*`#]+", "", t)
+    return re.sub(r"[ \t]+", " ", re.sub(r"\n{3,}", "\n\n", t)).strip()
 
 
 def pieces(text, size=300, first=140):

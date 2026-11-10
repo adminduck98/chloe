@@ -98,5 +98,14 @@ class Tool(unittest.TestCase):
         self.assertFalse(r["deep"])
 
 
+
+class LastErrorTime(unittest.TestCase):
+    def test_error_item_says_when_it_last_happened(self):
+        journal.add("tool", "Поиск в интернете", "web_search: x", json.dumps({"tool": "web_search", "result": "Ошибка: error sending request"}, ensure_ascii=False), ok=False)
+        item = ss.errors()
+        self.assertRegex(item["detail"], r"до \d\d:\d\d")                    # чтобы старые ошибки не выдавались за текущую поломку
+        self.assertRegex(item["last"], r"последняя в \d\d:\d\d")
+
+
 if __name__ == "__main__":
     unittest.main()

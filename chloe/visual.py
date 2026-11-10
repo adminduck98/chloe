@@ -23,7 +23,7 @@ from .config import DATA, JOURNAL_FILE
 VISUAL_DAYS = int(os.environ.get("CHLOE_VISUAL_DAYS", "90"))
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 THUMB = 360
-PER_RUN = 12                 # описаний за один проход фоновой индексации
+PER_RUN = 6                  # описаний за один проход: каждое — запрос к Qwen, пользователь ждать не должен
 SOURCES = {"screen": "скриншот экрана", "phone": "экран телефона", "chloe": "картинка Chloe", "folder": "фото из папки"}
 PROMPT = ("Опиши картинку для поиска по памяти. Ответь строго так:\n"
           "Описание: 1–2 предложения по-русски — что на ней (программа или сайт, люди, предметы, что происходит).\n"
@@ -226,7 +226,7 @@ def folder_images(folder, limit=500):
     return out
 
 
-def index(items, store, limit=PER_RUN, describe=describe_image):
+def index(items, store, limit=PER_RUN, describe=describe_image, yield_to=None):
     """Описать и запомнить новые картинки. Возвращает (сколько добавлено, ошибки)."""
     added, errors = 0, []
     for ref, source, path, ts, title in items:
@@ -234,6 +234,8 @@ def index(items, store, limit=PER_RUN, describe=describe_image):
             break
         if store.has(ref):
             continue
+        if yield_to is not None and yield_to():          # пользователь заговорил — остальное в следующий раз
+            break
         try:
             store.add(source, ref, pathlib.Path(path).read_bytes(), ts, title, path if source in ("chloe", "folder") else None, describe)
             added += 1
@@ -256,7 +258,7 @@ def background(stop=None, every=600):
         try:
             if not settings.get("safe_mode") and settings.get("visual_memory", True) and not busy.is_set():
                 visual.prune()
-                n, errs = index(journal_screens() + chloe_images(), visual)
+                n, errs = index(journal_screens() + chloe_images(), visual, limit=PER_RUN, yield_to=busy.is_set)
                 if n or errs:
                     print("[визуальная память: +{}{}]".format(n, ", ошибки: " + "; ".join(errs) if errs else ""))
         except Exception as e:
