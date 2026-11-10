@@ -138,6 +138,9 @@ def assistant(args):
     from .tools import social as social_tool
 
     social_tool.start(voice.say)   # запланированные посты: одобренные — в канал, остальные — напоминание и пакет
+    from . import workflows as wf
+
+    wf.start()                     # автоматизации: по расписанию и по событиям — как обычные просьбы, со всеми проверками
     vision.on_window = lambda title, private: brain.js("chloeSee", "" if private else title[:80], bool(private), vision.enabled)
     vision.start()   # постоянное зрение: глаза смотрят на экран в фоне
     sleep.namer = lambda prompt: ask_short(client, prompt)   # названия тем во сне
@@ -518,6 +521,17 @@ class Api:
 
         c = connectors.BY_ID.get(str(cid))
         return c.forget() if c and c.can_forget else "нечего забывать"
+
+    # автоматизации
+    def workflows_list(self):
+        from .workflows import workflows
+
+        return {"items": workflows.all(), "runs": workflows.runs(limit=30)}
+
+    def workflow_enable(self, wid, on):
+        from .workflows import workflows
+
+        return workflows.set_enabled(int(wid), bool(on))
 
     # Action Center и безопасный режим
     def action_center(self):

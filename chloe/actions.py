@@ -86,6 +86,13 @@ def upcoming(hours=24, now=None):
     except Exception:
         pass
     try:
+        from .workflows import workflows
+
+        for w in workflows.upcoming(hours, now):
+            out.append({"what": "автоматизация «{}»".format(w["name"]), "at": w["next_run"]})
+    except Exception:
+        pass
+    try:
         from .finance import finance
 
         for r in finance.due(1):
@@ -138,4 +145,14 @@ def overview(now=None):
             "upcoming": upcoming(now=now), "today": steps,
             "counts": {"steps": len(tools), "ok": sum(1 for s in tools if s["ok"]), "errors": sum(1 for s in steps if s["error"]),
                        "asked": sum(1 for s in steps if s["kind"] == "confirm")},
-            "undo": undoable()}
+            "undo": undoable(), "workflows": flows()}
+
+
+def flows():
+    try:
+        from .workflows import workflows
+
+        return [{"id": w["id"], "name": w["name"], "when": w["when"], "enabled": bool(w["enabled"]), "next": w["next_run"],
+                 "last": w["last_run"], "runs": w["runs"], "instruction": w["instruction"][:200]} for w in workflows.all()]
+    except Exception:
+        return []

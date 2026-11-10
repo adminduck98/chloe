@@ -3132,6 +3132,13 @@
       h.push("<h4>Скоро</h4>");
       o.upcoming.slice(0, 6).forEach(function (x) { h.push("<div class='arow'><span class='k'>" + acTime(x.at) + "</span><span class='t'>" + escapeHtml(x.what) + "</span><span></span></div>"); });
     }
+    h.push("<h4>Автоматизации</h4>");
+    if (!(o.workflows || []).length) h.push("<div style='color:#8A8A8A'>пока нет — скажите, например: «каждый понедельник в 9 утра расскажи, что по проекту»</div>");
+    (o.workflows || []).forEach(function (w) {
+      h.push("<div class='arow'><span class='k'>" + (w.enabled ? acTime(w.next) : "пауза") + "</span><span class='t'>" + escapeHtml(w.name) + "</span>" +
+             "<button data-wf='" + w.id + "' data-wf-on='" + (w.enabled ? 1 : 0) + "'>" + (w.enabled ? "пауза" : "запустить") + "</button>" +
+             "<span class='w'>" + escapeHtml(w.when) + " · " + escapeHtml(w.instruction) + " · запусков " + w.runs + "</span></div>");
+    });
     h.push("<div class='tabs'><span data-tab='today' class='" + (acTab === "today" ? "on" : "") + "'>Сегодня</span><span data-tab='errors' class='" +
            (acTab === "errors" ? "on" : "") + "'>Ошибки</span><span data-tab='undo' class='" + (acTab === "undo" ? "on" : "") + "'>Отменить</span></div>");
     if (acTab === "undo") {
@@ -3154,6 +3161,9 @@
     };
     actionsPanel.querySelectorAll("[data-tab]").forEach(function (t) { t.onclick = function () { acTab = t.getAttribute("data-tab"); renderActions(); }; });
     actionsPanel.querySelectorAll("[data-ans]").forEach(function (b) { b.onclick = function () { acApi().answer_pending(b.getAttribute("data-ans") === "1").then(function () { setTimeout(loadActions, 600); }); }; });
+    actionsPanel.querySelectorAll("[data-wf]").forEach(function (b) {
+      b.onclick = function () { window.pywebview.api.workflow_enable(+b.getAttribute("data-wf"), b.getAttribute("data-wf-on") !== "1").then(loadActions); };
+    });
     actionsPanel.querySelectorAll("[data-undo]").forEach(function (b) {
       b.onclick = function () { window.pywebview.api.change_undo(+b.getAttribute("data-undo")).then(function (r) { b.textContent = r && r.ok ? "отменено" : "не вышло"; setTimeout(loadActions, 900); }); };
     });
