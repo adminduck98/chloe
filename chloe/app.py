@@ -122,13 +122,14 @@ def assistant(args):
     print("[мозг: {} · быстрый {} · сильный {}]".format(config.PROVIDER, config.MODEL_FAST, config.MODEL_STRONG))
     client = make_client()
     messages = []
+    from .greeting import greeting
     from .tools.news import morning_due
 
     if morning_due():   # первый запуск утром и сводка включена — сразу расскажет: погода, дела, новости
-        voice.say("Доброе утро! Сейчас расскажу, что сегодня." + startup_notices())
+        voice.say(greeting(brief=True) + startup_notices())
         commands.put(Typed("Утренняя сводка", "local"))
     else:
-        voice.say("Привет, я Хлоя. Слушаю." + startup_notices() + payment_notice() + startup_reminder())
+        voice.say(greeting() + startup_notices() + payment_notice() + startup_reminder())
     state["listen_until"] = time.time() + ACTIVE_WINDOW
     if voice.enabled and not args.text:
         threading.Thread(target=recorder, daemon=True).start()
