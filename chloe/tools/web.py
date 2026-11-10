@@ -39,25 +39,30 @@ def tool_download_file(a):
     return "Скачано: {} ({} МБ)".format(short(path), round(size / 1048576, 1))
 
 
+SEARCH_BACKENDS = ["bing", "yandex", "duckduckgo", "brave", "mojeek"]   # замер 10.11.2026: «auto» висел 25 с и падал
+_search = {"good": None}                                                   # кто ответил в прошлый раз — его первым
+
+
 def tool_web_search(a):
     try:
         from ddgs import DDGS
     except ImportError:
         from duckduckgo_search import DDGS
-    # поисковик иногда отвечает «No results found» ошибкой на запрос, который через секунду находит всё:
-    # одна повторная попытка, а пустой результат — обычный ответ, а не сбой шага (иначе задача уходит сильному мозгу)
-    res = []
-    for _ in range(2):
+    # поисковики по очереди: один не ответил или ничего не нашёл — следующий. Пустой итог — обычный ответ, а не сбой шага
+    order = ([_search["good"]] if _search["good"] else []) + [b for b in SEARCH_BACKENDS if b != _search["good"]]
+    res, problems = [], []
+    for backend in order[:4]:
         try:
-            with DDGS() as d:
-                res = list(d.text(a["query"], max_results=int(a.get("count", 6))))
+            res = list(DDGS(timeout=10).text(a["query"], max_results=int(a.get("count", 6)), backend=backend))
         except Exception as e:
-            if "no results" not in str(e).lower():
-                raise
+            problems.append("{}: {}".format(backend, type(e).__name__))
             res = []
         if res:
+            _search["good"] = backend
             break
     if not res:
+        if problems and all("Timeout" in p or "Connect" in p for p in problems):
+            raise RuntimeError("поисковики не отвечают ({})".format(", ".join(problems)))
         return "Ничего не найдено по этому запросу. Можно попробовать другие слова."
     return "\n\n".join("{}\n{}\n{}".format(r.get("title", ""), r.get("href", ""), r.get("body", "")[:300]) for r in res)
 

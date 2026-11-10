@@ -161,7 +161,16 @@ def overview(now=None):
             "upcoming": upcoming(now=now), "today": steps,
             "counts": {"steps": len(tools), "ok": sum(1 for s in tools if s["ok"]), "errors": sum(1 for s in steps if s["error"]),
                        "asked": sum(1 for s in steps if s["kind"] == "confirm")},
-            "undo": undoable(), "workflows": flows()}
+            "undo": undoable(), "workflows": flows(), "proactive": tips()}
+
+
+def tips():
+    try:
+        from . import proactive
+
+        return {"mode": proactive.mode(), "modes": proactive.MODES, "tips": proactive.collect()[:8]}
+    except Exception:
+        return {"mode": "suggest", "modes": {}, "tips": []}
 
 
 def flows():

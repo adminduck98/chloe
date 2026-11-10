@@ -1,4 +1,4 @@
-"""Поиск в интернете: случайное «No results found» не превращается в сбой шага."""
+"""Поиск в интернете: поисковики по очереди — один не ответил или ничего не нашёл, спрашиваем следующий."""
 import unittest
 from unittest import mock
 
@@ -7,38 +7,53 @@ from chloe.tools import web
 
 class FakeDDGS:
     answers = []
+    asked = []
 
-    def __enter__(self):
+    def __init__(self, timeout=None):
+        pass
+
+    def __enter__(self):                     # поиск видео YouTube открывает DDGS через with
         return self
 
     def __exit__(self, *a):
         return False
 
-    def text(self, query, max_results=6):
+    def text(self, query, max_results=6, backend="auto"):
+        FakeDDGS.asked.append(backend)
         a = FakeDDGS.answers.pop(0)
         if isinstance(a, Exception):
             raise a
         return a
 
 
+class TimeoutException(Exception):
+    pass
+
+
 class WebSearch(unittest.TestCase):
     def search(self, *answers):
-        FakeDDGS.answers = list(answers)
+        FakeDDGS.answers, FakeDDGS.asked = list(answers), []
+        web._search["good"] = None
         with mock.patch("ddgs.DDGS", FakeDDGS):
             return web.tool_web_search({"query": "DV-2027"})
 
-    def test_random_no_results_is_retried(self):
-        out = self.search(Exception("No results found."), [{"title": "DV-2027", "href": "https://x", "body": "сроки"}])
+    def test_next_engine_when_one_fails_and_remember_good(self):
+        out = self.search(TimeoutException("bing молчит"), [{"title": "DV-2027", "href": "https://x", "body": "сроки"}])
         self.assertIn("DV-2027", out)
+        self.assertEqual(FakeDDGS.asked, ["bing", "yandex"])
+        self.assertEqual(web._search["good"], "yandex")
+        FakeDDGS.answers, FakeDDGS.asked = [[{"title": "ещё", "href": "https://y", "body": ""}]], []
+        with mock.patch("ddgs.DDGS", FakeDDGS):
+            web.tool_web_search({"query": "ещё"})
+        self.assertEqual(FakeDDGS.asked, ["yandex"])                         # ответивший — первым
 
-    def test_empty_twice_is_an_answer_not_an_error(self):
-        out = self.search(Exception("No results found."), [])
+    def test_nothing_found_is_an_answer_not_an_error(self):
+        out = self.search(Exception("No results found."), [], [], [])
         self.assertIn("Ничего не найдено", out)
 
-    def test_network_error_still_raises(self):
-        with self.assertRaises(ConnectionError):
-            self.search(ConnectionError("нет связи"))
-
+    def test_all_engines_silent_is_an_error(self):
+        with self.assertRaises(RuntimeError):
+            self.search(*[TimeoutException("молчит")] * 4)
 
 
 class PlayYoutube(unittest.TestCase):

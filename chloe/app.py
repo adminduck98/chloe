@@ -141,6 +141,9 @@ def assistant(args):
     from . import workflows as wf
 
     wf.start()                     # автоматизации: по расписанию и по событиям — как обычные просьбы, со всеми проверками
+    from . import proactive
+
+    proactive.start(voice.say)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
     vision.on_window = lambda title, private: brain.js("chloeSee", "" if private else title[:80], bool(private), vision.enabled)
     vision.start()   # постоянное зрение: глаза смотрят на экран в фоне
     sleep.namer = lambda prompt: ask_short(client, prompt)   # названия тем во сне
@@ -533,6 +536,23 @@ class Api:
         from .goals import goals
 
         return goals.set_step(int(sid), str(status))
+
+    # подсказки
+    def proactive_get(self):
+        from . import proactive
+
+        return {"mode": proactive.mode(), "modes": proactive.MODES, "tips": proactive.collect()}
+
+    def proactive_set_mode(self, m):
+        from . import proactive
+
+        return proactive.set_mode(str(m))
+
+    def proactive_dismiss(self, key):
+        from . import proactive
+
+        proactive.snooze(str(key))
+        return True
 
     # автоматизации
     def workflows_list(self):

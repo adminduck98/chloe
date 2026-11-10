@@ -307,6 +307,9 @@
   #projectsPanel .goal .gx { display: block; color: var(--ink); font-size: 13px; padding: 2px 0 2px 16px; cursor: pointer; }
   #projectsPanel .goal .done { color: var(--iron); text-decoration: line-through; }
   #projectsPanel .goal input[type=checkbox] { width: auto; margin: 0 6px 0 0; vertical-align: -1px; accent-color: #ff7777; }
+  #actionsPanel .modes { display: flex; gap: 0; margin: 4px 0 8px; border: 1px solid var(--line); width: max-content; }
+  #actionsPanel .modes span { padding: 4px 10px; font-size: 12px; color: var(--iron); cursor: pointer; }
+  #actionsPanel .modes span.on { color: var(--ink); background: #1c1c1c; }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -3162,6 +3165,16 @@
     h.push("<h4>Сейчас</h4>");
     h.push(o.now.length ? o.now.map(function (x) { return "<div class='arow'><span class='k'>" + acTime(x.since) + "</span><span class='t'>" + escapeHtml(x.what) + "</span><span></span></div>"; }).join("")
                         : "<div style='color:#8A8A8A'>ничего не выполняю</div>");
+    var pr = o.proactive || { tips: [], modes: {} };
+    h.push("<h4>Подсказки</h4><div class='modes'>" + Object.keys(pr.modes || {}).map(function (k) {
+      return "<span data-mode='" + k + "' class='" + (pr.mode === k ? "on" : "") + "'>" + escapeHtml(pr.modes[k]) + "</span>"; }).join("") + "</div>");
+    if (pr.mode === "silent") h.push("<div style='color:#8A8A8A'>сама ничего не предлагаю</div>");
+    else if (!pr.tips.length) h.push("<div style='color:#8A8A8A'>предложить нечего — всё в порядке</div>");
+    else pr.tips.forEach(function (t) {
+      h.push("<div class='arow'><span class='k'>" + (t.priority === 1 ? "важно" : "") + "</span><span class='t'>" + escapeHtml(t.text) + "</span>" +
+             "<button data-tip='" + escapeHtml(t.key) + "'>не надо</button><span class='w'>" + escapeHtml(t.why) + " · " + escapeHtml(t.source) +
+             (t.say ? " · скажите «" + escapeHtml(t.say) + "»" : "") + "</span></div>");
+    });
     h.push("<h4>Ждёт решения</h4>");
     if (!o.waiting.length) h.push("<div style='color:#8A8A8A'>ничего</div>");
     o.waiting.forEach(function (x) {
@@ -3202,6 +3215,12 @@
     };
     actionsPanel.querySelectorAll("[data-tab]").forEach(function (t) { t.onclick = function () { acTab = t.getAttribute("data-tab"); renderActions(); }; });
     actionsPanel.querySelectorAll("[data-ans]").forEach(function (b) { b.onclick = function () { acApi().answer_pending(b.getAttribute("data-ans") === "1").then(function () { setTimeout(loadActions, 600); }); }; });
+    actionsPanel.querySelectorAll("[data-mode]").forEach(function (b) {
+      b.onclick = function () { window.pywebview.api.proactive_set_mode(b.getAttribute("data-mode")).then(loadActions); };
+    });
+    actionsPanel.querySelectorAll("[data-tip]").forEach(function (b) {
+      b.onclick = function () { window.pywebview.api.proactive_dismiss(b.getAttribute("data-tip")).then(loadActions); };
+    });
     actionsPanel.querySelectorAll("[data-wf]").forEach(function (b) {
       b.onclick = function () { window.pywebview.api.workflow_enable(+b.getAttribute("data-wf"), b.getAttribute("data-wf-on") !== "1").then(loadActions); };
     });
