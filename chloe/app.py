@@ -134,6 +134,9 @@ def assistant(args):
         threading.Thread(target=recorder, daemon=True).start()
         threading.Thread(target=listener, daemon=True).start()
     threading.Thread(target=reminder_watcher, args=(voice.say,), daemon=True).start()
+    from .tools import social as social_tool
+
+    social_tool.start(voice.say)   # запланированные посты: одобренные — в канал, остальные — напоминание и пакет
     vision.on_window = lambda title, private: brain.js("chloeSee", "" if private else title[:80], bool(private), vision.enabled)
     vision.start()   # постоянное зрение: глаза смотрят на экран в фоне
     sleep.namer = lambda prompt: ask_short(client, prompt)   # названия тем во сне
