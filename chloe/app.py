@@ -502,6 +502,23 @@ class Api:
 
         return graph.unlink(str(a), str(b))
 
+    # подключения: реестр, проверка, выключить/включить, забыть
+    def connectors_get(self, deep=False):
+        from . import connectors
+
+        return connectors.overview(deep=bool(deep))
+
+    def connector_set(self, cid, on):
+        from . import connectors
+
+        return connectors.set_on(str(cid), bool(on))
+
+    def connector_forget(self, cid):
+        from . import connectors
+
+        c = connectors.BY_ID.get(str(cid))
+        return c.forget() if c and c.can_forget else "нечего забывать"
+
     # Action Center и безопасный режим
     def action_center(self):
         from . import actions

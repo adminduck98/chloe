@@ -13,7 +13,7 @@ import time
 
 from .settings import settings
 
-ALLOWED_TOOLS = {"safe_mode", "actions", "system_state", "security", "system_info", "list_reminders", "cancel_reminder",
+ALLOWED_TOOLS = {"safe_mode", "actions", "connectors", "system_state", "security", "system_info", "list_reminders", "cancel_reminder",
                  "volume", "brightness", "learned_list", "brain_usage", "conversation_log"}
 REMOTE_ALLOWED = {"command", "system_status", "load_brain", "journal_list", "journal_get", "changes_list", "vision_get",
                   "city_get", "action_center", "system_health"}

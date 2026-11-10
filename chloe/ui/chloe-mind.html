@@ -291,6 +291,13 @@
   #actionsPanel .tabs { display: flex; gap: 18px; margin: 12px 0 6px; border-bottom: 1px solid var(--line); }
   #actionsPanel .tabs span { cursor: pointer; color: var(--iron); padding: 6px 0; border-bottom: 1px solid transparent; margin-bottom: -1px; }
   #actionsPanel .tabs span.on { color: var(--ink); border-color: var(--bone); }
+  #connPanel .cn { border: 1px solid #1c1c1c; padding: 9px 11px; margin: 6px 0; }
+  #connPanel .cn .top { display: flex; align-items: center; gap: 8px; } #connPanel .cn .top .nm { color: var(--ink); flex: 1; font-size: 15px; }
+  #connPanel .cn .top i { width: 8px; height: 8px; border-radius: 50%; flex: none; } #connPanel .cn .st { color: var(--iron); font-size: 11px; }
+  #connPanel .cn .w { color: var(--bone); font-size: 13px; margin-top: 4px; } #connPanel .cn .d { color: var(--iron); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
+  #connPanel .cn .b { margin-top: 7px; } #connPanel .cn button { background: transparent; border: 1px solid var(--line); color: var(--bone); font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+  #connPanel .cn button:hover { color: var(--coral); border-color: var(--coral); }
+  #connPanel .chip { border: 1px solid var(--line); color: var(--bone); padding: 1px 8px; font-size: 11px; cursor: pointer; }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -391,6 +398,7 @@
     <div id="linksPanel" class="panel"></div>
     <div id="worldPanel" class="panel"></div>
     <div id="actionsPanel" class="panel"></div>
+    <div id="connPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -413,6 +421,7 @@
       <button id="linksBtn">Связи</button>
       <button id="worldBtn">Мир</button>
       <button id="actionsBtn">Действия</button>
+      <button id="connBtn">Подключения</button>
       <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
@@ -2279,7 +2288,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2415,7 +2424,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2554,7 +2563,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2626,7 +2635,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2701,7 +2710,7 @@
     if (!api) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     accessOpen = true; accessBtn.classList.add("on");
     accessPanel.style.display = "block";
     accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
@@ -2806,7 +2815,7 @@
     if (!pApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     projOpen = true; projBtn.classList.add("on");
     projPanel.style.display = "block";
     projPanel.innerHTML = "<span class='close' id='prClose'>✕</span><b>Проекты</b><br>Загружаю…";
@@ -2934,7 +2943,7 @@
     if (!lApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); if (window.closeConn) window.closeConn();
     linksOpen = true; linksBtn.classList.add("on");
     linksPanel.style.display = "block";
     linksPanel.innerHTML = "<span class='close' id='lkClose'>✕</span><b>Связи</b><br>Загружаю…";
@@ -3085,7 +3094,7 @@
     if (!wApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); if (window.closeActions) window.closeActions();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     worldOpen = true; worldBtn.classList.add("on");
     worldPanel.style.display = "block";
     renderWorld(); loadWorld(false);
@@ -3156,11 +3165,81 @@
     if (!acApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); if (window.closeConn) window.closeConn();
     actionsOpen = true; actionsBtn.classList.add("on");
     actionsPanel.style.display = "block";
     renderActions(); loadActions();
     acTimer = setInterval(loadActions, 3000);                     // «сейчас» и «ждёт решения» меняются на глазах
+  };
+
+
+  // =======================================================
+  // 14д. ПОДКЛЮЧЕНИЯ (Connector Layer)
+  var connPanel = document.getElementById("connPanel"), connBtn = document.getElementById("connBtn"), connOpen = false, cnData = null, cnBusy = false;
+  var CN_DOT = { ok: "#5fb58a", off: "#8f8f8f", fail: "#ff7777", paused: "#e0a84a", planned: "#3a3a3a" };
+  var CN_WORD = { ok: "работает", off: "не подключено", fail: "сломано", paused: "выключено", planned: "в плане" };
+  window.closeConn = function () { connOpen = false; connBtn.classList.remove("on"); connPanel.style.display = "none"; };
+  function cnApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.connectors_get ? window.pywebview.api : null; }
+  function cnWhen(ts) { if (!ts) return "не пользовалась"; var d = new Date(ts * 1000); return ("0" + d.getDate()).slice(-2) + "." + ("0" + (d.getMonth() + 1)).slice(-2) + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function cnCard(r) {
+    var h = "<div class='cn'><div class='top'><i style='background:" + (CN_DOT[r.level] || "#8f8f8f") + "'></i><span class='nm'>" + escapeHtml(r.name) + "</span><span class='st'>" + (CN_WORD[r.level] || r.level) + "</span></div>" +
+            "<div class='w'>" + escapeHtml(r.what) + "</div>";
+    if (r.detail) h += "<div class='d'>" + escapeHtml(r.detail) + "</div>";
+    if (r.tools.length) h += "<div class='d'>за неделю: " + r.uses + " · последний раз: " + cnWhen(r.last) + "</div>";
+    if (r.level === "off" && r.hint) h += "<div class='d'>подключить: " + escapeHtml(r.hint) + "</div>";
+    if (r.data) h += "<div class='d'>" + escapeHtml(r.data) + "</div>";
+    var b = [];
+    if (r.can_off) b.push("<button data-cn-toggle='" + r.id + "' data-on='" + (r.on ? 1 : 0) + "'>" + (r.on ? "выключить" : "включить") + "</button>");
+    if (r.can_forget && r.level !== "off") b.push("<button data-cn-forget='" + r.id + "'>забыть вход</button>");
+    if (b.length) h += "<div class='b'>" + b.join(" ") + "</div>";
+    return h + "</div>";
+  }
+  function renderConn() {
+    if (!connOpen) return;
+    var h = ["<span class='close' id='cnClose'>✕</span><b>Подключения</b>"];
+    if (!cnData) { connPanel.innerHTML = h.join("") + "<br>Проверяю…"; document.getElementById("cnClose").onclick = window.closeConn; return; }
+    h.push("<div style='color:#8A8A8A'>Всё, через что Хлоя выходит во внешний мир. «Выключить» закрывает инструменты, не трогая вход; " +
+           "«забыть вход» — выйти из аккаунта. <span class='chip' id='cnDeep'>" + (cnBusy ? "проверяю…" : "проверить вживую") + "</span></div>");
+    var groups = [["Сервисы и устройства", function (r) { return r.kind === "service"; }], ["Основа — не выключается", function (r) { return r.kind === "core"; }],
+                  ["В плане", function (r) { return r.kind === "planned"; }]];
+    groups.forEach(function (g) {
+      var list = cnData.filter(g[1]);
+      if (!list.length) return;
+      h.push("<h4>" + g[0] + "</h4>");
+      list.forEach(function (r) { h.push(cnCard(r)); });
+    });
+    connPanel.innerHTML = h.join("");
+    document.getElementById("cnClose").onclick = window.closeConn;
+    document.getElementById("cnDeep").onclick = function () { loadConn(true); };
+    connPanel.querySelectorAll("[data-cn-toggle]").forEach(function (b) {
+      b.onclick = function () {
+        var on = b.getAttribute("data-on") === "1";
+        if (!on && !window.confirm("Включить это подключение?")) return;
+        cnApi().connector_set(b.getAttribute("data-cn-toggle"), !on).then(function () { loadConn(false); });
+      };
+    });
+    connPanel.querySelectorAll("[data-cn-forget]").forEach(function (b) {
+      b.onclick = function () {
+        if (!window.confirm("Выйти из аккаунта и стереть вход? Подключать придётся заново.")) return;
+        cnApi().connector_forget(b.getAttribute("data-cn-forget")).then(function (msg) { b.textContent = msg; setTimeout(function () { loadConn(false); }, 1200); });
+      };
+    });
+  }
+  function loadConn(deep) {
+    var api = cnApi(); if (!api || !connOpen || cnBusy) return;
+    if (deep) { cnBusy = true; renderConn(); }
+    api.connectors_get(!!deep).then(function (r) { cnData = r; cnBusy = false; renderConn(); }).catch(function () { cnBusy = false; renderConn(); });
+  }
+  connBtn.onclick = function () {
+    touch();
+    if (connOpen) { window.closeConn(); return; }
+    if (!cnApi()) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects(); window.closeLinks(); window.closeWorld(); window.closeActions();
+    connOpen = true; connBtn.classList.add("on");
+    connPanel.style.display = "block";
+    renderConn(); loadConn(false);
   };
 
   // =======================================================
@@ -3172,7 +3251,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -4107,7 +4186,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); if (window.closeWorld) window.closeWorld(); if (window.closeActions) window.closeActions(); if (window.closeConn) window.closeConn();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

@@ -163,6 +163,11 @@ class Permissions:
             why = blocks(tool)
             if why:
                 return "block", why
+            from .connectors import blocks as connector_blocks       # выключенное подключение — его инструменты закрыты
+
+            why = connector_blocks(tool)
+            if why:
+                return "block", why
         except ImportError:
             pass
         for k in PATH_ARGS:

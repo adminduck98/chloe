@@ -148,6 +148,10 @@ def make_handler(api, secret):
             if url.path == "/api/events":
                 if not self.authed():
                     return self.send_json({"error": "нужен код"}, 401)
+                from .connectors import is_on
+
+                if not is_on("remote"):
+                    return self.send_json({"error": "телефон-пульт выключен на компьютере"}, 403)
                 after = int(urllib.parse.parse_qs(url.query).get("after", ["0"])[0] or 0)
                 return self.send_json(events.since(after))
             if url.path.startswith("/api/"):
@@ -167,6 +171,10 @@ def make_handler(api, secret):
                 return self.send_json(None)
             if name not in ALLOWED:
                 return self.send_json({"error": "с телефона так нельзя"}, 403)
+            from .connectors import is_on
+
+            if not is_on("remote"):                       # пульт выключен в «Подключениях»
+                return self.send_json({"error": "телефон-пульт выключен на компьютере"}, 403)
             from .safemode import REMOTE_ALLOWED, on as safe_on
 
             if safe_on() and name not in REMOTE_ALLOWED:
