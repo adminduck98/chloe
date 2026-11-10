@@ -243,6 +243,26 @@
   #accessPanel .seg button.on.block { color: var(--coral); border-color: var(--coral); }
   #accessPanel .vault input { width: 100%; box-sizing: border-box; margin: 6px 0; }
   /* проекты: список и задачи */
+  #linksPanel .tabs { display: flex; gap: 18px; margin: 10px 0 6px; border-bottom: 1px solid var(--line); }
+  #linksPanel .tabs span { cursor: pointer; color: var(--iron); padding: 6px 0; border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  #linksPanel .tabs span.on { color: var(--ink); border-color: var(--bone); }
+  #linksPanel .lrow { padding: 8px 0; border-bottom: 1px solid #161616; cursor: pointer; display: grid; grid-template-columns: 86px 1fr auto; gap: 8px; align-items: baseline; }
+  #linksPanel .lrow:hover .t { color: var(--coral); }
+  #linksPanel .lrow .k { color: var(--iron); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  #linksPanel .lrow .t { color: var(--ink); overflow-wrap: anywhere; }
+  #linksPanel .lrow .w { color: var(--iron); font-size: 11px; grid-column: 2 / 4; }
+  #linksPanel .lrow .x { color: var(--iron); cursor: pointer; padding: 0 4px; }
+  #linksPanel .lrow .x:hover { color: var(--coral); }
+  #linksPanel .day { color: var(--iron); font-size: 12px; margin: 14px 0 2px; letter-spacing: .06em; }
+  #linksPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
+  #linksPanel .back:hover { color: var(--coral); }
+  #linksPanel svg { width: 100%; height: 230px; display: block; margin: 6px 0; }
+  #linksPanel svg line { stroke: #2a2a2a; stroke-width: 1; } #linksPanel svg line.manual { stroke: var(--coral); } #linksPanel svg line.auto { stroke: #555; }
+  #linksPanel svg circle { fill: #8F8F8F; cursor: pointer; } #linksPanel svg circle.c { fill: var(--coral); }
+  #linksPanel svg circle.doc { fill: #D6D6D6; } #linksPanel svg circle.task { fill: #8F8F8F; } #linksPanel svg circle.memory { fill: #6f8fb0; }
+  #linksPanel svg text { fill: var(--iron); font-size: 9px; pointer-events: none; }
+  #linksPanel input { width: 100%; box-sizing: border-box; margin: 8px 0 4px; }
+  #linksPanel .body { color: var(--bone); margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 13px; }
   #projectsPanel .back { cursor: pointer; color: var(--iron); font-size: 12px; }
   #projectsPanel .back:hover { color: var(--coral); }
   #projectsPanel .prow { padding: 10px 0; border-bottom: 1px solid #161616; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -340,6 +360,7 @@
     <div id="phonePanel" class="panel"></div>
     <div id="accessPanel" class="panel"></div>
     <div id="projectsPanel" class="panel"></div>
+    <div id="linksPanel" class="panel"></div>
   </div>
   <div id="eeg">
     <canvas id="eegCanvas"></canvas>
@@ -359,6 +380,7 @@
       <button id="filesBtn">Файлы</button>
       <button id="phoneBtn">Телефон</button>
       <button id="projectsBtn">Проекты</button>
+      <button id="linksBtn">Связи</button>
       <button id="accessBtn">Доступ</button>
       <button id="statsBtn">Статистика</button>
       <button id="wallBtn">Обои</button>
@@ -2225,7 +2247,7 @@
     if (statsOpen) toggleStats(false);
     closeMemory();
     closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
     jState.open = true; jState.skill = skill || ""; jState.detail = null;
     if (query !== undefined) jState.query = query;
     journalBtn.classList.add("on");
@@ -2361,7 +2383,7 @@
   }
   function openMemory(focusText, forget) {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal();
@@ -2500,7 +2522,7 @@
   var fState = { open: false, items: [], armed: 0, message: "" };
   function openFiles() {
     touch();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory();
@@ -2572,7 +2594,7 @@
     if (!api || !api.phone_link) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
+    closeJournal(); closeMemory(); closeFiles(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
     phoneOpen = true; phoneBtn.classList.add("on");
     phonePanel.style.display = "block";
     phonePanel.innerHTML = "<span class='close' id='pClose'>✕</span><b>Телефон</b> · пульт Хлои<br>Готовлю код…";
@@ -2647,7 +2669,7 @@
     if (!api) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
     accessOpen = true; accessBtn.classList.add("on");
     accessPanel.style.display = "block";
     accessPanel.innerHTML = "<span class='close' id='aClose'>✕</span><b>Доступ</b><br>Загружаю…";
@@ -2752,12 +2774,140 @@
     if (!pApi()) return;
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
-    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess();
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeLinks) window.closeLinks();
     projOpen = true; projBtn.classList.add("on");
     projPanel.style.display = "block";
     projPanel.innerHTML = "<span class='close' id='prClose'>✕</span><b>Проекты</b><br>Загружаю…";
     document.getElementById("prClose").onclick = window.closeProjects;
     loadProjects();
+  };
+
+
+  // =======================================================
+  // 14б. СВЯЗИ: история (Timeline) и граф знаний
+  var linksPanel = document.getElementById("linksPanel"), linksBtn = document.getElementById("linksBtn"), linksOpen = false;
+  var lTab = "time", lNode = null, lTrail = [];
+  var L_TYPE = { project: "проект", task: "задача", decision: "решение", idea: "идея", goal: "цель", doc: "документ", memory: "память" };
+  window.closeLinks = function () { linksOpen = false; linksBtn.classList.remove("on"); linksPanel.style.display = "none"; };
+  function lApi() { return window.pywebview && window.pywebview.api && window.pywebview.api.graph_overview ? window.pywebview.api : null; }
+  function lHead() {
+    return "<span class='close' id='lkClose'>✕</span><b>Связи</b>" +
+      "<div class='tabs'><span data-tab='time' class='" + (lTab === "time" ? "on" : "") + "'>История</span>" +
+      "<span data-tab='graph' class='" + (lTab === "graph" ? "on" : "") + "'>Граф</span></div>";
+  }
+  function lRow(n, extra) {
+    return "<div class='lrow' data-id='" + escapeHtml(n.id) + "'><span class='k'>" + (L_TYPE[n.type] || n.type) + "</span><span class='t'>" +
+      escapeHtml(n.title) + "</span>" + (extra || "<span></span>") + "</div>";
+  }
+  function lWire() {
+    document.getElementById("lkClose").onclick = window.closeLinks;
+    linksPanel.querySelectorAll(".tabs span").forEach(function (t) {
+      t.onclick = function () { lTab = t.getAttribute("data-tab"); lNode = null; lTrail = []; loadLinks(); };
+    });
+    linksPanel.querySelectorAll("[data-id]").forEach(function (r) {
+      r.onclick = function (e) {
+        if (e.target.classList && e.target.classList.contains("x")) return;
+        if (lNode) lTrail.push(lNode);
+        lTab = "graph"; lNode = r.getAttribute("data-id"); loadLinks();
+      };
+    });
+  }
+  function lDate(ts) { var d = new Date(ts * 1000); return ("0" + d.getDate()).slice(-2) + "." + ("0" + (d.getMonth() + 1)).slice(-2) + "." + d.getFullYear(); }
+  function lTime(ts) { var d = new Date(ts * 1000); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function renderTimeline(ev, h) {
+    var day = null;
+    if (!ev.length) h.push("<div style='color:#8A8A8A'>Истории пока нет.</div>");
+    ev.forEach(function (e) {
+      var d = lDate(e.ts);
+      if (d !== day) { day = d; h.push("<div class='day'>" + d + "</div>"); }
+      h.push("<div class='lrow' data-id='" + escapeHtml(e.id) + "'><span class='k'>" + lTime(e.ts) + "</span><span class='t'>" +
+             escapeHtml(e.title) + "</span><span></span><span class='w'>" + escapeHtml(e.what) + "</span></div>");
+    });
+  }
+  function radial(node, near) {
+    var W = 320, H = 230, cx = W / 2, cy = H / 2, R = 88, list = near.slice(0, 14), o = [];
+    list.forEach(function (x, i) {
+      var a = -Math.PI / 2 + i * 2 * Math.PI / list.length, px = cx + R * Math.cos(a), py = cy + R * Math.sin(a);
+      o.push("<line class='" + x.kind + "' x1='" + cx + "' y1='" + cy + "' x2='" + px.toFixed(1) + "' y2='" + py.toFixed(1) + "'/>");
+      o.push("<circle class='" + x.type + "' data-id='" + escapeHtml(x.id) + "' cx='" + px.toFixed(1) + "' cy='" + py.toFixed(1) + "' r='5'><title>" +
+             escapeHtml((L_TYPE[x.type] || x.type) + ": " + x.title) + "</title></circle>");
+      var tx = px + (Math.cos(a) > 0.2 ? 8 : Math.cos(a) < -0.2 ? -8 : 0), anchor = Math.cos(a) > 0.2 ? "start" : Math.cos(a) < -0.2 ? "end" : "middle";
+      o.push("<text x='" + tx.toFixed(1) + "' y='" + (py + (Math.sin(a) > 0.5 ? 14 : Math.sin(a) < -0.5 ? -9 : 3)).toFixed(1) + "' text-anchor='" + anchor + "'>" +
+             escapeHtml(x.title.slice(0, 16)) + "</text>");
+    });
+    o.push("<circle class='c' cx='" + cx + "' cy='" + cy + "' r='8'/>");
+    return "<svg viewBox='0 0 " + W + " " + H + "'>" + o.join("") + "</svg>";
+  }
+  function loadLinks() {
+    var api = lApi(); if (!api || !linksOpen) return;
+    if (lTab === "time" && !lNode) {
+      api.graph_timeline("", 0).then(function (ev) {
+        var h = [lHead(), "<div style='color:#8A8A8A'>Что и когда появилось: задачи, решения, идеи, документы, воспоминания. Нажмите на запись — её связи.</div>"];
+        renderTimeline(ev, h);
+        linksPanel.innerHTML = h.join(""); lWire();
+      });
+      return;
+    }
+    if (!lNode) {
+      api.graph_overview().then(function (ov) {
+        var st = ov.stats, h = [lHead(), "<div style='color:#8A8A8A'>" + st.nodes + " объектов · " + st.edges + " связей (" +
+          (st.kinds.auto || 0) + " найдены сами, " + (st.kinds.manual || 0) + " вручную). Голосом: «что связано с…», «свяжи … с …».</div>",
+          "<input id='lkFind' placeholder='найти: слово из названия'>", "<div id='lkFound'></div>", "<h4>Проекты</h4>"];
+        ov.projects.forEach(function (n) { h.push(lRow(n)); });
+        h.push("<h4>Самые связанные</h4>");
+        ov.hubs.forEach(function (n) { h.push(lRow(n, "<span class='k'>" + n.links + "</span>")); });
+        linksPanel.innerHTML = h.join(""); lWire();
+        var inp = document.getElementById("lkFind"), timer = null;
+        inp.oninput = function () {
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            var q = inp.value.trim(), box = document.getElementById("lkFound");
+            if (!q) { box.innerHTML = ""; return; }
+            api.graph_search(q).then(function (list) {
+              box.innerHTML = list.length ? list.map(function (n) { return lRow(n); }).join("") : "<div style='color:#8A8A8A'>не найдено</div>";
+              lWire();
+            });
+          }, 250);
+        };
+      });
+      return;
+    }
+    api.graph_node(lNode).then(function (r) {
+      if (!r) { lNode = null; loadLinks(); return; }
+      var n = r.node, h = [lHead(), "<span class='back' id='lkBack'>← назад</span><br><span class='k' style='color:#8A8A8A;font-size:11px;letter-spacing:.06em'>" +
+        (L_TYPE[n.type] || n.type).toUpperCase() + (n.ts ? " · " + lDate(n.ts) : "") + (n.status ? " · " + n.status : "") + "</span><br><b>" + escapeHtml(n.title) + "</b>"];
+      if (n.text && n.text !== n.title) h.push("<div class='body'>" + escapeHtml(n.text.slice(0, 900)) + "</div>");
+      if (n.path) h.push("<div style='color:#8A8A8A;font-size:12px'>источник: " + escapeHtml(n.path) + "</div>");
+      if (r.near.length) h.push(radial(n, r.near));
+      h.push("<h4>Связи (" + r.near.length + ")</h4>");
+      if (!r.near.length) h.push("<div style='color:#8A8A8A'>связей пока нет — скажите «Хлоя, свяжи это с…»</div>");
+      r.near.forEach(function (x) {
+        h.push("<div class='lrow' data-id='" + escapeHtml(x.id) + "'><span class='k'>" + (L_TYPE[x.type] || x.type) + "</span><span class='t'>" + escapeHtml(x.title) +
+               "</span>" + (x.kind !== "project" ? "<span class='x' data-x='" + escapeHtml(x.id) + "' title='убрать связь'>×</span>" : "<span></span>") +
+               "<span class='w'>" + escapeHtml(x.why) + "</span></div>");
+      });
+      linksPanel.innerHTML = h.join(""); lWire();
+      document.getElementById("lkBack").onclick = function () { lNode = lTrail.pop() || null; loadLinks(); };
+      linksPanel.querySelectorAll("svg circle[data-id]").forEach(function (c) {
+        c.onclick = function () { lTrail.push(lNode); lNode = c.getAttribute("data-id"); loadLinks(); };
+      });
+      linksPanel.querySelectorAll(".x").forEach(function (b) {
+        b.onclick = function (e) { e.stopPropagation(); api.graph_unlink(lNode, b.getAttribute("data-x")).then(loadLinks); };
+      });
+    });
+  }
+  linksBtn.onclick = function () {
+    touch();
+    if (linksOpen) { window.closeLinks(); return; }
+    if (!lApi()) return;
+    info.style.display = "none"; selected = null;
+    if (statsOpen) toggleStats(false);
+    closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); window.closeProjects();
+    linksOpen = true; linksBtn.classList.add("on");
+    linksPanel.style.display = "block";
+    linksPanel.innerHTML = "<span class='close' id='lkClose'>✕</span><b>Связи</b><br>Загружаю…";
+    document.getElementById("lkClose").onclick = window.closeLinks;
+    loadLinks();
   };
 
   // =======================================================
@@ -2769,7 +2919,7 @@
   function toggleStats(on) {
     statsOpen = on;
     statsBtn.classList.toggle("on", on);
-    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); renderStats(); }
+    if (on) { info.style.display = "none"; selected = null; closeJournal(); closeMemory(); closeFiles(); if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks(); renderStats(); }
     statsPanel.style.display = on ? "block" : "none";
   }
   function bar(pct, color) { return "<span class='bar'><i style='width:" + Math.round(pct) + "%;background:" + (color || "#CACACA") + "'></i></span>"; }
@@ -3704,7 +3854,7 @@
     info.style.display = "none"; selected = null;
     if (statsOpen) toggleStats(false);
     closeJournal(); closeMemory(); closeFiles();
-    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects();
+    if (phonePanel) closePhone(); if (window.closeAccess) window.closeAccess(); if (window.closeProjects) window.closeProjects(); if (window.closeLinks) window.closeLinks();
     coreOpen = true;
     corePanel.style.display = "block";
     renderCore();

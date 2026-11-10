@@ -458,6 +458,49 @@ class Api:
             "busy": busy.is_set(),
         }
 
+    # связи и история: граф знаний для панели «Связи»
+    def graph_overview(self):
+        from .graph import graph
+
+        nodes, edges = graph.build()
+        deg = {}
+        for e in edges:
+            if e["kind"] != "project":
+                deg[e["a"]] = deg.get(e["a"], 0) + 1
+                deg[e["b"]] = deg.get(e["b"], 0) + 1
+        hubs = sorted((n for n in nodes.values() if n["type"] != "project"), key=lambda n: -deg.get(n["id"], 0))[:14]
+        slim = lambda n: {"id": n["id"], "type": n["type"], "title": n["title"], "links": deg.get(n["id"], 0)}   # noqa: E731
+        return {"stats": graph.stats(), "projects": [slim(n) for n in nodes.values() if n["type"] == "project"],
+                "hubs": [slim(n) for n in hubs if deg.get(n["id"])]}
+
+    def graph_node(self, node_id):
+        from .graph import graph
+
+        nodes, _ = graph.build()
+        n = nodes.get(str(node_id))
+        if not n:
+            return None
+        keep = ("id", "type", "title", "text", "ts", "project", "status", "path", "zone")
+        return {"node": {k: n.get(k) for k in keep},
+                "near": [{"id": x["node"]["id"], "type": x["node"]["type"], "title": x["node"]["title"], "kind": x["kind"],
+                          "why": x["why"]} for x in graph.neighbors(n["id"])[:60]]}
+
+    def graph_search(self, query):
+        from .graph import graph
+
+        return [{"id": n["id"], "type": n["type"], "title": n["title"]} for n in graph.find(str(query), 12)]
+
+    def graph_timeline(self, node_id="", days=0):
+        from .graph import graph
+
+        ev = graph.timeline(query=str(node_id) or None, days=int(days) or None, limit=120)
+        return [{"ts": e["ts"], "what": e["what"], "id": e["node"]["id"], "type": e["node"]["type"], "title": e["node"]["title"]} for e in ev]
+
+    def graph_unlink(self, a, b):
+        from .graph import graph
+
+        return graph.unlink(str(a), str(b))
+
     # самочувствие: быстрая проверка без сети (каждые полминуты) или глубокая — настоящими запросами (кнопка)
     def system_health(self, deep=False):
         from . import system_state as ss
