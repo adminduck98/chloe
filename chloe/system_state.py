@@ -127,6 +127,14 @@ def system():
     except Exception:
         out.append(item("Система", "ffmpeg", "warn", "нет — ролики и аудиокниги не соберутся"))
     try:
+        from . import sandbox
+
+        ok = sandbox.available()
+        out.append(item("Система", "Песочница", "ok" if ok else "warn",
+                        "команды проверяются пробой до выполнения" if ok else "проба недоступна — только разбор риска"))
+    except Exception:
+        out.append(item("Система", "Песочница", "warn", "не проверилась"))
+    try:
         ver = subprocess.run(["git", "-C", str(_project()), "log", "-1",
                               "--format=%h %cd", "--date=format:%d.%m %H:%M"], capture_output=True, text=True, timeout=3).stdout.strip()
     except (OSError, subprocess.SubprocessError):

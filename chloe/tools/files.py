@@ -122,6 +122,11 @@ def tool_delete_path(a):
     if p.resolve() in PROTECTED or len(p.resolve().parts) <= 2:
         return "Отказано: это важная системная или домашняя папка."
     what = ("папку " if p.is_dir() else "файл ") + p.name
+    if p.is_dir():                              # сколько внутри — чтобы «да» было осознанным
+        from ..sandbox import human, tree_size
+
+        n, size = tree_size(p)
+        what += " ({} файлов, {})".format("больше 20 000" if n > 20000 else n, human(size))
     if not confirm("Удалить " + what + " в корзину?"):
         return "Пользователь отменил удаление."
     try:

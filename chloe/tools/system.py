@@ -119,8 +119,19 @@ def tool_run_command(a):
                 "./start.sh в терминале сам.")
     if read_only(cmd):
         print("[команда только читает — без вопроса]")
-    elif not confirm("Выполнить команду: " + cmd + "?"):
-        return "Пользователь отклонил команду."
+    else:
+        note = ""
+        try:                                   # проба в песочнице и разбор риска: человек подтверждает, зная последствия
+            from .. import sandbox
+
+            info = sandbox.preview_command(cmd)
+            note = sandbox.question_note(info)
+            if note:
+                print("[песочница] " + note)
+        except Exception as e:                 # проверка не должна мешать самой команде
+            print("[песочница: {}]".format(type(e).__name__))
+        if not confirm("Выполнить команду: " + cmd + "?" + (" " + note if note else "")):
+            return "Пользователь отклонил команду."
     try:
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
         return "Код {}\n{}".format(res.returncode, ((res.stdout or "") + (res.stderr or ""))[:4000])
