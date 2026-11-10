@@ -182,7 +182,8 @@ def audit():
     project = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
         r = subprocess.run(["git", "-C", project, "grep", "-I", "-c", "-E",
-                            r"sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|GOCSPX-|-----BEGIN [A-Z ]*PRIVATE KEY"],
+                            r"sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|GOCSPX-[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----",
+                            "--", ".", ":!chloe/security.py", ":!tests/"],          # образцы для поиска — не ключи
                            capture_output=True, text=True, timeout=10)
         leaked = [l.split(":")[0] for l in r.stdout.splitlines() if l.strip()]
         out.append(item("Безопасность", "Секреты в коде", "fail" if leaked else "ok",

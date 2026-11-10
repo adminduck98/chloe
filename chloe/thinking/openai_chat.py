@@ -104,9 +104,10 @@ def backups(model):
     return ready or sorted(out, key=lambda m: cooldown.get(m, 0))[:1]
 
 
-def tool_specs():
+def tool_specs(only=None):
+    """only — имена инструментов (агенту даётся только его набор); None — все."""
     return [{"type": "function", "function": {"name": t["name"], "description": t["description"],
-                                              "parameters": t["input_schema"]}} for t in TOOLS]
+                                              "parameters": t["input_schema"]}} for t in TOOLS if only is None or t["name"] in only]
 
 
 def for_provider(messages, provider):
@@ -157,7 +158,8 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
                 name, extra = request_args(m)
                 resp = clients[provider].chat.completions.create(
                     model=name, messages=for_provider(messages, provider), max_tokens=max_tokens,
-                    **({"tools": tool_specs()} if tools else {}), **extra)
+                    **({"tools": tool_specs(tools if isinstance(tools, (set, list, tuple, frozenset)) else None)} if tools else {}),
+                    **extra)
                 msg = resp.choices[0].message
                 usage.from_openai(m, getattr(resp, "usage", None), time.time() - started)
                 if provider == "qwen" and qwen_plan.mark_ok():

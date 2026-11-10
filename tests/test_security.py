@@ -129,5 +129,13 @@ class Tool(unittest.TestCase):
         self.assertIn("Файлы с ключами", tool.tool_security({"action": "audit"}))
 
 
+
+class CodeSecrets(unittest.TestCase):
+    def test_detection_patterns_are_not_reported_as_keys(self):
+        items = {x["name"]: x for x in sec.audit()}
+        if "Секреты в коде" in items:                  # без git проверки нет
+            self.assertEqual(items["Секреты в коде"]["level"], "ok", items["Секреты в коде"]["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()

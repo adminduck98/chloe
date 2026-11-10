@@ -90,8 +90,10 @@ def to_claude(messages):
     return system.strip(), out
 
 
-def claude_tools():
-    tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in TOOLS]
+def claude_tools(only=None):
+    """only — имена инструментов (агенту даётся только его набор); None — все."""
+    tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in TOOLS
+             if only is None or t["name"] in only]
     if tools:
         tools[-1]["cache_control"] = {"type": "ephemeral"}   # инструменты и system кэшируются — каждый шаг дешевле
     return tools
@@ -105,7 +107,7 @@ def ask_claude(client, messages, model, tools=True, max_tokens=1500):
     if system:
         kw["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
     if tools:
-        kw["tools"] = claude_tools()
+        kw["tools"] = claude_tools(tools if isinstance(tools, (set, list, tuple, frozenset)) else None)
     resp = client.messages.create(**kw)
     if resp.stop_reason == "refusal":
         raise Refused(model)

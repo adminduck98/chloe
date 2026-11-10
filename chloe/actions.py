@@ -34,6 +34,14 @@ def now_doing():
     except Exception:
         pass
     try:
+        from .agents import AGENTS, runs
+
+        for r in runs.running():
+            out.append({"what": "{} (агент №{}): {}".format(AGENTS.get(r["agent"], {}).get("name", r["agent"]), r["id"], r["task"][:70]),
+                        "since": r["started"]})
+    except Exception:
+        pass
+    try:
         from .tools.improve import _running
 
         if _running.is_set():
