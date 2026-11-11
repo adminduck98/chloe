@@ -21,7 +21,7 @@ from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
 from .journal import journal
 from .secret import redact
-from .signals import audio_q, busy, commands, drain, heard_q, interrupt, is_stop, state, words
+from .signals import Heard, audio_q, busy, commands, drain, heard_q, interrupt, is_stop, state, words
 
 
 @contextlib.contextmanager
@@ -656,13 +656,13 @@ def listener():
             continue
         overlapped = bool(voice.saying) or started < voice.spoke_until
         if voice.awaiting and not overlapped:
-            heard_q.put(text)
+            heard_q.put(Heard(text, started))
         elif busy.is_set() or overlapped:
             own = set(words(voice.saying))
             if is_stop(text) and not (set(words(text)) & set(STOP_WORDS) & own):
                 interrupt_now(text)
         else:
-            heard_q.put(text)
+            heard_q.put(Heard(text, started))
 
 
 def confirm(question):

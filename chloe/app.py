@@ -185,13 +185,16 @@ def assistant(args):
                         go_idle()
                     continue
                 state["where"] = "local"        # сказано в микрофон компьютера — компьютер и отвечает
-                began = time.time()             # окно «без Хлоя» проверяем по началу фразы, а не по концу:
-                heard = finish_speech(heard)    # пока она дослушивала (музыка, длинная речь), окно могло закрыться
-                print("Вы:", heard)
+                # окно «без Хлоя» проверяем по началу речи, а не по концу распознавания и дослушивания:
+                # Qwen думает до 4,5 с, музыка и длинная речь — дольше; начатое в окне — сказано ей
+                began = min(getattr(heard, "started", None) or time.time(), time.time())
+                heard = finish_speech(heard)
                 command, woke = strip_wake(heard)
                 if not woke and began > state["listen_until"]:
+                    print("[не Хлое — окно закрылось: {}]".format(heard[:60]))   # не «Вы:» — ответа не будет
                     go_idle()
                     continue   # не обращались к Хлое
+                print("Вы:", heard)
                 brain.heard(heard)
                 idle["sent"] = False
                 if not command:

@@ -23,6 +23,16 @@ state = {"declined": False,      # в текущем действии польз
 seen_text = collections.deque(maxlen=60)
 
 
+class Heard(str):
+    """Распознанная фраза и когда её НАЧАЛИ говорить: окно «без Хлоя» проверяется по началу речи,
+    а не по концу распознавания (Qwen думает до 4,5 с — фраза, начатая в окне, иначе терялась)."""
+
+    def __new__(cls, text, started=None):
+        obj = super().__new__(cls, text)
+        obj.started = started
+        return obj
+
+
 class Typed(str):
     """Набранная команда с пометкой, откуда она: из окна на компьютере или с телефона."""
 

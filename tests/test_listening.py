@@ -86,6 +86,14 @@ class ListenerTest(unittest.TestCase):
         voice.saying = ""
         return result
 
+    def test_phrase_keeps_when_it_was_started(self):
+        # окно «без Хлоя» проверяется по началу речи: медленное распознавание не должно его закрывать
+        with mock.patch("chloe.voice.route_phrase", lambda audio, started: "cloud"):
+            self.hear("ну ты всё равно не так хорошо", started_ago=5.0)
+            got = heard_q.get(timeout=1)
+        self.assertEqual(got, "ну ты всё равно не так хорошо")
+        self.assertAlmostEqual(got.started, time.time() - 5.0, delta=1.0)
+
     def test_cases(self):
         self.assertEqual(self.hear("стоп", busy_now=True), (True, False))
         self.assertEqual(self.hear("открой браузер", busy_now=True), (False, False))
