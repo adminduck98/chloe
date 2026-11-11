@@ -442,6 +442,13 @@ def profile_loop(every=60):
                 from .brain import brain
 
                 print("[окно: {}]".format(brain.window.evaluate_js("JSON.stringify(window.chloePerf())")))
+                shot = os.environ.get("CHLOE_PROFILE_SHOT")          # путь: туда раз в минуту кладётся кадр мозга (jpg)
+                if shot:
+                    import base64
+
+                    data = brain.window.evaluate_js("window.chloeSnapshot()") or ""
+                    with open(shot, "wb") as f:
+                        f.write(base64.b64decode(data.split(",", 1)[1]))
             except Exception as e:
                 print("[окно: {}]".format(str(e)[:60]))
         except Exception as e:

@@ -27,7 +27,8 @@
   #app { position: fixed; inset: 0; }
 
   /* --- мозг: весь экран --- */
-  #core { position: absolute; inset: 0; cursor: grab; touch-action: none; overflow: hidden; }
+  #core { position: absolute; inset: 0; cursor: grab; touch-action: none; overflow: hidden;
+    background: radial-gradient(ellipse 46% 60% at 50% 50%, rgba(255, 255, 255, .032), rgba(255, 255, 255, .012) 45%, rgba(255, 255, 255, 0) 72%); }
   #core.drag { cursor: grabbing; }
   #core canvas { display: block; width: 100%; height: 100%; }
 
@@ -585,6 +586,9 @@
     "uniform float uCrowdK;",
     // при приближении на экран попадает меньше клеток — их можно делать ярче (пропорционально площади)
     "float crowdF(float lo, float dens, float zoom){ return min(1.0, mix(lo * uCrowdK, 1.0, smoothstep(0.3, 0.8, dens)) * (1.0 + (max(zoom, 1.0) - 1.0) * 0.6 * uCrowdK)); }",
+    // глубина: ближняя к зрителю сторона мозга ярче, дальняя приглушена — объём читается и без вращения
+    "uniform float uCam; uniform float uRad;",
+    "float depthF(float viewZ){ return 1.0 - smoothstep(-0.25, 1.0, (-viewZ - uCam) / uRad); }",
     // поиск: найденные ярче, остальные гаснут
     "float searchF(float on, float hl){ return mix(1.0, mix(0.1, 1.5, hl), on); }"
   ].join("\n");
@@ -624,6 +628,7 @@
     uDens: { value: 1 }, uZoom: { value: 1 }, uDrift: { value: 0.035 },
     uSpeak: { value: 0 }, uChloe: { value: 0 }, uThink: { value: 0 }, uSleep: { value: 0 },
     uSearchOn: { value: 0 }, uBright: { value: 1 }, uCrowdK: { value: 1 }, uDeep: { value: 0 },
+    uCam: { value: 4.9 }, uRad: { value: 1.3 },
     uNeur: { value: neurTex }, uNeur2: { value: neur2Tex }, uLink: { value: linkTex }, uLink2: { value: link2Tex },
     uInh: { value: new THREE.Color(0x5e5e5e) }, uWarm: { value: new THREE.Color(0xff9a9a) },
     uSkill: { value: COLOR_SKILL }, uMem: { value: COLOR_MEM }, uHotC: { value: COLOR_HOT },
@@ -692,7 +697,7 @@
   function emitWave(t) { waveData[waveIndex] = t; waveIndex = (waveIndex + 1) % WAVES; }
 
   var shellUniforms = {
-    uTime: common.uTime, uPixel: common.uPixel, uBright: common.uBright,
+    uTime: common.uTime, uPixel: common.uPixel, uBright: common.uBright, uCam: common.uCam, uRad: common.uRad,
     uTw: { value: 0 }, uEnergy: { value: 0.3 }, uListen: { value: 0 }, uVoice: { value: 0 },
     uFlash: { value: flashData }, uWave: { value: waveData },
     uBase: { value: SHELL_BASE.clone() }, uHot: { value: new THREE.Color(0xe6e6e6) }
@@ -701,6 +706,7 @@
     uniforms: shellUniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: [
       "uniform float uTime; uniform float uTw; uniform float uEnergy; uniform float uListen; uniform float uPixel; uniform float uVoice;",
+      "uniform float uCam; uniform float uRad;",
       "uniform vec4 uFlash[" + FLASHES + "];",
       "uniform float uWave[" + WAVES + "];",
       "attribute float aBright; attribute float aSeed;",
@@ -734,7 +740,10 @@
       "  vBright = aBright * (0.94 + 0.06 * sin(uTw*(1.0+aSeed*2.0)+aSeed*40.0)) * (1.0 + uListen * 0.6);",
       "  vHot = clamp(hot, 0.0, 0.8);",
       "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
-      "  gl_PointSize = min((2.0 + 1.2 * vHot) * uPixel * (4.5 / -mv.z), 12.0 * uPixel);",
+      // передняя половина сферы — чёткая, задняя — едва видна: это шар, а не плоский круг точек
+      "  float dF = 1.0 - smoothstep(-0.6, 1.0, (-mv.z - uCam) / uRad);",
+      "  vBright *= mix(0.16, 1.2, dF);",
+      "  gl_PointSize = min((1.5 + 0.7 * dF + 1.2 * vHot) * uPixel * (4.5 / -mv.z), 12.0 * uPixel);",
       "  gl_Position = projectionMatrix * mv;",
       "}"
     ].join("\n"),
@@ -751,6 +760,22 @@
   }));
   shell.frustumCulled = false;
   group.add(shell);
+  // светящийся край сферы (как атмосфера у планеты): тонкая линия по контуру и едва заметная дымка к центру
+  var limb = new THREE.Mesh(new THREE.SphereGeometry(SPH, 72, 48), new THREE.ShaderMaterial({
+    uniforms: { uBase: shellUniforms.uBase, uBright: common.uBright, uEnergy: shellUniforms.uEnergy },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: "varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalMatrix * normal; vV = -mv.xyz; gl_Position = projectionMatrix * mv; }",
+    fragmentShader: [
+      "uniform vec3 uBase; uniform float uBright; uniform float uEnergy; varying vec3 vN; varying vec3 vV;",
+      "void main(){",
+      "  float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));",
+      "  float a = (pow(f, 6.0) * (0.34 + 0.3 * uEnergy) + pow(f, 2.0) * 0.022) * uBright;",
+      "  gl_FragColor = vec4(uBase * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  limb.frustumCulled = false;
+  shell.add(limb);
   var cortexUniforms = { uBreath: { value: 0 } };   // сетки мозга нет — сфера дышит через shell.scale
 
   var glowTex = (function () {
@@ -796,6 +821,54 @@
     opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
   coreGlow.scale.setScalar(0.6); coreHeart.scale.setScalar(0.14);
   coreGroup.add(coreGlow); coreGroup.add(coreHeart);
+  // Само ядро — объёмное: шар живой плазмы (жилки света текут по поверхности, центр горячий) в тонкой стеклянной
+  // оболочке со светящимся краем. Спрайты выше остаются мягким свечением вокруг него.
+  var coreUni = { uTime: common.uTime, uBright: common.uBright, uBeat: { value: 0 }, uAct: { value: 0 },
+                  uColor: { value: new THREE.Color(0xff7777) } };
+  var CORE_VS = "varying vec3 vN; varying vec3 vV; varying vec3 vObj; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalMatrix * normal; vV = -mv.xyz; vObj = position; gl_Position = projectionMatrix * mv; }";
+  var coreOrb = new THREE.Mesh(new THREE.SphereGeometry(0.088, 48, 32), new THREE.ShaderMaterial({
+    uniforms: coreUni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, vertexShader: CORE_VS,
+    fragmentShader: [
+      "uniform float uTime; uniform float uBright; uniform float uBeat; uniform float uAct; uniform vec3 uColor;",
+      "varying vec3 vN; varying vec3 vV; varying vec3 vObj;",
+      "float h1(float n){ return fract(sin(n) * 43758.5453); }",
+      "float n3(vec3 p){",
+      "  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);",
+      "  float n = dot(i, vec3(1.0, 57.0, 113.0));",
+      "  return mix(mix(mix(h1(n), h1(n + 1.0), f.x), mix(h1(n + 57.0), h1(n + 58.0), f.x), f.y),",
+      "             mix(mix(h1(n + 113.0), h1(n + 114.0), f.x), mix(h1(n + 170.0), h1(n + 171.0), f.x), f.y), f.z);",
+      "}",
+      "float fbm(vec3 p){ return 0.5 * n3(p) + 0.25 * n3(p * 2.03) + 0.125 * n3(p * 4.01); }",
+      "void main(){",
+      "  vec3 n = normalize(vN), v = normalize(vV);",
+      "  float ndv = max(dot(n, v), 0.0);",
+      "  float sp = 0.28 + 0.5 * uAct;",                                     // думает — плазма течёт быстрее
+      "  vec3 q = vObj * 26.0 + vec3(0.0, uTime * sp, uTime * sp * 0.6);",
+      "  float pl = fbm(q + 1.7 * fbm(q * 0.6 - uTime * 0.12));",            // завихрения: шум, искривлённый шумом
+      "  float veins = smoothstep(0.50, 0.64, pl) * (1.0 - smoothstep(0.64, 0.80, pl) * 0.5);",
+      "  float heart = pow(ndv, 5.0);",                                      // к центру диска — горячее
+      "  float rim = pow(1.0 - ndv, 2.0);",
+      "  vec3 col = mix(uColor * 0.5, mix(uColor, vec3(1.0), 0.42), clamp(veins * (0.6 + 0.4 * uAct) + heart * (0.25 + 0.55 * uBeat), 0.0, 1.0));",
+      "  float a = (0.36 + 0.34 * veins + heart * (0.3 + 0.5 * uBeat) + 0.6 * rim) * uBright;",
+      "  gl_FragColor = vec4(col * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  var coreLens = new THREE.Mesh(new THREE.SphereGeometry(0.135, 56, 40), new THREE.ShaderMaterial({
+    uniforms: coreUni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, vertexShader: CORE_VS,
+    fragmentShader: [
+      "uniform float uBright; uniform float uBeat; uniform float uAct; uniform vec3 uColor;",
+      "varying vec3 vN; varying vec3 vV; varying vec3 vObj;",
+      "void main(){",
+      "  float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0);",
+      "  float rim = pow(f, 4.5);",                                          // стекло: видно только по краю
+      "  float a = (rim * (0.7 + 0.35 * uBeat + 0.3 * uAct) + pow(f, 1.6) * 0.07) * uBright;",
+      "  gl_FragColor = vec4(mix(uColor, vec3(1.0), rim * 0.65) * a, a);",
+      "}"
+    ].join("\n")
+  }));
+  coreOrb.frustumCulled = coreLens.frustumCulled = false;
+  coreGroup.add(coreOrb); coreGroup.add(coreLens);
 
   var LAYERS = [
     { key: "think", name: "Мышление", r: 0.25, tilt: [0.35, 0, 0.1],  color: 0xff7777, n: 360, act: 0, phase: 0, opens: "core" },
@@ -813,6 +886,16 @@
     var line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(circ), new THREE.LineBasicMaterial({
       color: L.color, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false }));
     holder.add(line);
+    // деления по орбите, как на шкале прибора: короткие через 6°, длинные через 30°
+    var tk = [];
+    for (var ti = 0; ti < 60; ti++) {
+      var ta = ti / 60 * Math.PI * 2, tl = L.r * (ti % 5 === 0 ? 0.055 : 0.022);
+      tk.push(new THREE.Vector3(Math.cos(ta) * L.r, 0, Math.sin(ta) * L.r), new THREE.Vector3(Math.cos(ta) * (L.r + tl), 0, Math.sin(ta) * (L.r + tl)));
+    }
+    var ticks = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(tk), new THREE.LineBasicMaterial({
+      color: L.color, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    holder.add(ticks);
+    L.ticks = ticks;
     // частицы, бегущие по орбите
     var ang = new Float32Array(L.n), off = new Float32Array(L.n), pos = new Float32Array(L.n * 3);
     for (var j = 0; j < L.n; j++) { ang[j] = Math.random() * Math.PI * 2; off[j] = Math.random(); }
@@ -890,17 +973,24 @@
       L.phase += dt * (0.12 + 1.6 * L.act) * awake * (i % 2 ? -1 : 1);
       L.uni.uPhase.value = L.phase;
       L.uni.uAct.value = approach(L.uni.uAct.value, L.act, 4, dt);
-      L.line.material.opacity = 0.03 * L.uni.uAct.value;   // кольцо рисует свет частиц; линия — лишь тонкий след при работе
+      // орбита — тонкая чёткая линия с делениями; при работе слоя разгорается
+      L.line.material.opacity = (0.09 + 0.3 * L.uni.uAct.value) * common.uBright.value;
+      L.ticks.material.opacity = (0.07 + 0.28 * L.uni.uAct.value) * common.uBright.value;
       L.holder.rotation.y += dt * 0.05 * (i + 1) * awake;
     });
     // сердцебиение ядра: два удара и пауза; при работе — чаще
     var bpm = 48 + 50 * mood.think + 25 * mood.speak - 20 * mood.sleep, per = 60 / bpm, ph = (t % per) / per;
     var beat = Math.exp(-Math.pow((ph - 0.08) / 0.035, 2)) + 0.6 * Math.exp(-Math.pow((ph - 0.24) / 0.04, 2));
     var act = 0.3 + 0.7 * Math.max(layerByKey.think.uni.uAct.value, layerByKey.proc.uni.uAct.value * 0.8);
-    coreGlow.scale.setScalar((0.5 + 0.14 * beat + 0.16 * act) * (1 - 0.3 * mood.sleep));
-    coreGlow.material.opacity = (0.28 + 0.22 * beat + 0.25 * act) * common.uBright.value;
-    coreHeart.scale.setScalar(0.12 + 0.04 * beat);
-    coreHeart.material.opacity = (0.65 + 0.35 * beat) * common.uBright.value;
+    coreGlow.scale.setScalar((0.56 + 0.12 * beat + 0.18 * act) * (1 - 0.3 * mood.sleep));
+    coreGlow.material.opacity = (0.26 + 0.16 * beat + 0.22 * act) * common.uBright.value;
+    coreHeart.scale.setScalar(0.09 + 0.03 * beat);
+    coreHeart.material.opacity = (0.1 + 0.22 * beat) * common.uBright.value;
+    coreUni.uBeat.value = beat;
+    coreUni.uAct.value = approach(coreUni.uAct.value, act, 3, dt);
+    coreOrb.scale.setScalar((1 + 0.07 * beat + 0.12 * coreUni.uAct.value) * (1 - 0.2 * mood.sleep));
+    coreLens.scale.setScalar(1 + 0.025 * beat + 0.05 * coreUni.uAct.value);
+    coreOrb.rotation.y += dt * 0.25; coreOrb.rotation.x += dt * 0.11;
     // импульсы к коре: в покое редко, когда думает или говорит — часто
     if (t > nextSpark && !document.hidden) {
       launchSpark(t);
@@ -1083,7 +1173,7 @@
       "uniform float uDrift; uniform float uSpeak; uniform float uChloe; uniform float uThink; uniform float uSleep; uniform float uSearchOn; uniform float uDeep;",
       "uniform sampler2D uNeur; uniform sampler2D uNeur2;",
       "attribute float aId;",
-      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
+      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul; varying float vPx;",
       GLSL_COMMON,
       "void main() {",
       "  vec4 s = texAt(uNeur, aId, " + NT + ".0);",
@@ -1109,8 +1199,10 @@
       // свечение: спокойная клетка — едва заметный ореол, работающая — широкий; совсем тусклые ореол не рисуют (бережём видеокарту)
       "  float act = clamp(vGlow + vErr + found, 0.0, 1.0);",
       "  size *= 1.0 + uGlowK * (0.9 + 1.1 * act);",
+      "  vMul *= mix(0.6, 1.15, depthF(mv.z));",   // дальние клетки тусклее ближних
       "  float off = uGlowK * step(vMul * vDim * (0.08 + act), 0.02);",
       "  gl_PointSize = (e.z < 0.01 || off > 0.5) ? 0.0 : min(size * uScaleW * uProj / -mv.z, (140.0 + 120.0 * uGlowK) * uPixel);",
+      "  vPx = gl_PointSize;",
       "  gl_Position = projectionMatrix * mv;",
       "}"
     ].join("\n");
@@ -1118,19 +1210,30 @@
     uniforms: common, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: somaVS,
     fragmentShader: [
-      "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uHotC; uniform vec3 uErrC;",
-      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
+      // Клетка нарисована чётко, как в атласе: тело-шар, тонкая мембрана по краю и яркое ядро.
+      // Навык — заполненная клетка; воспоминание — полая (кольцо с точкой). Работает — мембрана кораллового цвета.
+      "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uHotC; uniform vec3 uErrC; uniform vec3 uGold;",
+      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul; varying float vPx;",
       "void main() {",
       "  float r = length(gl_PointCoord - 0.5) * 2.0;",
       "  if (r > 1.0) discard;",
-      "  vec3 base = mix(vType > 0.5 ? uMem : uSkill, uErrC, vErr);",
-      "  float halo = exp(-r * r * 6.0) * (0.18 + 0.3 * vGlow + 0.4 * vErr);",
-      "  float body = exp(-pow(r / 0.34, 2.0) * 2.2) * 0.95;",
-      "  float core = exp(-pow(r / 0.13, 2.0) * 2.2);",
-      "  vec3 lite = mix(base, vec3(1.0), 0.22);",
-      "  vec3 bodyCol = mix(base, lite, vGlow * 0.8);",
-      "  vec3 col = (base * halo + bodyCol * body + mix(base, vec3(1.0), 0.3) * core * 0.6) * vDim * vMul;",
-      "  float a = max(max(halo, body), core) * vDim * vMul;",
+      "  float mem = step(0.5, vType);",
+      "  vec3 base = mix(mix(uSkill, uMem, mem), uErrC, vErr);",
+      "  float aa = 2.0 / max(vPx, 4.0);",                       // один пиксель в долях радиуса — края без «мыла»
+      "  float lod = smoothstep(6.0, 20.0, vPx);",               // мелкая клетка — точка, крупная — с мембраной
+      "  float R = 0.33;",
+      "  float inside = 1.0 - smoothstep(R - aa, R + aa, r);",
+      "  float ball = sqrt(max(0.0, 1.0 - (r * r) / (R * R)));", // объём: центр ярче края
+      // в маленьком окне клетка — несколько пикселей: тогда это просто яркая точка, без тонких деталей
+      "  float body = inside * mix(0.13 + 0.20 * ball, 0.04 + 0.05 * ball, mem * lod) * (1.0 + 1.2 * vGlow) * mix(3.2, 1.0, lod);",
+      "  float ring = exp(-pow((r - R) / max(0.028, aa), 2.0)) * (0.36 + 0.26 * mem + 0.9 * vGlow) * lod;",
+      "  float Rn = max(mix(0.115, 0.075, mem * lod), 2.6 / max(vPx, 1.0));",   // ядро не тоньше ~1,3 пикселя
+      "  float nucleus = (1.0 - smoothstep(Rn - aa, Rn + aa, r)) * (1.0 + 0.8 * vGlow);",
+      "  float halo = exp(-r * r * 6.0) * (0.10 + 0.55 * vGlow + 0.4 * vErr);",
+      "  vec3 hot = mix(base, vec3(1.0), 0.4 + 0.5 * vGlow);",
+      "  vec3 ringCol = mix(mix(base, vec3(1.0), 0.25), uGold, clamp(vGlow * 0.7, 0.0, 0.7));",
+      "  vec3 col = (base * (body + halo) + ringCol * ring + hot * nucleus) * vDim * vMul;",
+      "  float a = max(max(body + halo, ring), nucleus) * vDim * vMul;",
       "  gl_FragColor = vec4(col, a);",
       "}"
     ].join("\n")
@@ -1142,12 +1245,12 @@
     blending: THREE.AdditiveBlending, vertexShader: somaVS,
     fragmentShader: [
       "uniform vec3 uSkill; uniform vec3 uMem; uniform vec3 uErrC; uniform float uBright;",
-      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul;",
+      "varying float vGlow; varying float vDim; varying float vType; varying float vErr; varying float vMul; varying float vPx;",
       "void main() {",
       "  float r = length(gl_PointCoord - 0.5) * 2.0;",
       "  if (r > 1.0) discard;",
       "  vec3 base = mix(vType > 0.5 ? uMem : uSkill, uErrC, vErr);",
-      "  float a = exp(-r * r * 5.0) * (1.0 - r) * (0.5 + 0.5 * vGlow + 0.4 * vErr) * vDim * vMul * uBright;",
+      "  float a = exp(-r * r * 5.0) * (1.0 - r) * (0.22 + 0.75 * vGlow + 0.4 * vErr) * vDim * vMul * uBright;",
       "  gl_FragColor = vec4(mix(base, vec3(1.0), 0.12) * a, a);",
       "}"
     ].join("\n")
@@ -1185,7 +1288,9 @@
       "       * crowdF(0.22, uDens, uZoom) * searchF(uSearchOn, e.y) * e.z * (1.0 - 0.35 * uSleep);",
       "  vType = s.w;",
       "  vec3 p = position + driftOf(aId, uTime, uDrift);",
-      "  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);",
+      "  vec4 mv = modelViewMatrix * vec4(p, 1.0);",
+      "  vA *= mix(0.4, 1.2, depthF(mv.z));",
+      "  gl_Position = projectionMatrix * mv;",
       "}"
     ].join("\n"),
     fragmentShader: [
@@ -1262,7 +1367,8 @@
       "  gl_Position = projectionMatrix * mv;",
       "  float bright = (0.35 + 0.45 * weight + 0.45 * glow + 0.5 * thought + 0.5 * s2.w);",
       "  float found = min(ea.y, eb.y);",
-      "  vA = grown * (0.3 + 0.35 * ends) * bright * crowdF(0.25, uDens, uZoom) * searchF(uSearchOn, found) * vis * (1.0 - 0.35 * uSleep);",
+      "  vA = grown * (0.3 + 0.35 * ends) * bright * crowdF(0.25, uDens, uZoom) * searchF(uSearchOn, found) * vis * (1.0 - 0.35 * uSleep)",
+      "       * mix(0.4, 1.25, depthF(mv.z));",
       "  vSide = aSide; vType = aType; vHot = glow; vGold = thought;",
       "  vT = aT; vMy = myelin; vInh = s2.y; vRew = s2.w;",
       "}"
@@ -3802,6 +3908,7 @@
     somaGlow.visible = level > 0;   // свечение нейронов — только когда компьютер тянет
     axLod(level);
     haze.forEach(function (h) { h.visible = level > 0; });
+    limb.visible = level > 0;       // светящийся край сферы — на слабом компьютере не рисуем
     resize();
   }
   function trackQuality(frameMs) {
@@ -4140,7 +4247,12 @@
   window.chloePerf = function () {   // замер скорости: кадров в секунду, мс JS на кадр, уровень качества
     return { fps: Math.round(quality.fps * 10) / 10, jsMs: Math.round(perf.js * 100) / 100, level: quality.level, neurons: nCount,
              links: lCount, drawn: drawn, quiet: Math.round(now() - lastActivity), state: STATE.name, focus: document.hasFocus(),
-             gap: lastGap, signals: signals.length, flashes: synFlashes.length, dragging: !!dragging, playing: !!playing, replaying: !!replaying };
+             gap: lastGap, signals: signals.length, flashes: synFlashes.length, dragging: !!dragging, playing: !!playing, replaying: !!replaying,
+             badShaders: (renderer.info.programs || []).filter(function (p) { return p.diagnostics && !p.diagnostics.runnable; }).length };
+  };
+  window.chloeSnapshot = function () {   // кадр мозга картинкой — для проверки вида без снимка экрана (CHLOE_PROFILE_SHOT)
+    renderer.render(scene, camera);
+    return renderer.domElement.toDataURL("image/jpeg", 0.9);
   };
   // самозамер: n кадров подряд, с ожиданием видеокарты (gl.finish) — честное время кадра, даже если окно не видно
   window.chloeBench = function (n, hide, lod) {
@@ -4242,6 +4354,8 @@
     // лёгкое покачивание — мозг живой, а не закреплён
     group.rotation.set(rot.x + 0.035 * Math.sin(t * 0.21), rot.y, 0.02 * Math.sin(t * 0.17 + 1.3));
     group.updateMatrixWorld();
+    common.uCam.value = camera.position.z;          // для глубины: где центр мозга относительно зрителя и какого он размера
+    common.uRad.value = SPH * sc;
 
     coreUpdate(t, dt);
     drift.amp = 0.035 * (1 + 0.6 * mood.think) * (1 - 0.5 * mood.sleep) * (0.6 + 0.4 * common.uDens.value);
