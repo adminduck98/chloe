@@ -74,6 +74,27 @@ def asr_context(last_said=""):
     return text
 
 
+NOISE_GRACE = 2.5   # сек: Google уже сказал «речи нет» — Qwen ждём ещё столько, не все QWEN_ASR_WAIT
+
+
+def qwen_wait(qwen, google, started, poll=0.05):
+    """Сколько ещё ждать Qwen. Если Google быстро ответил «речи нет» (шум, телевизор в окне после ответа),
+    долго ждать Qwen незачем: на шуме он думает дольше 4,5 с, а на речи отвечает за ~2 с."""
+    while not qwen.done():
+        elapsed = time.time() - started
+        if elapsed >= QWEN_ASR_WAIT:
+            return 0
+        if google.done() and elapsed >= NOISE_GRACE:
+            try:
+                heard = google.result()
+            except Exception:
+                heard = ""
+            if not heard:
+                return 0
+        time.sleep(poll)
+    return 0
+
+
 def choose(qwen, google):
     """Qwen и Google услышали одну фразу. Берём Qwen, но если он оборвал конец (у Google заметно больше слов) — Google."""
     if not google:
@@ -189,7 +210,7 @@ class Voice:
             google = pool.submit(self._google, audio)
             pool.shutdown(wait=False)
             try:
-                text = qwen.result(timeout=QWEN_ASR_WAIT)
+                text = qwen.result(timeout=qwen_wait(qwen, google, time.time()))
                 if text:
                     try:
                         other = google.result(timeout=0 if google.done() else 0.6)
@@ -198,7 +219,8 @@ class Voice:
                     brain.voice(0, "user")
                     return choose(text, other)
             except Late:
-                print("[слух Qwen не успел за {:.1f} с — беру Google]".format(QWEN_ASR_WAIT))
+                if not (google.done() and not google.exception() and not google.result()):   # шум без речи — не событие
+                    print("[слух Qwen не успел за {:.1f} с — беру Google]".format(QWEN_ASR_WAIT))
             except qwen_audio.NoSpeech:
                 pass   # обрывок или тишина — Qwen не сломан; что-то услышал Google — возьмём его ответ
             except Exception as e:   # нет связи, кредиты кончились — слушаем через Google, Qwen попробуем через минуту

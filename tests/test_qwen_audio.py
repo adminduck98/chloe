@@ -136,6 +136,19 @@ class QwenAudio(unittest.TestCase):
             self.assertLess(time.time() - started, 1.0)              # не ждём медленный Qwen
         self.assertEqual(v.asr_down_until, 0)                        # медленный — не значит сломанный
 
+    def test_noise_does_not_wait_for_slow_qwen(self):
+        import time
+        v = Voice(enabled=True)
+        v.recognizer = mock.Mock()
+        v.recognizer.recognize_google.side_effect = __import__("speech_recognition").UnknownValueError()   # Google: речи нет
+        audio = mock.Mock()
+        audio.get_wav_data.return_value = b"RIFF"
+        with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(voice_mod, "NOISE_GRACE", 0.2), \
+             mock.patch.object(qwen_audio, "asr", lambda wav, lang, *rest: time.sleep(2) or "шум"):
+            started = time.time()
+            self.assertEqual(v.recognize(audio), "")
+            self.assertLess(time.time() - started, 1.0)              # не ждём 4,5 с на шуме
+
     def test_qwen_voice_falls_back_to_svetlana(self):
         v = Voice(enabled=True)
         calls = []
