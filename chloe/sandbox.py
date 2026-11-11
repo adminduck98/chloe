@@ -205,7 +205,10 @@ def available():
     if os.name != "posix" or not shutil.which("unshare"):
         return False
     try:
-        _can["ok"] = try_command("true", timeout=5, _probe=True).get("ran", False)
+        # проба — весь путь до конца: на Ubuntu 24.04 AppArmor пускает в первое пространство имён, но не во вложенное
+        # («write failed /proc/self/uid_map») — тогда песочницы нет, а не «команда упала»
+        r = try_command("echo chloe-sandbox-ok", timeout=5, _probe=True)
+        _can["ok"] = bool(r.get("ran")) and r.get("code") == 0 and "chloe-sandbox-ok" in (r.get("output") or "")
     except Exception:
         _can["ok"] = False
     return _can["ok"]
