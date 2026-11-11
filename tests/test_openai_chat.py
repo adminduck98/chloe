@@ -194,12 +194,18 @@ class WithClaude(unittest.TestCase):
         import os
 
         env = {k: v for k, v in os.environ.items()
-               if k not in ("CHLOE_PROVIDER", "CHLOE_MODEL", "CHLOE_MODEL_STRONG", "DASHSCOPE_API_KEY", "QWEN_API_KEY")}
+               if k not in ("CHLOE_PROVIDER", "CHLOE_MODEL", "CHLOE_MODEL_STRONG", "CHLOE_MODEL_FAST", "CHLOE_FAST_BRAIN",
+                            "DASHSCOPE_API_KEY", "QWEN_API_KEY")}
         try:
             with mock.patch.dict(os.environ, dict(env, DEEPSEEK_API_KEY="y", ANTHROPIC_API_KEY="z"), clear=True):
                 c = importlib.reload(config)
-                self.assertEqual((c.PROVIDER, c.MODEL_FAST, c.MODEL_STRONG), ("deepseek", "deepseek-flash", "claude-haiku-5-5"))
+                # быстрый тоже Haiku (выбор пользователя 11.11.2026), DeepSeek — запасной
+                self.assertEqual((c.PROVIDER, c.MODEL_FAST, c.MODEL_STRONG), ("deepseek", "claude-haiku-5-5", "claude-haiku-5-5"))
                 self.assertIsNone(c.MODEL_EYES)   # сильный и так Haiku — отдельные «глаза» не нужны
+            with mock.patch.dict(os.environ, dict(env, DEEPSEEK_API_KEY="y", ANTHROPIC_API_KEY="z", CHLOE_FAST_BRAIN="qwen"),
+                                 clear=True):
+                c = importlib.reload(config)
+                self.assertEqual((c.MODEL_FAST, c.MODEL_STRONG), ("deepseek-flash", "claude-haiku-5-5"))
             with mock.patch.dict(os.environ, dict(env, DEEPSEEK_API_KEY="y", ANTHROPIC_API_KEY="z",
                                                   CHLOE_MODEL_STRONG="claude-sonnet-5-5"), clear=True):
                 c = importlib.reload(config)

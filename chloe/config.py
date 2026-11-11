@@ -103,12 +103,16 @@ FAST_DEFAULT = {"qwen": "qwen3.8-flash", "deepseek": "deepseek-flash",
                 "gemini": "gemini-3.5-flash-lite", "anthropic": "claude-haiku-5-5"}
 STRONG_DEFAULT = {"qwen": "qwen3.8-flash+thinking", "deepseek": "deepseek-v4-pro",
                   "gemini": "gemini-3.5-flash", "anthropic": "claude-sonnet-5-5"}
-MODEL_FAST = os.environ.get("CHLOE_MODEL_FAST") or os.environ.get("CHLOE_MODEL") or FAST_DEFAULT.get(PROVIDER)
 OPENAI_STYLE = {"qwen", "deepseek"}   # провайдеры, которые думают через thinking/openai_chat.py
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 # Qwen/DeepSeek + ключ Claude: быстрый мозг — DeepSeek/Qwen, сильный — Claude Haiku 5.5 (видит экран, быстрый
 # и дешёвый; выбор пользователя). Sonnet — CHLOE_MODEL_STRONG=claude-sonnet-5-5. Claude ещё и подстраховывает.
 MIXED_STRONG = "claude-haiku-5-5" if PROVIDER in OPENAI_STYLE and ANTHROPIC_KEY else None
+# быстрый мозг при ключе Claude — тоже Haiku (11.11.2026, выбор пользователя: шаг 1,9 с против 4,5 с у Qwen,
+# ~$0,001 за шаг); Qwen/DeepSeek остаются запасными. CHLOE_FAST_BRAIN=qwen — вернуть быстрым Qwen/DeepSeek.
+MIXED_FAST = MIXED_STRONG if MIXED_STRONG and os.environ.get("CHLOE_FAST_BRAIN", "claude") != "qwen" else None
+MODEL_FAST = (os.environ.get("CHLOE_MODEL_FAST") or os.environ.get("CHLOE_MODEL")
+              or MIXED_FAST or FAST_DEFAULT.get(PROVIDER))
 MODEL_STRONG = (os.environ.get("CHLOE_MODEL_STRONG") or os.environ.get("CHLOE_MODEL")
                 or MIXED_STRONG or STRONG_DEFAULT.get(PROVIDER))
 # «глаза»: быстрый мозг не видит экран (DeepSeek), а есть Claude — экран смотрит Claude Haiku (быстро и дёшево),
