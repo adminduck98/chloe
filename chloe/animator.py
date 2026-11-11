@@ -36,7 +36,7 @@ ACCENT = {"red": (0.92, 0.25, 0.25), "blue": (0.22, 0.5, 0.95), "gold": (0.98, 0
 LOOKS = {
     "classic_light": {"bg": (1, 1, 1), "ink": "black", "glow": 0.0, "ground": (0.86, 0.86, 0.86), "filled_head": False},
     "classic_dark": {"bg": (0.04, 0.04, 0.05), "ink": "white", "glow": 0.35, "ground": (0.2, 0.2, 0.22), "filled_head": False},
-    "neon_desktop": {"bg": "desktop", "ink": "cyan", "glow": 0.75, "ground": None, "filled_head": True},
+    "neon_desktop": {"bg": "desktop", "ink": "cyan", "glow": 0.75, "ground": None, "filled_head": True, "trails": True, "flash": True},
     "beanie": {"bg": (0.97, 0.98, 1.0), "ink": "black", "glow": 0.0, "ground": (0.82, 0.86, 0.9), "filled_head": False, "beanie": True},
     "cozy": {"bg": (0.98, 0.95, 0.9), "ink": "black", "glow": 0.0, "ground": (0.8, 0.74, 0.66), "filled_head": True},
     "prehistoric": {"bg": (0.93, 0.86, 0.74), "ink": "black", "glow": 0.0, "ground": (0.62, 0.5, 0.36), "filled_head": True},
@@ -692,8 +692,14 @@ class Scene:
         self.shot = (spec or {}).get("shot") if (spec or {}).get("shot") in SHOTS else None
         self.beat = (spec or {}).get("beat") or ""
         self.words = words or []
+        from . import desktop_play as DP
+
+        self.cursor = DP.Cursor((spec or {}).get("cursor"), self.secs, self.w, self.h)
         self._track()
         self._items()
+        wids = [str(x.get("id") or "w{}".format(i + 1)) for i, x in enumerate((spec or {}).get("windows") or [])]
+        breaks = [(s["target"], t, None) for t, aid, s in self.hit_times() if s.get("target") in wids]
+        self.windows = DP.Windows((spec or {}).get("windows"), self.cursor, self.w, self.h, breaks)
         self.plan = self._draw_plan((spec or {}).get("draw")) if self.look.get("draw") else {}
 
     def _items(self):
@@ -789,7 +795,13 @@ class Scene:
         self.path = {}
         for aid, a in self.actors.items():
             x, facing, pts = a["x"], a["facing"], []
-            for s in self.segs[aid]:
+            drops = [{"t0": b, "t1": b, "x": self.cursor.pos(b)[0] / self.w, "_drop": True}
+                     for what, _a, b in self.cursor.grabs if what == aid and b <= self.secs]
+            for s in sorted(self.segs[aid] + drops, key=lambda s: s["t0"]):
+                if s.get("_drop"):                  # курсор отпустил героя: дальше он там, где его бросили
+                    pts.append((s["t0"], s["t0"], x, s["x"], facing))
+                    x = s["x"]
+                    continue
                 if s.get("x") is not None:          # куда сместиться: шаги и бег — походкой, рывок/толчок — скольжением
                     tx = max(0.05, min(0.95, float(s["x"])))
                     if abs(tx - x) > 0.005:
@@ -800,6 +812,40 @@ class Scene:
                     facing = 1 if s["face"] == "right" else -1
                     pts.append((s["t0"], s["t0"], x, x, facing))
             self.path[aid] = (a["x"], a["facing"], pts)
+
+    def hit_times(self):
+        """Моменты ударов (кулак, нога) — [(время, кто, сегмент)]: на них звук, вспышка, разбитое окно."""
+        out = []
+        for aid, segs in self.segs.items():
+            for s in segs:
+                if s["do"] in ("punch", "fight", "kick"):
+                    rate, peak = {"punch": (1.6, 0.175), "fight": (3.0, 0.175), "kick": (1.4, 0.2)}[s["do"]]
+                    n = 0
+                    while s["t0"] + (n + peak) / rate < s["t1"]:
+                        out.append((s["t0"] + (n + peak) / rate, aid, s))
+                        n += 1
+        return sorted(out, key=lambda e: e[0])
+
+    def carried(self, aid, t):
+        """Курсор держит героя или тот падает после броска: (dx, dy, поворот) смещения головы или None."""
+        what, since = self.cursor.holding(t)
+        if what == aid:
+            cx, cy = self.cursor.pos(t)
+            vx, _ = self.cursor.velocity(t)
+            return {"head": (cx, cy + self.fig * 0.11), "swing": max(-35.0, min(35.0, -vx / self.h * 22)), "falling": False}
+        for what, b in self.cursor.releases():
+            if what == aid and b <= t:
+                from . import desktop_play as DP
+
+                cx, cy = self.cursor.pos(b)
+                head0 = cy + self.fig * 0.11
+                stand_head = self.ground - self.fig * 0.92
+                drop = stand_head - head0
+                k = t - b
+                if k < DP.fall_time(drop, self.h):
+                    return {"head": (cx, head0 + 0.5 * DP.GRAVITY * self.h * k * k), "swing": 0.0, "falling": True}
+                return None
+        return None
 
     def where(self, aid, t):
         x0, f0, pts = self.path[aid]
@@ -919,6 +965,22 @@ class Scene:
                     add(t0 + 0.12, SFX_OF_EFFECT[s["effect"]], aid)
                 if do in ("surprised",) and not s.get("effect"):
                     add(t0 + 0.05, "boop", aid, gain_db=-3)
+        if self.cursor:                                                  # интерфейс: клики, стекло, уроненный герой
+            from . import desktop_play as DP
+
+            first = next(iter(self.actors))
+            for tp in self.cursor.presses():
+                if 0 <= tp <= self.secs:
+                    ev.append({"t": round(tp, 4), "kind": "click", "who": first, "pan": (self.cursor.pos(tp)[0] / self.w - 0.5) * 2})
+            for what, b in self.cursor.releases():
+                if what in self.actors and b <= self.secs:
+                    cx, cy = self.cursor.pos(b)
+                    land = b + DP.fall_time((self.ground - self.fig * 0.92) - (cy + self.fig * 0.11), self.h)
+                    add(b + 0.05, "whoosh", what, args={"dur": 0.4}, gain_db=-4)
+                    add(land, "thud", what)
+        for wid, (tb, _) in self.windows.broken.items():
+            x, _y, ww, _hh = self.windows.rect(wid, tb)
+            ev.append({"t": round(tb, 4), "kind": "shatter", "who": next(iter(self.actors)), "pan": ((x + ww / 2) / self.w - 0.5) * 2})
         for key, (t0, t1) in self.plan.items():                        # белая доска: скрип маркера, пока он рисует
             if t1 - t0 > 0.2:
                 aid = key if key in self.actors else next(iter(self.actors))
@@ -1017,6 +1079,7 @@ class Scene:
             if t >= when:
                 gx = (at if at is not None else self.where(who, when)[0] + 0.25 * self.where(who, when)[1]) * w
                 draw_hand_prop(self._pen(c), kind, (gx, self.ground - self.fig * 0.02), 1, self.fig, ink)
+        self.windows.draw(c, t, COLORS)
         hands = {}
         for aid in sorted(self.actors, key=lambda k: self.actors[k]["scale"]):
             t0, t1 = self.plan.get(aid, (-1.0, -1.0))
@@ -1043,8 +1106,23 @@ class Scene:
                 px_ = sx_ + (ex_ - sx_) * ease(k) if not f["arc"] else sx_ + (ex_ - sx_) * k
                 py_ = sy_ + (ey_ - sy_) * (ease(k) if not f["arc"] else k) - (math.sin(math.pi * k) * self.fig * 0.45 if f["arc"] else 0)
                 draw_hand_prop(self._pen(c), f["kind"], (px_, py_), 1, self.fig, ink)
+        self.windows.draw_shards(c, t, COLORS, self.ground)
+        if self.cursor:
+            from . import desktop_play as DP
+
+            pressed = [t - p for p in self.cursor.presses() if 0 <= t - p]
+            DP.draw_cursor(c, self.cursor.pos(t), self.h, min(pressed) if pressed else None, self.cursor.holding(t)[0] is not None)
         for tip in pens:                                                 # маркер — поверх всего, в координатах экрана
             draw_marker(c, tip, self.h, t)
+        if self.look.get("flash"):                                       # вспышка на кадре сильного удара и разбитого стекла
+            hits = [ht for ht, _a, _s in self.hit_times()] + [tb for tb, _ in self.windows.broken.values()]
+            near = [t - ht for ht in hits if 0 <= t - ht < 0.08]
+            if near:
+                c.save()
+                c.identity_matrix()
+                c.set_source_rgba(1, 1, 1, 0.22 * (1 - min(near) / 0.08))
+                c.paint()
+                c.restore()
 
     def _pen(self, c):
         return Sketch(c, COLORS[self.look["ink"]]) if self.look.get("draw") else c
@@ -1057,9 +1135,35 @@ class Scene:
         x, facing = self.where(aid, t)
         front = self._front
         size = self.fig * a["scale"]
-        pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+        hang = self.carried(aid, t)
+        if hang:                                                         # висит на курсоре или падает — болтает руками-ногами
+            g = math.sin(t * 13)
+            pose = dict(BASE, sh1=150 + 20 * g, el1=30, sh2=-150 + 20 * g, el2=-30, hip1=12 + 18 * g, kn1=-25, hip2=-12 - 18 * g,
+                        kn2=-35, head=-10) if not hang["falling"] else dict(pose_of("surprised"), hip1=30 * g, kn1=-50, hip2=-30 * g, kn2=-40)
+            emo, front = ("surprised" if hang["falling"] else "angry"), True
+            pts, r = skeleton(pose, hang["head"][0], self.ground, size, facing, True)
+            dx, dy = hang["head"][0] - pts["head"][0], hang["head"][1] - pts["head"][1]
+            ang = math.radians(hang["swing"])
+            hx, hy = hang["head"]
+            pts = {k: (hx + (px + dx - hx) * math.cos(ang) - (py + dy - hy) * math.sin(ang),
+                       hy + (px + dx - hx) * math.sin(ang) + (py + dy - hy) * math.cos(ang)) for k, (px, py) in pts.items()}
+        else:
+            pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
         if measure:
             return pts["hand1"], pts, r
+        if self.look.get("trails") and not getattr(self, "_ghost", False):
+            fast = hang is not None or pose.get("_hit", 0) > 0.25 or \
+                abs(x - self.where(aid, max(0.0, t - 0.05))[0]) * w / 0.05 > size * 1.5
+            if fast:                                                     # след быстрого движения: две бледные копии позади
+                self._ghost = True
+                try:
+                    for back, alpha in ((0.08, 0.14), (0.04, 0.28)):
+                        c.push_group()
+                        self._actor(c, aid, max(0.0, t - back), ink)
+                        c.pop_group_to_source()
+                        c.paint_with_alpha(alpha)
+                finally:
+                    self._ghost = False
         speed = abs(x - self.where(aid, max(0.0, t - 0.06))[0]) * w / 0.06
         if speed > size * 1.2:                                           # бежит быстро — линии скорости позади
             draw_speed_lines(c, pts, size, -1 if x > self.where(aid, max(0.0, t - 0.06))[0] else 1, a["color"])
@@ -1330,5 +1434,8 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "Эмоции (emotion): {}. Предмет в руке (prop): {}. Значок над головой (effect): {}. Предметы сцены (props.kind): {}. "
          "Камера: [{{\"from\", \"to\", \"zoom\": 1.1–1.8, \"on\": id героя}}]. Стиль whiteboard (белая доска): картинка рисуется маркером "
          "по ходу рассказа — \"draw\": [{{\"what\": id героя или kind предмета, \"word\": слово из текста, на котором рисовать}}] "
-         "(сначала место, потом герои; действия — после того, как всё нарисовано, примерно с 0.6 сцены).").format(
+         "(сначала место, потом герои; действия — после того, как всё нарисовано, примерно с 0.6 сцены). "
+         "Стиль neon_desktop (рабочий стол): \"windows\": [{{\"id\": \"w1\", \"x\", \"y\", \"w\", \"h\" (доли кадра), \"color\"}}]; "
+         "курсор — персонаж: \"cursor\": [{{\"t\": доля сцены, \"x\", \"y\", \"grab\": id окна или героя | \"release\": true | \"click\": true}}] — "
+         "тащит окна, хватает героя за голову и роняет; удар (punch/kick/fight) с \"target\": id окна разбивает окно.").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))

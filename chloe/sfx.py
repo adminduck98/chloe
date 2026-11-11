@@ -221,6 +221,34 @@ def flutter(seed=0):
     return finish(x, 0.35), 0.012
 
 
+def click(seed=0):
+    """Щелчок мыши: два очень коротких сухих тика (нажал — отпустил)."""
+    rng = _rng(seed)
+    n = _n(0.07)
+    x = np.zeros(n)
+    for at, amp in ((0, 1.0), (rng.uniform(0.035, 0.05), 0.55)):
+        m = n - int(at * SR)
+        x[int(at * SR):] += amp * (band(rng.standard_normal(m), 2500, 9000) * env_adsr(m, 0.0003, 0.0025) +
+                                   0.5 * tone(m, 2200, 1800, 0.004) * env_adsr(m, 0.0003, 0.004))
+    return finish(x, 0.7, 0.0005, 0.005), 0.001
+
+
+def shatter(seed=0):
+    """Разбитое стекло: удар-щелчок, шипящий звон осколков и россыпь высоких «динь», падающих по одному."""
+    rng = _rng(seed)
+    n = _n(1.1)
+    crack = band(rng.standard_normal(n), 2500, 12000) * env_adsr(n, 0.0005, 0.03)
+    hiss = band(rng.standard_normal(n), 4000, 11000) * env_adsr(n, 0.002, 0.18) * 0.35
+    body = tone(n, 180, 90, 0.03) * env_adsr(n, 0.001, 0.05) * 0.5
+    x = crack + hiss + body
+    for _ in range(14):
+        at = int(rng.uniform(0.01, 0.75) ** 1.6 * SR)
+        m = n - at
+        f = rng.uniform(3200, 8200)
+        x[at:] += rng.uniform(0.15, 0.4) * tone(m, f) * env_adsr(m, 0.0005, rng.uniform(0.02, 0.09))
+    return finish(saturate(x, 1.5), 0.95), 0.002
+
+
 def scribble(dur=1.2, seed=0):
     """Маркер по бумаге: шуршащий шум 2–7 кГц, штрихами (5–8 в секунду, каждый чуть другой), с паузами на отрыв руки."""
     rng = _rng(seed)
@@ -252,11 +280,11 @@ def room_tone(secs, seed=0, level_db=-52.0):
 
 RECIPES = {"whoosh": whoosh, "swish": swish, "punch": punch, "thud": thud, "step": step, "tap": tap, "pop": pop,
            "ding": ding, "sparkle": sparkle, "boop": boop, "stinger": stinger, "flutter": flutter,
-           "scribble": scribble}
+           "scribble": scribble, "click": click, "shatter": shatter}
 # громкость каждого рода звуков относительно голоса (дБ): удары громче всех, шаги и шорохи — тихо
 LEVEL_DB = {"punch": -9, "thud": -10, "stinger": -11, "whoosh": -16, "swish": -15, "step": -22, "tap": -18, "pop": -16,
             "ding": -14, "sparkle": -17, "boop": -17, "flutter": -24,
-            "scribble": -24}
+            "scribble": -24, "click": -17, "shatter": -9}
 
 
 def make(kind, seed=0, **kw):
