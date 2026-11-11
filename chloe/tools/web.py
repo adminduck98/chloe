@@ -1,6 +1,7 @@
 """Интернет: поиск, чтение страниц, скачивание файлов."""
 import os
 import re
+import time
 import urllib.parse
 
 from ..changes import changes
@@ -43,6 +44,38 @@ SEARCH_BACKENDS = ["bing", "yandex", "duckduckgo", "brave", "mojeek"]   # зам
 _search = {"good": None}                                                   # кто ответил в прошлый раз — его первым
 
 
+SEARCH_BUDGET = 20.0      # секунд на весь поиск: раньше по очереди выходило до 27–40 с; Bing и Яндекс сами порой думают
+                          # 12–17 с (замер 11.11.2026) — предел 12 с ронял треть запросов, поэтому 20
+PARALLEL = 2              # сколько поисковиков спрашиваем одновременно
+
+
+def _race(DDGS, query, count, backends, wait):
+    """Несколько поисковиков сразу, не дольше wait: первый непустой ответ — (результаты, кто, проблемы).
+    Опоздавшие доработают в фоне и ничего не испортят."""
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as wait_for
+
+    pool = ThreadPoolExecutor(max_workers=len(backends))
+    jobs = {pool.submit(lambda b=b: list(DDGS(timeout=max(2, int(wait))).text(query, max_results=count, backend=b))): b
+            for b in backends}
+    pool.shutdown(wait=False)
+    problems, end = [], time.time() + wait
+    pending = set(jobs)
+    while pending:
+        done, pending = wait_for(pending, timeout=max(0, end - time.time()), return_when=FIRST_COMPLETED)
+        if not done:
+            problems += ["{}: TimeoutError".format(jobs[j]) for j in pending]
+            break
+        for j in done:
+            try:
+                res = j.result()
+            except Exception as e:
+                problems.append("{}: {}".format(jobs[j], type(e).__name__))
+                continue
+            if res:
+                return res, jobs[j], problems
+    return [], None, problems
+
+
 def tool_web_search(a):
     try:
         from ddgs import DDGS
@@ -51,12 +84,17 @@ def tool_web_search(a):
     # поисковики по очереди: один не ответил или ничего не нашёл — следующий. Пустой итог — обычный ответ, а не сбой шага
     order = ([_search["good"]] if _search["good"] else []) + [b for b in SEARCH_BACKENDS if b != _search["good"]]
     res, problems = [], []
-    for backend in order[:4]:
-        try:
-            res = list(DDGS(timeout=10).text(a["query"], max_results=int(a.get("count", 6)), backend=backend))
-        except Exception as e:
-            problems.append("{}: {}".format(backend, type(e).__name__))
-            res = []
+    deadline = time.time() + SEARCH_BUDGET
+    count = int(a.get("count", 6))
+    # по два поисковика одновременно — кто первым нашёл, того и берём (замер 11.11.2026: Bing и Яндекс отвечают
+    # то за 2 с, то за 17 с, по очереди это было до 27 с); не нашли оба — следующая пара, пока не кончится время
+    for i in range(0, min(len(order), 4), PARALLEL):
+        left = deadline - time.time()
+        if left < 1.5:
+            problems += ["{}: Timeout (общий предел)".format(b) for b in order[i:i + PARALLEL]]
+            break
+        res, backend, more = _race(DDGS, a["query"], count, order[i:i + PARALLEL], left)
+        problems += more
         if res:
             _search["good"] = backend
             break
