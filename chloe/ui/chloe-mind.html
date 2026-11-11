@@ -92,14 +92,14 @@
   .label.recall { color: #FFC2C2; }
   .label.think { color: var(--coral); }
   .zone, .region { position: absolute; transform: translate(-50%, -50%); font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
-    color: rgba(202,202,202,.42); white-space: nowrap; pointer-events: none; }
-  .region { font-size: 9px; color: rgba(202,202,202,.32); }
+    color: rgba(202,202,202,.7); white-space: nowrap; pointer-events: none; text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
+  .region { font-size: 10px; color: rgba(202,202,202,.62); }   /* было 9px и .32 — на тёмном фоне не читалось */
   /* центр управления: отделы мозга, слои и ядро — кнопки, открывают слой системы */
   .region, .layer, #coreLabel { pointer-events: auto; cursor: pointer; background: transparent; border: 0; padding: 8px 10px;
     font-family: var(--font); transition: color .15s, opacity .4s; }
   .region:hover, .region:focus-visible { color: var(--ink); outline: none; }
   .layer { position: absolute; transform: translate(-50%, -50%); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-    color: rgba(202,202,202,.55); white-space: nowrap; }
+    color: rgba(202,202,202,.78); white-space: nowrap; text-shadow: 0 0 6px var(--bg); }
   .layer:hover, .layer:focus-visible { color: var(--coral); outline: none; }
   .layer.hot { color: var(--coral); }
   #coreLabel { position: absolute; transform: translate(-50%, 0); font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
@@ -760,22 +760,23 @@
   }));
   shell.frustumCulled = false;
   group.add(shell);
-  // светящийся край сферы (как атмосфера у планеты): тонкая линия по контуру и едва заметная дымка к центру
-  var limb = new THREE.Mesh(new THREE.SphereGeometry(SPH, 72, 48), new THREE.ShaderMaterial({
+  // светящийся край сферы (как атмосфера у планеты): тонкое кольцо по контуру, всегда лицом к зрителю.
+  // Кольцо, а не целая сфера: закрашиваются только пиксели края, а не весь диск мозга.
+  var limb = new THREE.Mesh(new THREE.RingGeometry(SPH * 0.93, SPH * 1.012, 160, 1), new THREE.ShaderMaterial({
     uniforms: { uBase: shellUniforms.uBase, uBright: common.uBright, uEnergy: shellUniforms.uEnergy },
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: "varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalMatrix * normal; vV = -mv.xyz; gl_Position = projectionMatrix * mv; }",
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: "varying float vR; void main(){ vR = length(position.xy) / " + SPH.toFixed(3) + "; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
     fragmentShader: [
-      "uniform vec3 uBase; uniform float uBright; uniform float uEnergy; varying vec3 vN; varying vec3 vV;",
+      "uniform vec3 uBase; uniform float uBright; uniform float uEnergy; varying float vR;",
       "void main(){",
-      "  float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));",
-      "  float a = (pow(f, 6.0) * (0.34 + 0.3 * uEnergy) + pow(f, 2.0) * 0.022) * uBright;",
+      "  float edge = smoothstep(0.93, 1.0, vR) * (1.0 - smoothstep(1.0, 1.012, vR));",   // ярко у самого края, внутрь плавно гаснет
+      "  float a = (pow(edge, 6.0) * (0.2 + 0.22 * uEnergy) + edge * 0.02) * uBright;",
       "  gl_FragColor = vec4(uBase * a, a);",
       "}"
     ].join("\n")
   }));
   limb.frustumCulled = false;
-  shell.add(limb);
+  scene.add(limb);
   var cortexUniforms = { uBreath: { value: 0 } };   // сетки мозга нет — сфера дышит через shell.scale
 
   var glowTex = (function () {
@@ -838,13 +839,13 @@
       "  return mix(mix(mix(h1(n), h1(n + 1.0), f.x), mix(h1(n + 57.0), h1(n + 58.0), f.x), f.y),",
       "             mix(mix(h1(n + 113.0), h1(n + 114.0), f.x), mix(h1(n + 170.0), h1(n + 171.0), f.x), f.y), f.z);",
       "}",
-      "float fbm(vec3 p){ return 0.5 * n3(p) + 0.25 * n3(p * 2.03) + 0.125 * n3(p * 4.01); }",
+      "float fbm(vec3 p){ return 0.57 * n3(p) + 0.29 * n3(p * 2.03) + 0.14 * n3(p * 4.01); }",
       "void main(){",
       "  vec3 n = normalize(vN), v = normalize(vV);",
       "  float ndv = max(dot(n, v), 0.0);",
       "  float sp = 0.28 + 0.5 * uAct;",                                     // думает — плазма течёт быстрее
       "  vec3 q = vObj * 26.0 + vec3(0.0, uTime * sp, uTime * sp * 0.6);",
-      "  float pl = fbm(q + 1.7 * fbm(q * 0.6 - uTime * 0.12));",            // завихрения: шум, искривлённый шумом
+      "  float pl = fbm(q + 1.6 * vec3(sin(q.y * 0.9 + uTime * 0.2), sin(q.z * 0.8 - uTime * 0.17), sin(q.x * 0.85)));",   // завихрения
       "  float veins = smoothstep(0.50, 0.64, pl) * (1.0 - smoothstep(0.64, 0.80, pl) * 0.5);",
       "  float heart = pow(ndv, 5.0);",                                      // к центру диска — горячее
       "  float rim = pow(1.0 - ndv, 2.0);",
@@ -1223,7 +1224,7 @@
       "  float lod = smoothstep(6.0, 20.0, vPx);",               // мелкая клетка — точка, крупная — с мембраной
       "  float R = 0.33;",
       "  float inside = 1.0 - smoothstep(R - aa, R + aa, r);",
-      "  float ball = sqrt(max(0.0, 1.0 - (r * r) / (R * R)));", // объём: центр ярче края
+      "  float ball = max(0.0, 1.0 - (r * r) / (R * R));",        // объём: центр ярче края
       // в маленьком окне клетка — несколько пикселей: тогда это просто яркая точка, без тонких деталей
       "  float body = inside * mix(0.13 + 0.20 * ball, 0.04 + 0.05 * ball, mem * lod) * (1.0 + 1.2 * vGlow) * mix(3.2, 1.0, lod);",
       "  float ring = exp(-pow((r - R) / max(0.028, aa), 2.0)) * (0.36 + 0.26 * mem + 0.9 * vGlow) * lod;",
@@ -3908,7 +3909,6 @@
     somaGlow.visible = level > 0;   // свечение нейронов — только когда компьютер тянет
     axLod(level);
     haze.forEach(function (h) { h.visible = level > 0; });
-    limb.visible = level > 0;       // светящийся край сферы — на слабом компьютере не рисуем
     resize();
   }
   function trackQuality(frameMs) {
@@ -4356,6 +4356,11 @@
     group.updateMatrixWorld();
     common.uCam.value = camera.position.z;          // для глубины: где центр мозга относительно зрителя и какого он размера
     common.uRad.value = SPH * sc;
+    // контур шара, видимый из камеры, чуть меньше его радиуса и лежит чуть ближе к зрителю (перспектива)
+    var limbD = Math.max(camera.position.z, SPH * sc * 1.05), limbK = Math.sqrt(1 - Math.pow(SPH * sc / limbD, 2));
+    limb.position.set(0, 0, SPH * sc * SPH * sc / limbD);
+    limb.scale.setScalar(sc * shell.scale.x * limbK);
+    limb.visible = quality.level > 0 && camera.position.z > SPH * sc * 1.15;   // внутри мозга контура нет
 
     coreUpdate(t, dt);
     drift.amp = 0.035 * (1 + 0.6 * mood.think) * (1 - 0.5 * mood.sleep) * (0.6 + 0.4 * common.uDens.value);
