@@ -140,7 +140,7 @@ def video_start(prompt, source=None, seconds=5, resolution="720P", ratio="16:9",
     inp = {"prompt": prompt}
     params = {"resolution": resolution, "duration": max(3, min(int(seconds or 5), 15)), "watermark": False}
     if source:
-        inp["img_url"] = _image_ref(source)
+        inp["media"] = [{"type": "first_frame", "url": _image_ref(source)}]     # happyhorse i2v: старое поле img_url не принимается
     else:
         params["ratio"] = ratio
     body = {"model": model or (I2V_MODEL if source else VIDEO_MODEL), "input": inp, "parameters": params}

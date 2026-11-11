@@ -97,6 +97,14 @@ class Video(Base):
         self.assertEqual(body["parameters"]["duration"], 15)
         self.assertEqual(body["model"], qm.VIDEO_MODEL)
 
+    def test_image_to_video_uses_media_first_frame(self):
+        with self.fake_urlopen([{"output": {"task_id": "t2"}}]), mock.patch.object(qm, "_image_ref", return_value="data:x"):
+            qm.video_start("оживи", source="/tmp/a.png")
+        body = self.sent[0][2]
+        self.assertEqual(body["input"]["media"], [{"type": "first_frame", "url": "data:x"}])
+        self.assertNotIn("img_url", body["input"])
+        self.assertNotIn("ratio", body["parameters"])
+
     def test_wait_downloads(self):
         answers = [{"output": {"task_status": "RUNNING"}},
                    {"output": {"task_status": "SUCCEEDED", "video_url": "https://x/v.mp4"}}]
