@@ -129,9 +129,10 @@ LANG = os.environ.get("CHLOE_LANG", "ru-RU")                     # для узб
 VOICE = os.environ.get("CHLOE_VOICE", "ru-RU-SvetlanaNeural")    # голос edge-tts: Светлана (русский, Microsoft)
 VOICES = [VOICE]   # если Светлана не отвечает, Chloe говорит офлайн-голосом Piper (тоже женским), а не мужским Дмитрием
 TTS = os.environ.get("CHLOE_TTS", "edge")                         # edge — Светлана (Microsoft, онлайн); piper — офлайн и быстрее; svetlana — только Светлана, без запасных; qwen — голос Qwen (запасной — Светлана)
-# слух: google — быстрее (0,6–1,5 с); qwen — точнее с английскими названиями посреди русской речи, но 2–4,5 с
-# и спрашивается вместе с Google (ждём его не дольше CHLOE_QWEN_ASR_WAIT). По умолчанию — скорость.
-ASR = os.environ.get("CHLOE_ASR", "google")
+# слух: qwen (по умолчанию) — точнее: понимает подсказку о разговоре, английские названия, тихую речь; 2–4,5 с,
+# спрашивается вместе с Google (ждём его не дольше CHLOE_QWEN_ASR_WAIT), Google — запасной и сверка конца фразы;
+# google — только Google, быстрее (0,6–1,5 с), но грубее.
+ASR = os.environ.get("CHLOE_ASR", "qwen")
 PIPER_VOICE = os.environ.get("CHLOE_PIPER_VOICE", "ru_RU-irina-medium")   # русские: irina (жен.), denis, dmitri, ruslan
 VOICES_DIR = DATA / "voices"                                       # модели Piper
 EARS_DIR = DATA / "ears"                                           # офлайн-слух Vosk: слово «Хлоя» без интернета
@@ -139,7 +140,7 @@ EARS_MODEL = os.environ.get("CHLOE_EARS_MODEL", "vosk-model-small-ru-0.22")
 WAKE_OFFLINE = os.environ.get("CHLOE_WAKE", "offline") != "cloud"   # cloud — как раньше: вся речь в Google
 CONFIRM = os.environ.get("CHLOE_CONFIRM", "safe")                # safe — спрашивать перед необратимым; off — не спрашивать
 KEEP_SCREENS = int(os.environ.get("CHLOE_KEEP_SCREENS", "7"))    # сколько дней хранить скриншоты в журнале; 0 — не хранить
-WAKE_WORDS = ("хлоя", "хлои", "хлое", "хлою", "хлоей", "хлоэ", "хлоё", "клоя", "клои", "клое", "клою",
+WAKE_WORDS = ("хлоя", "хлои", "хлое", "хлою", "хлоей", "хлоэ", "хлоё", "клоя", "клои", "клое", "клою", "клоэ", "флоэ", "флоя",
               "chloe", "chloé")   # только целые слова; похожие (одна буква не та) — см. ears.is_wake_word
 STOP_WORDS = ("стоп", "хватит", "отмена", "замолчи", "stop")
 EXIT_WORDS = ("выключись", "до свидания", "выход")

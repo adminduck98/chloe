@@ -143,3 +143,17 @@ class Boost(unittest.TestCase):
     def test_noise_is_not_blown_up(self):
         out = voice_mod.boost(self.audio(5))
         self.assertLessEqual(self.peak(out), 5 * voice_mod.GAIN_MAX)
+
+
+class Hearing(unittest.TestCase):
+    def test_google_wins_only_when_qwen_cut_the_end(self):
+        full = "найди в интернете настоящие истории про стикменов и напиши сценарий"
+        self.assertEqual(voice_mod.choose("найди в интернете настоящие истории про", full), full)
+        self.assertEqual(voice_mod.choose("Хлоя, открой браузер", "хлоя открой браузер"), "Хлоя, открой браузер")
+        self.assertEqual(voice_mod.choose("привет", ""), "привет")
+
+    def test_context_has_names_and_last_answer(self):
+        text = voice_mod.asr_context("Включила Lana Del Rey — Art Deco")
+        self.assertIn("Хлоя", text)
+        self.assertIn("Art Deco", text)
+        self.assertNotIn("Последний ответ", voice_mod.asr_context(""))

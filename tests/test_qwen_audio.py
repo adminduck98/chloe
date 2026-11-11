@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import urllib.error
 import unittest
 from unittest import mock
 
@@ -54,13 +55,44 @@ class QwenAudio(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", lambda req, timeout=None: resp):
             self.assertEqual(qwen_audio.asr(b"RIFF....", "ru"), "привет")
 
+    def test_asr_sends_context_and_vocabulary(self):
+        sent = []
+
+        def fake(req, timeout=None):
+            sent.append(json.loads(req.data))
+            return FakeResponse(json.dumps({"output": {"text": "Хлоя, привет"}}).encode())
+
+        with mock.patch("urllib.request.urlopen", fake):
+            qwen_audio.asr(b"RIFF", "ru", context="Разговор с Хлоей", vocabulary={"Хлоя": 4})
+        body = sent[0]
+        msgs = body["input"]["messages"]
+        self.assertEqual(msgs[0]["content"][0]["text"], "Разговор с Хлоей")      # подсказка — перед звуком
+        self.assertEqual(msgs[-1]["content"][0]["type"], "input_audio")
+        self.assertEqual(body["parameters"]["vocabulary"], {"Хлоя": 4})
+
+    def test_asr_retries_without_hints_if_rejected(self):
+        sent = []
+
+        def fake(req, timeout=None):
+            body = json.loads(req.data)
+            sent.append(body)
+            if "vocabulary" in body["parameters"]:
+                raise urllib.error.HTTPError(req.full_url, 400, "bad", {}, io.BytesIO(b'{"message":"vocabulary not supported"}'))
+            return FakeResponse(json.dumps({"output": {"text": "привет"}}).encode())
+
+        with mock.patch("urllib.request.urlopen", fake):
+            self.assertEqual(qwen_audio.asr(b"RIFF", "ru", context="x", vocabulary={"a": 1}), "привет")
+        self.assertEqual(len(sent), 2)
+        self.assertNotIn("vocabulary", sent[1]["parameters"])
+        self.assertEqual(len(sent[1]["input"]["messages"]), 1)
+
     def test_recognize_uses_qwen_then_google_on_failure(self):
         v = Voice(enabled=True)
         v.recognizer = mock.Mock()
         v.recognizer.recognize_google.return_value = "через гугл"
         audio = mock.Mock()
         audio.get_wav_data.return_value = b"RIFF"
-        with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(qwen_audio, "asr", lambda wav, lang: "через квен"):
+        with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(qwen_audio, "asr", lambda wav, lang, *rest: "через квен"):
             self.assertEqual(v.recognize(audio), "через квен")
         with mock.patch.object(config, "ASR", "qwen"), \
              mock.patch.object(qwen_audio, "asr", mock.Mock(side_effect=OSError("нет связи"))):
@@ -87,7 +119,7 @@ class QwenAudio(unittest.TestCase):
         v.recognizer.recognize_google.return_value = "стоп"
         audio = mock.Mock()
         audio.get_wav_data.return_value = b"RIFF"
-        with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(qwen_audio, "asr", lambda wav, lang: ""):
+        with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(qwen_audio, "asr", lambda wav, lang, *rest: ""):
             self.assertEqual(v.recognize(audio), "стоп")
 
     def test_slow_qwen_loses_the_race_to_google(self):
@@ -98,7 +130,7 @@ class QwenAudio(unittest.TestCase):
         audio = mock.Mock()
         audio.get_wav_data.return_value = b"RIFF"
         with mock.patch.object(config, "ASR", "qwen"), mock.patch.object(voice_mod, "QWEN_ASR_WAIT", 0.3), \
-             mock.patch.object(qwen_audio, "asr", lambda wav, lang: time.sleep(1.5) or "поздно"):
+             mock.patch.object(qwen_audio, "asr", lambda wav, lang, *rest: time.sleep(1.5) or "поздно"):
             started = time.time()
             self.assertEqual(v.recognize(audio), "через гугл")
             self.assertLess(time.time() - started, 1.0)              # не ждём медленный Qwen

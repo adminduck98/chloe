@@ -63,6 +63,26 @@ def boost(audio):
         return audio
 
 
+ASR_WORDS = {"Хлоя": 4, "Chloe": 3, "стикмен": 4, "Animator vs. Animation": 3, "Telegram": 3, "YouTube": 3, "kinogo": 3, "Brave": 3}
+
+
+def asr_context(last_said=""):
+    """Подсказка Qwen: о чём разговор и как пишутся имена. Помогает узнавать «Хлоя» и редкие слова."""
+    text = "Разговор с голосовым ассистентом по имени Хлоя (Chloe), по-русски. Имена и слова: " + ", ".join(ASR_WORDS) + "."
+    if last_said.strip():
+        text += " Последний ответ ассистента: " + re.sub(r"\s+", " ", last_said.strip())[:400]
+    return text
+
+
+def choose(qwen, google):
+    """Qwen и Google услышали одну фразу. Берём Qwen, но если он оборвал конец (у Google заметно больше слов) — Google."""
+    if not google:
+        return qwen
+    if len(words(google)) >= len(words(qwen)) + 3:
+        return google
+    return qwen
+
+
 class Voice:
     """Слух (распознавание речи) и голос (озвучка)."""
 
@@ -74,6 +94,7 @@ class Voice:
         self.tts_engine = None
         self.mixer_ready = False
         self.saying = ""          # что Chloe говорит прямо сейчас
+        self.last_said = ""       # её последняя реплика — подсказка для слуха: о чём сейчас разговор
         self.spoke_until = 0.0    # когда она закончила говорить
         self.awaiting = False     # ждёт ответа «да/нет»
         self.voice_down_until = 0.0  # Светлана не ответила (нет интернета) — до этого времени сразу запасной голос
@@ -164,14 +185,18 @@ class Voice:
 
             pool = ThreadPoolExecutor(max_workers=2)
             wav = audio.get_wav_data(convert_rate=16000, convert_width=2)
-            qwen = pool.submit(qwen_audio.asr, wav, LANG.split("-")[0])
+            qwen = pool.submit(qwen_audio.asr, wav, LANG.split("-")[0], 20, asr_context(self.last_said), ASR_WORDS)
             google = pool.submit(self._google, audio)
             pool.shutdown(wait=False)
             try:
                 text = qwen.result(timeout=QWEN_ASR_WAIT)
                 if text:
+                    try:
+                        other = google.result(timeout=0 if google.done() else 0.6)
+                    except Exception:
+                        other = ""
                     brain.voice(0, "user")
-                    return text
+                    return choose(text, other)
             except Late:
                 print("[слух Qwen не успел за {:.1f} с — беру Google]".format(QWEN_ASR_WAIT))
             except qwen_audio.NoSpeech:
@@ -201,6 +226,7 @@ class Voice:
         where = state.get("where", "local")
         brain.reply(text, where)
         self.saying = text
+        self.last_said = text
         text = spoken(text) or text            # озвучиваем без значков разметки; в окне и журнале — как есть
         try:
             if where == "phone":
@@ -481,7 +507,7 @@ def voice_mp3(text, timeout=60):
     print("[голос {} недоступен ({}) — говорю запасным]".format(VOICES[0], type(problem).__name__ if problem else "пусто"))
     return None
 
-QWEN_ASR_WAIT = float(os.environ.get("CHLOE_QWEN_ASR_WAIT", "3.5"))   # сек: дольше — берём ответ Google
+QWEN_ASR_WAIT = float(os.environ.get("CHLOE_QWEN_ASR_WAIT", "4.5"))   # сек: дольше — берём ответ Google
 
 voice = Voice(enabled=True)
 

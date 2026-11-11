@@ -67,18 +67,38 @@ def tts_mp3(text, voice=None, timeout=30):
     return data
 
 
-def asr(wav_bytes, language="ru", timeout=20):
-    """Текст из записи WAV (16 кГц, 16 бит, моно). Пустая строка — речи не было."""
-    body = {"model": ASR_MODEL,
-            "input": {"messages": [{"role": "user", "content": [
-                {"type": "input_audio", "input_audio": {"data": "data:audio/wav;base64," + base64.b64encode(wav_bytes).decode()}}]}]},
-            "parameters": {"format": "wav", "sample_rate": "16000", **({"language_hints": [language]} if language else {})}}
+def asr(wav_bytes, language="ru", timeout=20, context="", vocabulary=None):
+    """Текст из записи WAV (16 кГц, 16 бит, моно). Пустая строка — речи не было.
+    context — о чём разговор и как пишутся имена (на замере «Хлоя» перестала превращаться в «флоэ», «Телеграм» и «Полимер» — верные);
+    vocabulary — слово → вес 1–5 (мгновенные горячие слова). Если сервер не принял подсказки — повтор без них."""
+    audio = {"role": "user", "content": [
+        {"type": "input_audio", "input_audio": {"data": "data:audio/wav;base64," + base64.b64encode(wav_bytes).decode()}}]}
+    params = {"format": "wav", "sample_rate": "16000", **({"language_hints": [language]} if language else {})}
+
+    def ask(hints):
+        messages = [audio]
+        par = dict(params)
+        if hints and context.strip():
+            messages.insert(0, {"role": "user", "content": [{"type": "input_text", "text": context.strip()[:1500]}]})
+        if hints and vocabulary:
+            par["vocabulary"] = vocabulary
+        body = {"model": ASR_MODEL, "input": {"messages": messages}, "parameters": par}
+        return _request("/api/v1/services/aigc/multimodal-generation/generation", body, timeout=timeout)
+
+    hinted = bool(context.strip() or vocabulary)
     try:
-        r = _request("/api/v1/services/aigc/multimodal-generation/generation", body, timeout=timeout)
+        r = ask(hinted)
     except RuntimeError as e:
-        if str(e).startswith("HTTP 400"):
-            raise NoSpeech(str(e)) from None
-        raise
+        if not str(e).startswith("HTTP 400"):
+            raise
+        try:
+            if not hinted:
+                raise
+            r = ask(False)               # подсказки не приняты — слушаем без них
+        except RuntimeError as e2:
+            if str(e2).startswith("HTTP 400"):
+                raise NoSpeech(str(e2)) from None
+            raise
     with r:
         data = json.load(r)
     out = data.get("output") or {}
