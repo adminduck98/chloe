@@ -24,7 +24,8 @@ class Write(unittest.TestCase):
             return script("черновик" if len(prompts) == 1 else "правка")
 
         out = sp.write("видео про стикмена", "как у Animator vs Animation", ask=ask, search=lambda a: "Найдено: приёмы " + a["query"])
-        self.assertEqual(len(prompts), 2)
+        self.assertEqual(len(prompts), 3)                                   # черновик, редактор, удлинение (текст короткий)
+        self.assertIn("слишком короткий", prompts[2])
         self.assertIn("видео про стикмена", prompts[0])
         self.assertIn("как у Animator vs Animation", prompts[0])          # подсказка пользователя
         self.assertIn("Найдено: приёмы", prompts[0])                        # материалы из интернета

@@ -90,7 +90,8 @@ ANIM_FORMAT = """
  "scenes": [{{"stage": "hook", "picture": "...", "video": "...", "beats": ["...", "...", "..."], "narration": "...",
              "place": "...", "anim": {{"actors": [...], "props": [...], "acting": [...], "camera": [...]}}}}]}}"""
 
-WORDS_PER_SEC = 2.2
+WORDS_PER_SEC = 2.1          # замер 11.11.2026: Светлана в голосе Chloe — 13,3 знака (~2,1 слова) в секунду
+CHARS_PER_SEC = 13.3
 
 
 def default_anim(scene, i):
@@ -219,6 +220,51 @@ def call(ask, text, think):
         return ask(text)
 
 
+LENGTHEN = """Ниже закадровый текст {n} сцен ролика. Он слишком {how}: ролик должен идти около {secs} секунд, а сейчас выходит {now}.
+Перепиши текст КАЖДОЙ сцены {what} — {words} слов на сцену (посчитай слова!), не больше {chars} знаков. {tip}
+Смысл, порядок сцен, интонация и последние слова сцен (стыки) — те же. Живой разговорный русский, без штампов.
+Ответь ТОЛЬКО JSON: {{"narrations": ["текст сцены 1", "текст сцены 2", ...]}} — ровно {n} строк.
+
+ТЕКСТ СЕЙЧАС:
+{current}"""
+
+
+def est_seconds(scenes):
+    from .studio import scene_seconds
+
+    return sum(scene_seconds(sc) for sc in scenes)
+
+
+def fit_length(script, duration, ask):
+    """Сценарий заметно короче заказанной длины — просим удлинить закадровый текст (один раз; остальное не трогаем)."""
+    target = max(20, min(int(duration or 60), 600))
+    now = est_seconds(script["scenes"])
+    if target * 0.85 <= now <= target * 1.15:
+        return script
+    n = len(script["scenes"])
+    per = target / n - 0.8                                   # секунд речи на сцену (пауза в конце и звук перехода — не речь)
+    short = now < target
+    words = "{}–{}".format(int(per * WORDS_PER_SEC * 0.9), int(per * WORDS_PER_SEC * 1.0))
+    current = "\n".join("{}. {}".format(i + 1, sc["narration"]) for i, sc in enumerate(script["scenes"]))
+    tip = ("Добавь живую деталь, пример, ощущение — не воду и повторы." if short else
+           "Убери лишнее, оставь самое сильное.")
+    try:
+        raw = call(ask, LENGTHEN.format(n=n, secs=target, now=round(now), words=words, current=current,
+                                        how="короткий" if short else "длинный", what="длиннее" if short else "короче",
+                                        chars=int(per * CHARS_PER_SEC), tip=tip), False)
+        m = re.search(r"\{.*\}", raw or "", re.S)
+        texts = json.loads(m.group(0))["narrations"] if m else []
+    except Exception as e:
+        print("[сценарий: удлинить не вышло — {}]".format(str(e)[:80]))
+        return script
+    if len(texts) != n or not all(str(t).strip() for t in texts):
+        return script
+    fitted = [dict(sc, narration=str(t).strip()) for sc, t in zip(script["scenes"], texts)]
+    if abs(est_seconds(fitted) - target) >= abs(now - target):
+        return script                                        # стало не ближе к заказу — оставляем как было
+    return dict(script, scenes=fitted)
+
+
 def write(idea, notes="", duration=None, ask=None, search=None, refine=True, style_key=None, anim=False):
     """Сценарий по идее. ask(prompt) → текст ответа сильной модели; search — как в tool_web_search."""
     idea = (idea or "").strip()
@@ -231,6 +277,7 @@ def write(idea, notes="", duration=None, ask=None, search=None, refine=True, sty
     if style_key:
         first["style_key"] = style_key
     if not refine:
+        first = fit_length(first, duration, ask)
         return fill_anim(first) if anim else first
     try:
         n, _sec, words = pacing(duration)
@@ -239,6 +286,7 @@ def write(idea, notes="", duration=None, ask=None, search=None, refine=True, sty
         better = parse(call(ask, EDIT.format(n=n, words=words) + keep + "\n\nИДЕЯ ПОЛЬЗОВАТЕЛЯ: " + idea + "\n\nСЦЕНАРИЙ:\n" + draft, False))
         if len(better["scenes"]) != len(first["scenes"]) or \
                 sum(bool(sc["narration"]) for sc in better["scenes"]) < sum(bool(sc["narration"]) for sc in first["scenes"]):
+            first = fit_length(first, duration, ask)
             return fill_anim(first) if anim else first      # редактор потерял сцены или текст — остаётся черновик
         if anim:
             for new, old in zip(better["scenes"], first["scenes"]):     # редактор правит текст; движения — от черновика
@@ -246,9 +294,11 @@ def write(idea, notes="", duration=None, ask=None, search=None, refine=True, sty
                     new["anim"], new["place"] = old["anim"], new.get("place") or old.get("place", "")
     except Exception as e:                      # редактор не ответил — остаётся первый вариант
         print("[сценарий: редактор — {}]".format(str(e)[:80]))
-        return first
+        first = fit_length(first, duration, ask)
+        return fill_anim(first) if anim else first
     for k in ("title", "style", "characters"):
         better[k] = better[k] or first[k]
+    better = fit_length(better, duration, ask)
     if anim:
         fill_anim(better)
     better["style_key"] = style_key or better["style_key"] or first["style_key"]

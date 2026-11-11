@@ -101,6 +101,74 @@ class Script(unittest.TestCase):
         self.assertEqual(out["scenes"][0]["anim"], moves)
 
 
+class Length(unittest.TestCase):
+    def scenes(self, text, n=4):
+        return {"scenes": [{"picture": "x", "narration": text} for _ in range(n)]}
+
+    def test_long_enough_is_left_alone(self):
+        script = self.scenes("а" * 200)
+        self.assertIs(sp.fit_length(script, 30, ask=lambda p: self.fail("не нужно")), script)
+
+    def test_short_script_gets_longer_text(self):
+        longer = json.dumps({"narrations": ["б" * 110] * 4}, ensure_ascii=False)
+        out = sp.fit_length(self.scenes("коротко."), 30, ask=lambda p: longer)
+        self.assertEqual(out["scenes"][0]["narration"], "б" * 110)
+        self.assertGreaterEqual(sp.est_seconds(out["scenes"]), 30 * 0.85)
+
+    def test_too_long_gets_shorter_and_overshoot_is_rejected(self):
+        script = self.scenes("а" * 400)                              # ~31 с на сцену при заказе 30 с на весь ролик
+        shorter = json.dumps({"narrations": ["в" * 80] * 4}, ensure_ascii=False)
+        self.assertEqual(sp.fit_length(script, 30, ask=lambda p: shorter)["scenes"][0]["narration"], "в" * 80)
+        worse = json.dumps({"narrations": ["г" * 600] * 4}, ensure_ascii=False)
+        self.assertIs(sp.fit_length(script, 30, ask=lambda p: worse), script)   # дальше от заказа — не берём
+
+    def test_bad_answer_keeps_script(self):
+        script = self.scenes("коротко.")
+        self.assertIs(sp.fit_length(script, 30, ask=lambda p: '{"narrations": ["один"]}'), script)
+        self.assertIs(sp.fit_length(script, 30, ask=lambda p: "не JSON"), script)
+
+
+class Moves(unittest.TestCase):
+    def test_new_moves_render(self):
+        for do in ("crawl", "climb", "throw", "catch", "fly", "hug", "sneak", "bow", "give"):
+            self.assertIn(do, A.ACTIONS)
+
+    def test_throw_lands_in_target_hands(self):
+        s = A.Scene({"actors": [{"id": "a", "x": 0.2, "holds": "ball"}, {"id": "b", "x": 0.8}],
+                     "acting": [{"who": "a", "do": "throw", "from": 0, "to": 0.5, "target": "b"}]}, secs=4)
+        self.assertEqual(s.holding("a", 0.1), "ball")
+        self.assertIsNone(s.holding("a", 1.5))                       # бросил
+        self.assertEqual(s.holding("b", 2.5), "ball")                 # поймал
+        self.assertEqual(len(s.flights), 1)
+
+    def test_throw_without_target_falls_to_ground(self):
+        s = A.Scene({"actors": [{"id": "a", "x": 0.2}],
+                     "acting": [{"who": "a", "do": "throw", "from": 0, "to": 0.5, "prop": "cup", "at": 0.6}]}, secs=4)
+        self.assertEqual(s.ground_items[0][1:3], ("cup", 0.6))
+
+    def test_prop_is_kept_until_dropped(self):
+        s = A.Scene({"acting": [{"do": "walk", "from": 0, "to": 0.3, "prop": "phone"}, {"do": "talk", "from": 0.3, "to": 0.6},
+                                {"do": "stand", "from": 0.6, "to": 1, "drop": True}]}, secs=4)
+        self.assertEqual(s.holding("hero", 2.0), "phone")             # во время разговора всё ещё в руке
+        self.assertIsNone(s.holding("hero", 3.0))
+
+    def test_front_view_for_cheer(self):
+        s = A.Scene({"acting": [{"do": "walk", "from": 0, "to": 0.5, "x": 0.6}, {"do": "cheer", "from": 0.5, "to": 1}]}, secs=4)
+        s.state("hero", 1.0)
+        self.assertFalse(s._front)
+        s.state("hero", 3.0)
+        self.assertTrue(s._front)
+        pts, _r = A.skeleton(A.pose_of("cheer"), 500, 600, 200, 1, front=True)
+        self.assertLess(pts["hand2"][0], 500)                          # руки в стороны: одна слева от тела,
+        self.assertGreater(pts["hand1"][0], 500)                       # другая справа
+
+    def test_crawl_stays_on_ground(self):
+        pose, _ = A.action_pose("crawl", 0.3, 2)
+        pts, _r = A.skeleton(pose, 300, 600, 200, 1)
+        self.assertAlmostEqual(max(p[1] for k, p in pts.items() if k != "head"), 600, delta=1)
+        self.assertGreater(pts["head"][0], pts["hip"][0])             # голова впереди, а не сзади
+
+
 class Studio(unittest.TestCase):
     def test_anim_is_free_except_world_backgrounds(self):
         scenes = [{"picture": "x", "narration": "а", "place": "cafe"}, {"picture": "y", "narration": "б", "place": "cafe"},

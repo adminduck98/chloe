@@ -320,7 +320,7 @@ PREVIEW_SECONDS = 20  # пробный кусок: первые сцены пр�
 
 def scene_seconds(scene):
     """Примерная длина сцены по закадровому тексту (~14 знаков в секунду) — для пробного куска и цены."""
-    return max(MIN_SCENE, min(15, len(scene.get("narration") or "") / 14 + TAIL))
+    return max(MIN_SCENE, min(20, len(scene.get("narration") or "") / 13.3 + TAIL + LEAD))   # 13,3 знака в секунду — замер
 
 
 def preview_count(scenes, seconds=PREVIEW_SECONDS):

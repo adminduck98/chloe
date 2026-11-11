@@ -58,10 +58,17 @@ POSES = {
     "push": {"sh1": 88, "el1": 0, "sh2": 80, "el2": 0, "torso": 28, "hip1": 28, "kn1": -18, "hip2": -24, "kn2": -10},
     "lie": {"rot": 90, "dy": -0.48, "sh1": 170, "el1": 0, "sh2": 160, "el2": 0},
     "angry": {"sh1": 25, "el1": 100, "sh2": -25, "el2": -100, "torso": 6, "head": 6},
+    "catch": {"sh1": 80, "el1": 25, "sh2": 70, "el2": 30, "torso": -4, "hip1": 14, "kn1": -12, "hip2": -10},
+    "hug": {"sh1": 72, "el1": 75, "sh2": 62, "el2": 85, "torso": 8, "head": 10},
+    "bow": {"torso": 55, "head": 20, "sh1": 4, "el1": 6, "sh2": -2, "el2": 6},
+    "give": {"sh1": 70, "el1": 12, "torso": 6, "head": 8},
 }
-EMOTION_OF = {"cheer": "happy", "sad": "sad", "surprised": "surprised", "think": "think", "facepalm": "sad", "angry": "angry",
+EMOTION_OF = {"hug": "happy", "catch": "surprised", "cheer": "happy", "sad": "sad", "surprised": "surprised", "think": "think", "facepalm": "sad", "angry": "angry",
               "shrug": "neutral", "dance": "happy", "fight": "angry", "punch": "angry", "kick": "angry", "fall": "surprised"}
-ACTIONS = sorted(set(POSES) | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle"})
+ACTIONS = sorted(set(POSES) | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle",
+                                "crawl", "climb", "throw", "fly", "sneak"})
+MOVING = ("walk", "run", "sneak", "crawl", "fly")
+FRONT = ("cheer", "shrug", "surprised", "dance", "wave", "bow")   # эти позы — лицом к зрителю: так живее
 EMOTIONS = ("neutral", "happy", "sad", "angry", "surprised", "think")
 # похожие слова, которыми модель называет движения, — к своим (иначе герой стоял бы столбом)
 SYNONYMS = {"drag": "push", "pull": "push", "lift": "push", "freeze": "surprised", "scared": "surprised", "shock": "surprised",
@@ -75,7 +82,7 @@ SYNONYMS = {"drag": "push", "pull": "push", "lift": "push", "freeze": "surprised
             "rage": "angry", "argue": "angry", "work": "type", "code": "type", "typing": "type", "carry": "hold", "show": "point",
             "present": "point", "celebration": "cheer", "kneel": "crouch", "sit_down": "sit"}
 HAND_PROPS = ("phone", "book", "sword", "ball", "cup", "flag")
-SCENE_PROPS = ("table", "laptop", "box", "door", "tree", "chair", "screen", "rock")
+SCENE_PROPS = ("table", "laptop", "box", "door", "tree", "chair", "screen", "rock", "ladder", "wall")
 EFFECTS = ("bulb", "heart", "sweat", "sparkle", "shock", "zzz", "question")
 
 
@@ -113,9 +120,39 @@ def action_pose(do, t, dur):
                  sh1=-amp * 0.9 * s, el1=25 if not run else 85, sh2=amp * 0.9 * s, el2=25 if not run else 85,
                  torso=4 if not run else 16, dy=0.012 * abs(math.cos(f)) - (0.02 if run else 0))
         return p, ease(k) if not run else k
+    if do == "sneak":                                                   # крадётся: присел, маленькие шаги
+        f = t * 1.6 * 2 * math.pi
+        s = math.sin(f)
+        p.update(hip1=40 + 20 * s, hip2=40 - 20 * s, kn1=-(70 + 20 * max(0, -s)), kn2=-(70 + 20 * max(0, s)), torso=28, dy=-0.1,
+                 sh1=60, el1=70, sh2=40, el2=80, head=-10)
+        return p, k
+    if do == "crawl":                                                   # ползёт: тело почти горизонтально
+        s = math.sin(t * 2.2 * 2 * math.pi)
+        # тело наклонено вперёд на 75°: руки и бёдра «вперёд» до наклона — после него смотрят в землю
+        p.update(rot=-75, dy=-0.2, sh1=78 + 22 * s, el1=-6, sh2=78 - 22 * s, el2=-6,
+                 hip1=72 + 16 * s, kn1=-88, hip2=72 - 16 * s, kn2=-88, head=-35)
+        return p, k
+    if do == "climb":                                                   # лезет: руки и ноги по очереди вверх
+        s = math.sin(t * 1.8 * 2 * math.pi)
+        p.update(sh1=165 - 35 * s, el1=-10, sh2=-(165 + 35 * s), el2=10, hip1=45 + 25 * s, kn1=-80, hip2=45 - 25 * s, kn2=-80,
+                 torso=-4, head=-18, dy=0.95 * ease(k) + 0.02 * s)                # поднимается по лестнице
+        return p, None
+    if do == "fly":                                                     # летит, как супергерой
+        p.update(rot=-80, dy=0.25 + 0.03 * math.sin(t * 3), sh1=172, el1=0, sh2=166, el2=0, hip1=-10, kn1=-6, hip2=-16, kn2=-10, head=-25)
+        return p, k
+    if do == "throw":                                                   # замах — бросок — проводка руки
+        if k < 0.42:
+            q = ease(k / 0.42)
+            p.update(sh1=40 - 170 * q, el1=40 + 50 * q, torso=-12 * q, hip1=20, hip2=-24, kn1=-10)
+        else:
+            q = ease((k - 0.42) / 0.25)
+            p.update(sh1=-130 + 230 * q, el1=90 - 85 * q, torso=-12 + 32 * q, hip1=20, hip2=-24, kn1=-10, head=6 * q)
+        p["_release"] = 1.0 if 0.42 <= k else 0.0
+        return p, None
     if do == "jump":
         h = math.sin(math.pi * k)
         crouch = max(0.0, 1 - k / 0.18) if k < 0.18 else (max(0.0, (k - 0.85) / 0.15))
+        p["_land"] = 1.0 if k > 0.88 else 0.0
         p.update(dy=0.32 * h - 0.08 * crouch, hip1=50 * h + 30 * crouch, kn1=-90 * h - 50 * crouch, hip2=30 * h + 20 * crouch,
                  kn2=-70 * h - 40 * crouch, sh1=125 * h + 10, sh2=-125 * h - 10, el1=25 * h, el2=-25 * h, head=-10 * h)
         return p, k
@@ -135,6 +172,7 @@ def action_pose(do, t, dur):
         f = (t * (3.0 if do == "fight" else 1.6)) % 1.0
         hit = math.sin(math.pi * min(1.0, f / 0.35)) if f < 0.35 else 0.0
         other = do == "fight" and int(t * 3.0) % 2 == 1
+        p["_hit"], p["_hand"] = hit, "hand2" if other else "hand1"
         p.update(torso=10 + 10 * hit, hip1=26, kn1=-20, hip2=-20, kn2=-10, head=4)
         if other:
             p.update(sh2=92 * hit + 40 * (1 - hit), el2=-(100 * (1 - hit)), sh1=40, el1=110)
@@ -145,10 +183,12 @@ def action_pose(do, t, dur):
         f = (t * 1.4) % 1.0
         hit = math.sin(math.pi * min(1.0, f / 0.4)) if f < 0.4 else 0.0
         p.update(hip1=95 * hit, kn1=-60 * (1 - hit), torso=-18 * hit, sh1=-40, el1=30, sh2=60, el2=40, hip2=-6)
+        p["_hit"], p["_hand"] = hit, "foot1"
         return p, None
     if do == "fall":
         q = ease(min(1.0, k * 1.6))
         p = mix(pose_of("surprised"), pose_of("lie"), q)
+        p["_land"] = 1.0 if 0.6 < k * 1.6 < 1.25 else 0.0                # пыль, когда упал
         return p, None
     return p, None                                                       # idle / неизвестное — просто стоит
 
@@ -160,8 +200,11 @@ def _pt(origin, ang, length, size, facing):
     return (origin[0] + facing * math.sin(a) * length * size, origin[1] + math.cos(a) * length * size)
 
 
-def skeleton(pose, x, ground, size, facing):
-    """Точки суставов на экране: (точки, радиус головы). Земля — под нижней ногой (если не лежит)."""
+def skeleton(pose, x, ground, size, facing, front=False):
+    """Точки суставов на экране: (точки, радиус головы). Земля — под нижней ногой (если не лежит).
+    front — лицом к зрителю: правая рука и нога — вправо, левые — влево (углы — «от тела наружу»)."""
+    if front:
+        return _skeleton_front(pose, x, ground, size)
     hip_y = ground - (SEG["thigh"] + SEG["shin"]) * size - pose["dy"] * size
     hip = (x, hip_y)
     torso_ang = 180 - pose["torso"]          # туловище вверх, наклон вперёд
@@ -183,9 +226,27 @@ def skeleton(pose, x, ground, size, facing):
             dx, dy = px - cx, py - cy
             pts[k] = (cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a))
     low = max(p[1] for k, p in pts.items() if k != "head")
-    if pose["rot"] and low > ground:                                      # лежит — на земле, не под ней
+    if pose["rot"] and (low > ground or (pose["dy"] < 0.1 and low < ground)):   # лежит или ползёт — ровно на земле
         shift = low - ground
         pts = {k: (px, py - shift) for k, (px, py) in pts.items()}
+    return pts, SEG["head"] * size
+
+
+def _skeleton_front(pose, x, ground, size):
+    hip_y = ground - (SEG["thigh"] + SEG["shin"]) * size - pose["dy"] * size
+    hip = (x, hip_y)
+    neck = (x, hip_y - SEG["torso"] * size)
+    head = (x + math.sin(math.radians(pose["head"])) * SEG["head"] * size * 0.3, neck[1] - (SEG["neck"] + SEG["head"]) * size)
+    shoulder = (x, hip_y - SEG["torso"] * size * 0.84)
+    pts = {"hip": hip, "neck": neck, "head": head, "shoulder": shoulder}
+    for side, d in (("1", 1), ("2", -1)):
+        sh = abs(pose["sh" + side])
+        el = _pt(shoulder, sh, SEG["upper"], size, d)
+        hand = _pt(el, sh + abs(pose["el" + side]) * 0.8, SEG["fore"], size, d)
+        hp = 9 + abs(pose["hip" + side]) * 0.35
+        kn = _pt(hip, hp, SEG["thigh"], size, d)
+        foot = _pt(kn, hp - abs(pose["kn" + side]) * 0.15, SEG["shin"], size, d)
+        pts.update({"el" + side: el, "hand" + side: hand, "kn" + side: kn, "foot" + side: foot})
     return pts, SEG["head"] * size
 
 
@@ -404,6 +465,21 @@ def draw_scene_prop(c, kind, x, ground, size, ink, look):
         c.set_source_rgb(0.12, 0.12, 0.15)
         c.rectangle(x - s * 0.03, ground - s * 0.68, s * 0.06, s * 0.68)
         c.fill()
+    elif kind == "ladder":
+        c.set_source_rgb(0.55, 0.38, 0.22)
+        c.set_line_width(max(2.0, s * 0.025))
+        _line(c, (x - s * 0.15, ground), (x - s * 0.15, ground - s * 1.6))
+        _line(c, (x + s * 0.15, ground), (x + s * 0.15, ground - s * 1.6))
+        for i in range(1, 9):
+            _line(c, (x - s * 0.15, ground - i * s * 0.18), (x + s * 0.15, ground - i * s * 0.18))
+        c.stroke()
+    elif kind == "wall":
+        c.set_source_rgb(0.62, 0.32, 0.25)
+        for row in range(6):
+            for col in range(3):
+                off = (row % 2) * s * 0.1
+                c.rectangle(x - s * 0.3 + col * s * 0.2 + off, ground - (row + 1) * s * 0.12, s * 0.19, s * 0.11)
+        c.fill()
     elif kind == "rock":
         c.set_source_rgb(0.5, 0.48, 0.45)
         c.save()
@@ -483,6 +559,45 @@ def draw_effect(c, kind, head, r, t, ink):
         c.fill()
 
 
+def draw_impact(c, at, size, t):
+    """Звёздочка удара: жёлтая вспышка с лучами на кулаке или стопе."""
+    x, y = at
+    s = size * 0.09
+    c.set_source_rgba(*ACCENT["gold"], 0.9)
+    c.move_to(x + s, y)
+    for i in range(1, 16):
+        a = i * math.pi / 8
+        rr = s if i % 2 == 0 else s * 0.45
+        c.line_to(x + math.cos(a) * rr, y + math.sin(a) * rr)
+    c.close_path()
+    c.fill()
+    c.set_source_rgba(1, 1, 1, 0.9)
+    c.arc(x, y, s * 0.25, 0, 2 * math.pi)
+    c.fill()
+
+
+def draw_speed_lines(c, pts, size, back, color):
+    """Линии скорости позади бегущего."""
+    c.set_source_rgba(*color, 0.45)
+    c.set_line_width(max(1.0, size * 0.008))
+    hx, hy = pts["hip"]
+    for i, dy in enumerate((-0.32, -0.12, 0.08)):
+        y = hy + dy * size
+        x0 = hx + back * size * (0.18 + 0.05 * i)
+        _line(c, (x0, y), (x0 + back * size * (0.35 - 0.06 * i), y))
+    c.stroke()
+
+
+def draw_dust(c, pts, ground, size, t):
+    """Облачка пыли у земли: приземлился или упал."""
+    c.set_source_rgba(0.6, 0.6, 0.6, 0.35)
+    for side in ("1", "2"):
+        fx = pts["foot" + side][0]
+        for i, dx in enumerate((-0.1, 0.0, 0.1)):
+            c.arc(fx + dx * size, ground - size * (0.02 + 0.015 * i), size * (0.035 + 0.01 * ((i + int(t * 10)) % 2)), 0, 2 * math.pi)
+            c.fill()
+
+
 def desktop(c, w, h, t):
     """Фон «неон на экране»: тёмный рабочий стол, окна, иконки, панель задач."""
     import cairo
@@ -542,7 +657,8 @@ class Scene:
             if style == "neon_desktop" and col == "default":
                 color = COLORS[("cyan", "red", "yellow", "green")[i % 4]]
             self.actors[aid] = {"id": aid, "color": color, "x": float(a.get("x", 0.3 + 0.4 * i)), "facing": 1 if a.get("facing", "right" if i == 0 else "left") != "left" else -1,
-                                "scale": max(0.4, min(1.6, float(a.get("scale", 1.0)))), "emotion": a.get("emotion", "neutral")}
+                                "scale": max(0.4, min(1.6, float(a.get("scale", 1.0)))), "emotion": a.get("emotion", "neutral"),
+                                "front": a.get("view") == "front" or a.get("facing") == "front", "holds": a.get("holds")}
         self.segs = {k: [] for k in self.actors}
         for s in (spec or {}).get("acting") or []:
             who = s.get("who") if s.get("who") in self.actors else next(iter(self.actors))
@@ -559,6 +675,50 @@ class Scene:
         self.camera = (spec or {}).get("camera") or []
         self.words = words or []
         self._track()
+        self._items()
+
+    def _items(self):
+        """Предметы во времени: кто что держит (до «drop» или передачи), что летит (бросок, передача), что лежит на земле."""
+        self.holds = {k: [] for k in self.actors}
+        self.flights, self.ground_items = [], []
+        a0 = next(iter(self.actors))
+        for aid, a in self.actors.items():
+            spec_hold = a.get("holds")
+            if spec_hold in HAND_PROPS:
+                self.holds[aid].append((0.0, spec_hold))
+        events = sorted(((s["t0"], aid, s) for aid, segs in self.segs.items() for s in segs), key=lambda e: e[0])
+        for t0, aid, s in events:
+            d = s["t1"] - s["t0"]
+            kind = s.get("prop") if s.get("prop") in HAND_PROPS else None
+            if kind and s["do"] not in ("give", "throw"):
+                self.holds[aid].append((t0, kind))
+            if s.get("drop"):
+                self.holds[aid].append((t0, None))
+            if s["do"] in ("give", "throw"):
+                kind = kind or self.holding(aid, t0) or "ball"
+                if not self.holding(aid, t0):
+                    self.holds[aid].append((t0, kind))
+                to = s.get("target") if s.get("target") in self.actors and s.get("target") != aid else None   # кому
+                start = t0 + d * (0.42 if s["do"] == "throw" else 0.35)
+                end = s["t1"] - d * (0.0 if s["do"] == "throw" else 0.15)
+                self.holds[aid].append((start, None))
+                at = s.get("at")
+                self.flights.append({"kind": kind, "t0": start, "t1": end, "from": aid, "to": to, "at": at,
+                                     "arc": s["do"] == "throw"})
+                if to:
+                    self.holds[to].append((end, kind))
+                else:
+                    self.ground_items.append((end, kind, float(at) if at is not None else None, aid))
+        for k in self.holds:
+            self.holds[k].sort(key=lambda e: e[0])
+        del a0
+
+    def holding(self, aid, t):
+        kind = None
+        for when, what in self.holds.get(aid, []):
+            if when <= t:
+                kind = what
+        return kind
 
     def _track(self):
         """Заранее: где каждый герой в каждый момент (походка двигает его к цели и разворачивает)."""
@@ -608,25 +768,33 @@ class Scene:
             p, _ = action_pose(seg["do"], tt - seg["t0"], seg["t1"] - seg["t0"])
             return p
 
+        self._front = a["front"]
         if cur is None:
             hold = prev if prev and prev["do"] in POSES and prev["do"] not in ("cheer", "surprised") else None
+            if hold and (hold.get("view") == "front" or hold["do"] in FRONT):
+                self._front = hold.get("view") != "side"
             base = pose_at(hold, t) if hold else pose_at(None, t)
             src = pose_at(prev, prev["t1"] - 0.001) if prev else base
             k = ease((t - prev["t1"]) / BLEND) if prev else 1.0
             pose = mix(src, base, k)
             emo = (prev or {}).get("emotion") or (EMOTION_OF.get(prev["do"]) if prev and hold else None) or a["emotion"]
-            return pose, emo, None, None, 0.0
+            return pose, emo, self.holding(aid, t), None, 0.0
         pose = pose_at(cur, t)
         if t - cur["t0"] < BLEND:
             before = [s for s in segs if s["t1"] <= cur["t0"] + 0.001]
             src = pose_at(before[-1], cur["t0"] - 0.001) if before else pose_at(None, t)
             pose = mix(src, pose, ease((t - cur["t0"]) / BLEND))
+        if cur.get("view") in ("front", "side"):
+            self._front = cur["view"] == "front"
+        elif cur["do"] in FRONT:
+            self._front = True
+        elif cur["do"] in MOVING or cur["do"] in ("punch", "fight", "kick", "throw", "give", "push", "hug", "catch", "fall", "lie"):
+            self._front = False
         emo = cur.get("emotion") or EMOTION_OF.get(cur["do"]) or a["emotion"]
         talk = 0.0
         if cur["do"] == "talk" or cur.get("talk"):
             talk = 0.5 + 0.5 * math.sin(t * 17) if self._speaking(t) or not self.words else 0.0
-        return pose, emo, cur.get("prop") if cur.get("prop") in HAND_PROPS else None, \
-            cur.get("effect") if cur.get("effect") in EFFECTS else None, talk
+        return pose, emo, self.holding(aid, t), cur.get("effect") if cur.get("effect") in EFFECTS else None, talk
 
     def _speaking(self, t):
         return any(a <= t <= b for a, b, _w in self.words)
@@ -684,17 +852,43 @@ class Scene:
             px = float(p.get("x", 0.5)) * w
             look = dict(self.look, _table_at=px if any(abs(px - tx) < self.fig * 0.3 for tx in tables) else None)
             draw_scene_prop(c, p["kind"], px, self.ground, self.fig, ink, look)
+        for when, kind, at, who in self.ground_items:                    # брошенное без адресата — лежит на земле
+            if t >= when:
+                gx = (at if at is not None else self.where(who, when)[0] + 0.25 * self.where(who, when)[1]) * w
+                draw_hand_prop(c, kind, (gx, self.ground - self.fig * 0.02), 1, self.fig, ink)
+        hands = {}
         for aid in sorted(self.actors, key=lambda k: self.actors[k]["scale"]):
             a = self.actors[aid]
             pose, emo, prop, effect, talk = self.state(aid, t)
             x, facing = self.where(aid, t)
+            front = self._front
             size = self.fig * a["scale"]
-            pts, r = skeleton(pose, x * w, self.ground, size, facing)
-            draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, facing, size)
+            pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+            hands[aid] = pts["hand1"]
+            speed = abs(x - self.where(aid, max(0.0, t - 0.06))[0]) * w / 0.06
+            if speed > size * 1.2:                                       # бежит быстро — линии скорости позади
+                draw_speed_lines(c, pts, size, -1 if x > self.where(aid, max(0.0, t - 0.06))[0] else 1, a["color"])
+            draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
             if prop:
                 draw_hand_prop(c, prop, pts["hand1"], facing, size, a["color"])
             if effect:
                 draw_effect(c, effect, pts["head"], r, t, ink)
+            if pose.get("_hit", 0) > 0.72:
+                draw_impact(c, pts[pose.get("_hand", "hand1")], size, t)
+            if pose.get("_land"):
+                draw_dust(c, pts, self.ground, size, t)
+        for f in self.flights:                                           # предмет в полёте: бросок — дугой, передача — из рук в руки
+            if f["t0"] <= t <= f["t1"]:
+                k = (t - f["t0"]) / max(f["t1"] - f["t0"], 0.01)
+                sx_, sy_ = hands.get(f["from"], (w / 2, self.ground))
+                if f["to"] in hands:
+                    ex_, ey_ = hands[f["to"]]
+                else:
+                    ex_ = (f["at"] if f["at"] is not None else self.where(f["from"], f["t0"])[0] + 0.25 * self.where(f["from"], f["t0"])[1]) * w
+                    ey_ = self.ground - self.fig * 0.02
+                px_ = sx_ + (ex_ - sx_) * ease(k) if not f["arc"] else sx_ + (ex_ - sx_) * k
+                py_ = sy_ + (ey_ - sy_) * (ease(k) if not f["arc"] else k) - (math.sin(math.pi * k) * self.fig * 0.45 if f["arc"] else 0)
+                draw_hand_prop(c, f["kind"], (px_, py_), 1, self.fig, ink)
 
 
 def load_background(path, size):
@@ -764,7 +958,10 @@ def anim_clip(spec, style, voice_file, secs, size, out, ass=None, sfx=None, lead
     return out
 
 
-VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — позы держатся, walk/run/jump двигают героя к x (0 — левый край, 1 — правый), остальные на месте. "
+VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — позы держатся; walk/run/sneak/crawl/fly/jump двигают героя к x (0 — левый край, "
+         "1 — правый), у других x — рывок на месте. Предмет: \"prop\" — взял и держит, пока не \"drop\": true; "
+         "give — передать предмет другому (\"target\": id), throw — бросить (\"target\": id — поймает, или \"at\": x — упадёт там). "
+         "\"view\": \"front\" — лицом к зрителю (cheer, wave, shrug, dance, bow — и так лицом). "
          "Эмоции (emotion): {}. Предмет в руке (prop): {}. Значок над головой (effect): {}. Предметы сцены (props.kind): {}. "
          "Камера: [{{\"from\", \"to\", \"zoom\": 1.1–1.8, \"on\": id героя}}].").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))
