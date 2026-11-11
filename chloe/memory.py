@@ -137,8 +137,14 @@ class Memory:
         if not self.items:
             return "Пока ничего не запомнено."
         # важное не выпадает, даже если давно; остальное давнее вспоминается по словам просьбы (relevant)
-        return "\n".join("- [{}] {}{}".format(m["id"], m["text"], " (важное)" if m.get("important") else "")
+        return "\n".join("- [{}] {}{}{}".format(m["id"], m["text"], " (важное)" if m.get("important") else "", when(m))
                          for m in self.in_prompt())
+
+
+def when(m):
+    """« (записано 09.11)» — память верна на дату записи; изменчивое старше суток мозг проверяет (см. prompt.py)."""
+    t = str(m.get("time") or "")
+    return " (записано {}.{})".format(t[8:10], t[5:7]) if len(t) >= 10 else ""
 
 
 memory = Memory(MEMORY_FILE)

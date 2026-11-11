@@ -4,7 +4,7 @@ import time
 
 from ..brain import brain
 from ..config import DESKTOP, DOWNLOADS, HOME, OS_NAME
-from ..memory import memory
+from ..memory import memory, when
 from ..signals import said_alone
 from .. import skillbook
 from ..learning import lessons_prompt
@@ -92,7 +92,10 @@ def system_prompt():
         "{lessons}"
         "{security}"
         "{skills}"
-        "Что ты помнишь о пользователе (долгосрочная память, номер в скобках):\n{mem}\n"
+        "Что ты помнишь о пользователе (долгосрочная память, номер в скобках). Память верна на дату записи. Изменчивое — "
+        "адреса и порты, состояние проектов и задач, что открыто или подключено, цифры — если записано раньше вчерашнего "
+        "дня, не утверждай по памяти: проверь инструментом, а расходится — исправь запись или удали её (скажи пользователю). "
+        "Привычки, вкусы, имена, правила — не устаревают:\n{mem}\n"
         "{recent}"
     ).format(os=OS_NAME + " " + platform.release(), home=HOME, dl=DOWNLOADS, desk=DESKTOP,
              today=time.strftime("%Y-%m-%d"), mem=memory.prompt(), skills=skillbook.prompt(), city=city_text(),
@@ -110,7 +113,7 @@ def start_thinking(user_text):
               "повтори.]\n".format("; ".join(notes))) if notes else ""
     shown = {m["id"] for m in memory.in_prompt()}
     old = memory.relevant(user_text, skip_ids=shown)   # давняя память, которой нет в подсказке, — по словам просьбы
-    recall = ("\n[Из давней памяти, может пригодиться: " + "; ".join("[{}] {}".format(m["id"], m["text"]) for m in old) + "]") if old else ""
+    recall = ("\n[Из давней памяти, может пригодиться: " + "; ".join("[{}] {}{}".format(m["id"], m["text"], when(m)) for m in old) + "]") if old else ""
     seen = vision.context()   # постоянное зрение: какое окно открыто сейчас и что было до этого
     work = ""
     try:
