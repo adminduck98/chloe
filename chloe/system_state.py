@@ -168,6 +168,9 @@ def _dur(sec):
     return "{} дн {} ч".format(sec // 86400, sec % 86400 // 3600)
 
 
+STALE_ERRORS = 3   # часы: если последняя ошибка старше — это не «сломано сейчас», вслух о ней не напоминаем
+
+
 def errors(hours=24):
     """Ошибки инструментов за сутки из журнала (отказы пользователя — не ошибки)."""
     import sqlite3
@@ -199,7 +202,8 @@ def errors(hours=24):
         return item("Ошибки", "За сутки", "ok", "ошибок нет")
     worst = sorted(real.items(), key=lambda kv: -len(kv[1]))[:3]
     last = "; ".join("{}: {} (последняя в {})".format(k, v[-1][:70], time.strftime("%H:%M", time.localtime(last_ts[k]))) for k, v in worst)
-    return dict(item("Ошибки", "За сутки", "warn" if n < 10 else "fail",
+    fresh = time.time() - max(last_ts.values()) < STALE_ERRORS * 3600   # старые (уже починенные?) ошибки — не тревога
+    return dict(item("Ошибки", "За сутки", "warn" if n < 10 or not fresh else "fail",
                 "{}: {}".format(n, ", ".join("{} ×{} (до {})".format(k, len(v), time.strftime("%H:%M", time.localtime(last_ts[k]))) for k, v in worst))), last=last)   # тексты ошибок — в отчёте для мозга
 
 

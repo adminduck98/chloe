@@ -106,6 +106,16 @@ class LastErrorTime(unittest.TestCase):
         self.assertRegex(item["detail"], r"до \d\d:\d\d")                    # чтобы старые ошибки не выдавались за текущую поломку
         self.assertRegex(item["last"], r"последняя в \d\d:\d\d")
 
+    def test_old_errors_are_not_an_alarm(self):
+        from unittest import mock
+
+        for _ in range(12):
+            journal.add("tool", "Поиск в интернете", "web_search: x", json.dumps({"tool": "web_search", "result": "Ошибка: сеть"},
+                                                                               ensure_ascii=False), ok=False)
+        self.assertEqual(ss.errors()["level"], "fail")                   # много и свежие — тревога
+        with mock.patch.object(ss.time, "time", return_value=time.time() + 4 * 3600):
+            self.assertEqual(ss.errors()["level"], "warn")               # последняя 4 часа назад — уже не «сломано сейчас»
+
 
 if __name__ == "__main__":
     unittest.main()
