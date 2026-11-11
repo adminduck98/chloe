@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import config, phrase_cache, qwen_audio, speech_stream
+from . import config, persona, phrase_cache, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -242,14 +242,14 @@ class Voice:
 
     # --- голос ---
     def say(self, text):
-        text = redact(text)
+        text = persona.polish(redact(text))     # одна Chloe, какая бы модель ни отвечала: женский род, без угодливости
         print("Chloe:", text)
         journal.add("said", "Голос", text)
         where = state.get("where", "local")
         brain.reply(text, where)
         self.saying = text
         self.last_said = text
-        text = spoken(text) or text            # озвучиваем без значков разметки; в окне и журнале — как есть
+        text = persona.shape(spoken(text) or text)   # без значков разметки, с паузами; в окне и журнале — как есть
         try:
             if where == "phone":
                 pass   # просьба была с телефона: он и озвучит ответ, компьютер молчит (текст — в окне)
@@ -321,7 +321,9 @@ class Voice:
         os.close(fd)
         try:
             with wave.open(path, "wb") as wav:
-                piper.synthesize_wav(text, wav)
+                from piper import SynthesisConfig
+
+                piper.synthesize_wav(text, wav, syn_config=SynthesisConfig(length_scale=persona.piper_length(text)))
             self._play(path)
             return True
         except Exception as e:
@@ -503,7 +505,7 @@ def pieces(text, size=300, first=140):
 
 def cache_voice():
     """Чей голос в готовых фразах: сменили голос (CHLOE_VOICE, CHLOE_TTS) — фразы запишутся заново."""
-    return "{}:{}".format(TTS, VOICES[0])
+    return "{}:{}:{}".format(TTS, VOICES[0], persona.signature())
 
 
 def warm_phrases():
@@ -534,7 +536,7 @@ def voice_mp3(text, timeout=60):
 
     async def go():
         buf = bytearray()
-        async for chunk in edge_tts.Communicate(text, VOICES[0]).stream():
+        async for chunk in edge_tts.Communicate(text, VOICES[0], **persona.edge_args(text)).stream():
             if chunk["type"] == "audio":
                 buf += chunk["data"]
         return bytes(buf)

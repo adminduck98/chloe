@@ -113,7 +113,7 @@ class Speak(unittest.TestCase):
         calls = []
 
         class Comm:
-            def __init__(self, text, voice_name):
+            def __init__(self, text, voice_name, **prosody):   # скорость и высота голоса — из профиля Chloe
                 self.text = text
 
             async def stream(self):

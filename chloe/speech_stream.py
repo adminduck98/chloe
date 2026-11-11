@@ -49,7 +49,9 @@ class Download:
         import edge_tts
 
         async def go(text):
-            async for chunk in edge_tts.Communicate(text, self.voice_name).stream():
+            from .persona import edge_args
+
+            async for chunk in edge_tts.Communicate(text, self.voice_name, **edge_args(text)).stream():
                 if chunk["type"] == "audio":
                     with self.cond:
                         self.buf += chunk["data"]

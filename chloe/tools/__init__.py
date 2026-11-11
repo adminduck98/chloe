@@ -10,13 +10,13 @@ from .. import skillbook
 from ..journal import journal
 from ..permissions import permissions
 from ..signals import seen_text, state
-from . import access, calendar, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, task, goal, hints, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
+from . import access, calendar, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
 from ..secret import redact
 from .. import usage as usage_mod
 from .. import vision as vision_mod
 
 HANDLERS = {name[5:]: getattr(mod, name)
-            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, pics, house) for name in dir(mod) if name.startswith("tool_")}
+            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house) for name in dir(mod) if name.startswith("tool_")}
 
 
 # Навыки в мозге для каждого инструмента: (имя, описание, зона)
@@ -57,6 +57,7 @@ SKILLS = {
     "visual_memory": ("Визуальная память", "Помнит, что видела: скриншоты, экран телефона, свои картинки — поиск по описанию и дате", "Память"),
     "proactive": ("Подсказки", "Сама замечает, что стоит сделать, и предлагает — с причиной", "Навыки"),
     "goals": ("Цели", "Большие цели: этапы, шаги, прогресс и что дальше", "Проекты"),
+    "my_voice": ("Голос", "Свой голос Chloe: скорость, высота, паузы, эмоции", "Навыки"),
     "mission": ("Задания", "Большая работа по шагам: план, шаги по одному, продолжение после перезапуска", "Навыки"),
     "delegate": ("Агенты", "Поручает задачу агенту: исследователь, охранник, разработчик, менеджер проектов, творец", "Навыки"),
     "agents": ("Агенты", "", "Навыки"),
@@ -366,6 +367,16 @@ TOOLS = [
                              "id": {"type": "integer"}, "goal": S, "title": S, "why": S, "project": S, "deadline": S,
                              "stages": {"type": "array", "items": schema({"title": S, "steps": {"type": "array", "items": S}}, ["title"])},
                              "step": S, "stage": S, "task_id": {"type": "integer"}, "all": {"type": "boolean"}}, ["action"])},
+    {"name": "my_voice", "description": "Свой голос Chloe (один и тот же при любой модели). show — какой сейчас; faster / slower "
+                                        "(«говори быстрее/медленнее»), higher / lower («голос повыше/пониже»), louder / quieter — "
+                                        "steps (1–4, по умолчанию 1); set — rate (−30…30 %), pitch (−20…20 Гц), volume, pauses "
+                                        "(short — без лишних пауз, normal, long — неторопливо), emotions (true/false — «говори ровно, "
+                                        "без эмоций»); sample — прочитать пробные фразы в четырёх настроениях; reset — как было.",
+     "input_schema": schema({"action": {"type": "string", "enum": ["show", "faster", "slower", "higher", "lower", "louder", "quieter",
+                                                                   "set", "sample", "reset"]},
+                             "steps": {"type": "integer"}, "rate": {"type": "integer"}, "pitch": {"type": "integer"},
+                             "volume": {"type": "integer"}, "pauses": {"type": "string", "enum": ["short", "normal", "long"]},
+                             "emotions": {"type": "boolean"}}, ["action"])},
     {"name": "mission", "description": "Задание — большая работа из нескольких шагов, которая не теряется при перезапуске: «подготовь "
                                        "проект к запуску», «разберись с …и исправь», «собери отчёт по …». Для работы на 3+ действия, "
                                        "которую можно разбить на этапы (простую просьбу делай сразу, без задания). plan — title, steps "
