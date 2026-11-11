@@ -6,7 +6,7 @@ import threading
 import time
 
 from .. import qwen_media as qm
-from .. import audiobook, studio
+from .. import audiobook, screenplay, studio
 from ..voice import confirm
 
 jobs = {}                 # номер → {"kind", "prompt", "state": "работаю"/"готово"/"ошибка", "result", "started"}
@@ -120,10 +120,22 @@ def tool_make_film(a):
     if not qm.available():
         return "Нет ключа Qwen (DASHSCOPE_API_KEY в ~/.config/chloe/keys.env) — рисовать сцены не на чем."
     scenes = studio.clean_scenes(a.get("scenes"))
+    idea = (a.get("idea") or "").strip()
+    style = (a.get("style") or "").strip()
+    title = (a.get("title") or "").strip()
+    if idea and not scenes:
+        # сценарий пишет сценарист (поиск + сильная модель + редактор), а не быстрый мозг на лету
+        _say("Пишу сценарий: поищу в интернете, придумаю героев и сюжет — это около двух минут.")
+        try:
+            script = screenplay.write(idea, a.get("notes") or "")
+        except Exception as e:
+            return "Не смогла написать сценарий: {}. Попробуйте ещё раз или продиктуйте свои сцены.".format(str(e)[:150])
+        scenes, title = script["scenes"], title or script["title"]
+        style = (style + " " if style else "") + screenplay.style_line(script)
     if not scenes:
-        return ("Нужен сценарий: scenes — список сцен, у каждой picture (подробное описание кадра) и narration "
-                "(закадровая фраза). Напиши 3–6 сцен сама по идее пользователя и вызови снова.")
-    title = (a.get("title") or "").strip() or scenes[0]["picture"][:40]
+        return ("Нужен сценарий: передай idea — идею пользователя его словами (сценарий напишет сценарист), "
+                "или scenes — готовые сцены, у каждой picture (описание кадра) и narration (закадровая фраза).")
+    title = title or scenes[0]["picture"][:40]
     mode = "live" if a.get("mode") == "live" else "slides"
     ratio = a.get("ratio") if a.get("ratio") in studio.FRAMES else "16:9"
     try:
@@ -144,7 +156,7 @@ def tool_make_film(a):
             job["done"] = job.get("done", 0) + 1
             job["step"] = "готово сцен: {} из {}".format(job["done"], len(scenes))
 
-    job = _start("film", title, lambda: studio.make_film(title, scenes, (a.get("style") or "").strip(), ratio, mode, progress),
+    job = _start("film", title, lambda: studio.make_film(title, scenes, style, ratio, mode, progress),
                  open_result)
     holder["id"] = job
     return ("Начала ролик (#{}): {} сцен, {}. Когда будет готово — скажу и открою. Файл — в {}. "

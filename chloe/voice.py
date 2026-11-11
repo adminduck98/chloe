@@ -44,6 +44,25 @@ def native_quiet():
 STREAMING = os.environ.get("CHLOE_STREAM_VOICE", "on") != "off"   # говорить с первого кусочка звука
 
 
+GAIN_TARGET = 16000      # до какого пика (из 32767) подтягиваем тихую запись
+GAIN_MAX = 60            # во сколько раз самое большее: дальше усиливался бы только шум
+
+
+def boost(audio):
+    """Тихую запись (далёкий голос, микрофон на малой громкости) подтягиваем до нормального уровня перед распознаванием:
+    на тихой записи Google путает слова, а Qwen обрывает конец фразы. Громкую не трогаем."""
+    try:
+        peak = audioop.max(audio.frame_data, audio.sample_width)
+        top = 2 ** (8 * audio.sample_width - 1) - 1
+        goal = top * GAIN_TARGET / 32767
+        if peak < 1 or peak >= goal * 0.75:
+            return audio
+        gain = min(GAIN_MAX, goal / peak)
+        return type(audio)(audioop.mul(audio.frame_data, audio.sample_width, gain), audio.sample_rate, audio.sample_width)
+    except Exception:
+        return audio
+
+
 class Voice:
     """Слух (распознавание речи) и голос (озвучка)."""
 
@@ -118,6 +137,7 @@ class Voice:
                     audio = self.recognizer.listen(source, timeout=1.0, phrase_time_limit=PHRASE_LIMIT)
                 except sr.WaitTimeoutError:
                     continue
+                audio = boost(audio)
                 # начало фразы = конец записи минус её длина (без паузы в конце и запаса в начале)
                 seconds = len(audio.frame_data) / float(audio.sample_rate * audio.sample_width)
                 started = time.time() - seconds + self.recognizer.pause_threshold + 0.3

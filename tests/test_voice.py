@@ -115,3 +115,31 @@ class SpokenText(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Boost(unittest.TestCase):
+    def audio(self, peak):
+        import array
+
+        import speech_recognition as sr
+
+        a = array.array("h", [peak if i % 2 else -peak for i in range(1600)])
+        return sr.AudioData(a.tobytes(), 16000, 2)
+
+    def peak(self, audio):
+        import audioop
+
+        return audioop.max(audio.frame_data, 2)
+
+    def test_quiet_phrase_is_raised(self):
+        out = voice_mod.boost(self.audio(800))
+        self.assertGreater(self.peak(out), 10000)
+        self.assertEqual(out.sample_rate, 16000)
+
+    def test_loud_phrase_is_untouched(self):
+        a = self.audio(15000)
+        self.assertIs(voice_mod.boost(a), a)
+
+    def test_noise_is_not_blown_up(self):
+        out = voice_mod.boost(self.audio(5))
+        self.assertLessEqual(self.peak(out), 5 * voice_mod.GAIN_MAX)
