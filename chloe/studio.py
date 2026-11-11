@@ -8,6 +8,7 @@
 ffmpeg берётся системный или из пакета imageio-ffmpeg (ставится вместе с Chloe, sudo не нужен).
 """
 import json
+import logging
 import os
 import pathlib
 import re
@@ -18,6 +19,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import qwen_media as qm
+
+log = logging.getLogger("chloe.studio")
 
 FPS = 25
 FRAMES = {"16:9": (1280, 720), "9:16": (720, 1280), "1:1": (1024, 1024)}
@@ -456,7 +459,29 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
         else:
             shutil.copyfile(joined, out)
         joined.unlink(missing_ok=True)
+        if project:
+            hear(out, work)
     return out
+
+
+def hear(video, folder):
+    """Хлоя слушает готовый ролик: громкость, перегруз, провалы тишины — отчёт в папку проекта (проверка-звука.json).
+    Ошибка проверки ролик не ломает."""
+    from . import sfx
+
+    wav = pathlib.Path(folder) / "heard.wav"
+    try:
+        run_ffmpeg(["-i", video, "-vn", "-ac", "2", "-ar", str(sfx.SR), "-c:a", "pcm_s16le", wav])
+        report = sfx.listen(wav)
+        (pathlib.Path(folder) / "проверка-звука.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+        if report["notes"]:
+            log.info("звук ролика: %s", "; ".join(report["notes"]))
+        return report
+    except (StudioError, OSError, ValueError) as e:
+        log.info("не смогла послушать ролик: %s", e)
+        return None
+    finally:
+        wav.unlink(missing_ok=True)
 
 
 def music_track():

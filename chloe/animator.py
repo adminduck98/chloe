@@ -12,8 +12,12 @@
 Сцену описывает мозг (сценарист) — JSON «кто что делает и когда», время — доли длины сцены, длину задаёт голос.
 Рисуется cairo (гладкие линии, ~0,5 мс на кадр), кадры сразу уходят в ffmpeg вместе с голосом, субтитрами и звуками.
 """
+import logging
 import math
+import pathlib
 import subprocess
+
+log = logging.getLogger("chloe.animator")
 
 FPS = 25
 GROUND = 0.84            # линия земли — доля высоты кадра
@@ -84,6 +88,8 @@ SYNONYMS = {"drag": "push", "pull": "push", "lift": "push", "freeze": "surprised
 HAND_PROPS = ("phone", "book", "sword", "ball", "cup", "flag")
 SCENE_PROPS = ("table", "laptop", "box", "door", "tree", "chair", "screen", "rock", "ladder", "wall")
 EFFECTS = ("bulb", "heart", "sweat", "sparkle", "shock", "zzz", "question")
+# какой звук у значка над головой
+SFX_OF_EFFECT = {"bulb": "ding", "heart": "boop", "sparkle": "sparkle", "shock": "stinger", "question": "boop"}
 
 
 def ease(x):
@@ -796,6 +802,73 @@ class Scene:
             talk = 0.5 + 0.5 * math.sin(t * 17) if self._speaking(t) or not self.words else 0.0
         return pose, emo, self.holding(aid, t), cur.get("effect") if cur.get("effect") in EFFECTS else None, talk
 
+    def sound_events(self):
+        """Где в сцене звучать: шаги, удары, падения, прыжки, броски, значки — с точным временем пика и панорамой по x.
+        Время берётся из тех же формул, что движут скелет: удар звучит на кадре, где рука дальше всего."""
+        ev = []
+
+        def add(t, kind, aid, **kw):
+            if 0 <= t <= self.secs:
+                ev.append(dict(kw, t=round(t, 4), kind=kind, pan=(self.where(aid, t)[0] - 0.5) * 2, who=aid))
+
+        for aid, segs in self.segs.items():
+            for s in segs:
+                t0, t1, do = s["t0"], s["t1"], s["do"]
+                d = t1 - t0
+                if do in ("walk", "run", "sneak") and s.get("x") is not None:
+                    rate = {"walk": 2.4, "run": 3.6, "sneak": 1.6}[do]
+                    n = 1
+                    while t0 + n / (2 * rate) < t1:
+                        add(t0 + n / (2 * rate), "step", aid, gain_db={"run": 3, "sneak": -8}.get(do, 0), args={"weight": 1.3 if do == "run" else 1})
+                        n += 1
+                    if do == "run":
+                        add(t0 + min(0.3, d * 0.3), "whoosh", aid, gain_db=-4)
+                elif do in ("crawl", "climb"):
+                    rate = 2.2 if do == "crawl" else 1.8
+                    n = 1
+                    while t0 + n / (2 * rate) < t1:
+                        add(t0 + n / (2 * rate), "flutter" if do == "crawl" else "tap", aid, args={} if do == "crawl" else {"pitch": 420})
+                        n += 1
+                elif do in ("punch", "fight"):
+                    rate = 3.0 if do == "fight" else 1.6
+                    n = 0
+                    while t0 + (n + 0.175) / rate < t1:
+                        t = t0 + (n + 0.175) / rate
+                        add(t - 0.07, "swish", aid, gain_db=-6)
+                        add(t, "punch", aid, args={"size": 0.9 if do == "fight" else 1.0})
+                        n += 1
+                elif do == "kick":
+                    n = 0
+                    while t0 + (n + 0.2) / 1.4 < t1:
+                        add(t0 + (n + 0.2) / 1.4 - 0.08, "swish", aid, gain_db=-4)
+                        add(t0 + (n + 0.2) / 1.4, "punch", aid, args={"size": 1.2})
+                        n += 1
+                elif do == "fall":
+                    add(t0 + d * 0.35, "whoosh", aid, args={"dur": min(0.5, d * 0.6), "heavy": True})
+                    add(t0 + d * 0.625, "thud", aid)
+                elif do == "jump":
+                    add(t0 + d * 0.3, "whoosh", aid, gain_db=-3, args={"dur": min(0.4, d * 0.5)})
+                    add(t0 + d * 0.97, "thud", aid, gain_db=-7, args={"size": 0.7})
+                elif do == "fly":
+                    add(t0 + min(0.35, d * 0.4), "whoosh", aid, args={"dur": 0.7, "heavy": True})
+                elif do == "throw":
+                    add(t0 + d * 0.48, "swish", aid)
+                elif do in ("hug", "catch"):
+                    add(t0 + min(0.25, d * 0.3), "flutter", aid, gain_db=4)
+                elif do == "dance":
+                    add(t0 + 0.05, "sparkle", aid, gain_db=-6)
+                if s.get("effect") in SFX_OF_EFFECT:
+                    add(t0 + 0.12, SFX_OF_EFFECT[s["effect"]], aid)
+                if do in ("surprised",) and not s.get("effect"):
+                    add(t0 + 0.05, "boop", aid, gain_db=-3)
+        for f in self.flights:
+            aid = f["to"] or f["from"]
+            if f["to"]:
+                add(f["t1"], "pop", aid)                        # поймал
+            else:
+                add(f["t1"], "thud", f["from"], gain_db=-8, args={"size": 0.6})   # упало на землю
+        return sorted(ev, key=lambda e: e["t"])
+
     def _speaking(self, t):
         return any(a <= t <= b for a, b, _w in self.words)
 
@@ -930,11 +1003,31 @@ def available():
         return False
 
 
+def scene_sounds(spec, style, size, secs, out, transition=False):
+    """Дорожка звуков сцены (wav рядом с клипом) и проверка, что каждый удар слышен на своём кадре.
+    spec["sounds"] == False — сцена без звуков. Возвращает путь к wav или None."""
+    if (spec or {}).get("sounds") is False:
+        return None
+    from . import sfx as S
+
+    events = Scene(spec, style, size, secs).sound_events()
+    if transition:
+        events.append({"t": 0.33, "kind": "whoosh", "pan": 0.0, "gain_db": 7, "args": {"dur": 0.55}})
+    track, placed = S.render(events, secs)
+    path = pathlib.Path(str(out)).with_suffix("").with_suffix(".sfx.wav")
+    S.save_wav(path, track)
+    report = S.sync_report(track, placed)
+    if report["off"]:
+        log.info("звуки сцены не на месте: %s", report["off"][:5])
+    return str(path)
+
+
 def anim_clip(spec, style, voice_file, secs, size, out, ass=None, sfx=None, lead=0.0, background=None, words=None):
     """Сцена мультфильма → клип со звуком (голос, звук перехода) и субтитрами — тем же путём, что слайды студии."""
     from . import studio
 
     w, h = size
+    sfx = scene_sounds(spec, style, size, secs, out, transition=bool(sfx)) or sfx
     a_in, a_filter = studio._audio_in(voice_file, secs, sfx, lead)
     shifted = [(a + lead, b + lead, x) for a, b, x in (words or [])]
     video = "[0:v]format=yuv420p{cap},fade=t=in:st=0:d=0.3,fade=t=out:st={fo:.2f}:d=0.3[v]".format(
