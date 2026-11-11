@@ -31,3 +31,4 @@ qrcode  # QR-код для телефона-пульта
 miniaudio  # голос потоком: говорить с первого кусочка звука
 imageio-ffmpeg  # ffmpeg без sudo: склейка роликов (make_film)
 httpx  # тесты: ошибки сети для запасных моделей (openai)
+pycairo  # свой мультипликатор стикменов (chloe/animator.py); в Linux Mint уже есть как python3-cairo

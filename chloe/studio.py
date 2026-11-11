@@ -78,18 +78,25 @@ def clean_scenes(scenes):
         narration = str(s.get("narration") or s.get("text") or "").strip()
         if picture:
             sc = {"picture": picture, "narration": narration}
-            for k in ("video", "stage"):                      # раскадровка: движение для генератора видео, этап сюжета
+            for k in ("video", "stage", "place"):             # раскадровка: движение для генератора, этап сюжета, место
                 if s.get(k):
                     sc[k] = str(s[k]).strip()
+            if isinstance(s.get("anim"), dict):               # мультфильм: кто что делает и когда (chloe/animator.py)
+                sc["anim"] = s["anim"]
             if isinstance(s.get("beats"), list):
                 sc["beats"] = [str(b).strip() for b in s["beats"] if str(b).strip()][:4]
             out.append(sc)
     return out[:MAX_SCENES]
 
 
-def estimate(scenes, mode):
-    """Примерная цена в процентах месячного пакета Qwen."""
+BG_LOOKS = ("cozy", "prehistoric", "historical")   # цветные миры: фон места рисует нейросеть (одна картинка на место)
+
+
+def estimate(scenes, mode, look=None):
+    """Примерная цена в процентах месячного пакета Qwen. Мультфильм — бесплатно, кроме фонов мест у цветных стилей."""
     n = len(scenes)
+    if mode == "anim":
+        return len({sc.get("place") for sc in scenes if sc.get("place")}) * SLIDE_COST if look in BG_LOOKS else 0.0
     if mode != "live":
         return n * SLIDE_COST
     secs = sum(max(MIN_SCENE, min(15, len(s["narration"]) / 14 + TAIL)) for s in scenes)   # ~14 знаков в секунду
@@ -326,7 +333,22 @@ def preview_count(scenes, seconds=PREVIEW_SECONDS):
     return len(scenes)
 
 
-def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: None, captions=True, sfx=True):
+def background(place, look, ratio, work):
+    """Фон места для мультфильма (цветные стили): одна картинка на место, без людей — человечков рисует мультипликатор."""
+    import hashlib
+
+    from . import stickman_styles as ST
+
+    path = pathlib.Path(work) / "bg-{}.png".format(hashlib.sha1(place.encode("utf-8")).hexdigest()[:10])
+    if not path.exists():
+        world = ST.STYLES.get(look, ST.STYLES[ST.DEFAULT])["world"]
+        made = qm.image("{}. Empty scene, no people, no characters, wide establishing shot, ground in the lower part of the frame. "
+                        "Style: {}. No text, letters or numbers.".format(place, world), ratio)[0]
+        shutil.copyfile(made, path)
+    return path
+
+
+def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: None, captions=True, sfx=True, look=None):
     """Одна сцена целиком: картинка, голос, субтитры, клип. Всё лежит в папке проекта: прерванный ролик
     продолжается с того же места, готовое не делается и не оплачивается второй раз."""
     work = pathlib.Path(work)
@@ -335,7 +357,7 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
         progress("сцена {} уже готова".format(i + 1))
         return clip
     image = work / "image{:02d}.png".format(i)
-    if not image.exists():
+    if mode != "anim" and not image.exists():
         prompt = scene["picture"] + (". " + style if style else "")
         made = qm.image(prompt, ratio)[0]
         shutil.copyfile(made, image)
@@ -352,7 +374,13 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
     ass = captions_ass(words, size, work / "captions{:02d}.ass".format(i), shift=lead) if (captions and words) else None
     whoosh_file = whoosh(work / "whoosh.wav") if (sfx and i > 0) else None
     part = work / "clip{:02d}.part.mp4".format(i)
-    if mode == "live":
+    if mode == "anim":
+        from . import animator
+
+        bg = background(scene["place"], look, ratio, work) if (look in BG_LOOKS and scene.get("place")) else None
+        animator.anim_clip(scene.get("anim") or {}, look or "classic_light", voice_file, secs, size, part, ass, whoosh_file, lead, bg,
+                           words)
+    elif mode == "live":
         task = qm.video_start(scene.get("video") or scene["picture"], str(image), seconds=min(15, int(secs + 0.99)), resolution="720P")
         raw = qm.video_wait(task, "сцена-{}".format(i + 1))
         try:
@@ -395,7 +423,7 @@ def load_project(folder=None):
 
 
 def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lambda text: None, workers=3,
-              project=None, upto=None, captions=True, sfx=True, music=True):
+              project=None, upto=None, captions=True, sfx=True, music=True, look=None):
     """Ролик (или его первые upto сцен — пробный кусок). project — папка проекта: готовые сцены берутся оттуда.
     Возвращает путь к mp4 в «Видео/Chloe»."""
     scenes = clean_scenes(scenes)
@@ -409,7 +437,7 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
         work = pathlib.Path(project) if project else pathlib.Path(tmp)
         work.mkdir(parents=True, exist_ok=True)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            jobs = [pool.submit(make_scene, i, s, style, ratio, mode, size, work, progress, captions, sfx)
+            jobs = [pool.submit(make_scene, i, s, style, ratio, mode, size, work, progress, captions, sfx, look)
                     for i, s in enumerate(scenes[:count])]
             try:
                 clips = [j.result() for j in jobs]

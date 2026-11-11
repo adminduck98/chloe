@@ -153,11 +153,16 @@ def storyboard(script, scenes, ratio, out_dir=None):
 def tool_make_film(a):
     from .. import stickman_styles as ST
 
-    mode = a.get("mode") if a.get("mode") in ("slides", "live", "director") else "slides"
+    mode = a.get("mode") if a.get("mode") in ("slides", "live", "director", "anim") else "slides"
     ratio = a.get("ratio") if a.get("ratio") in studio.FRAMES else "16:9"
     if a.get("action") == "continue":
         return _continue_film(a)
-    if mode != "director" and not qm.available():
+    if mode == "anim":
+        from .. import animator
+
+        if not animator.available():
+            return "Мультипликатору нужна библиотека cairo: sudo apt install python3-cairo (или pip install pycairo)."
+    if mode not in ("director", "anim") and not qm.available():
         return "Нет ключа Qwen (DASHSCOPE_API_KEY в ~/.config/chloe/keys.env) — рисовать сцены не на чем."
     scenes = studio.clean_scenes(a.get("scenes"))
     idea = (a.get("idea") or "").strip()
@@ -169,7 +174,7 @@ def tool_make_film(a):
         # сценарий пишет сценарист-режиссёр (поиск + сильная модель + редактор), а не быстрый мозг на лету
         _say("Пишу сценарий: поищу в интернете, придумаю сюжет и кадры — это около двух минут.")
         try:
-            script = screenplay.write(idea, a.get("notes") or "", a.get("duration") or 60, style_key=style_key)
+            script = screenplay.write(idea, a.get("notes") or "", a.get("duration") or 60, style_key=style_key, anim=mode == "anim")
         except Exception as e:
             return "Не смогла написать сценарий: {}. Попробуйте ещё раз или продиктуйте свои сцены.".format(str(e)[:150])
         scenes, title = screenplay.frames(script), title or script["title"]
@@ -196,12 +201,21 @@ def tool_make_film(a):
         studio.ffmpeg()
     except studio.StudioError as e:
         return "Не могу собрать ролик: {}.".format(e)
+    look = script.get("style_key") or ST.DEFAULT
+    if mode == "anim" and look in studio.BG_LOOKS and not qm.available():
+        return "Для стиля «{}» фоны мест рисует Qwen, а ключа нет. Выбери классический, тёмный или неоновый стиль.".format(
+            ST.STYLES[look]["name"])
     full = a.get("preview") is False
     upto = len(scenes) if full else studio.preview_count(scenes)
-    whole = studio.estimate(scenes, mode)
-    part = studio.estimate(scenes[:upto], mode)
+    whole = studio.estimate(scenes, mode, look)
+    part = studio.estimate(scenes[:upto], mode, look)
     plan = "; ".join("{}) {}".format(i + 1, s["narration"] or s["picture"][:60]) for i, s in enumerate(scenes))
-    what = "с живым видео" if mode == "live" else "слайдами с озвучкой и субтитрами"
+    what = {"live": "с живым видео", "anim": "мультфильмом (человечки двигаются, голос, субтитры)"}.get(
+        mode, "слайдами с озвучкой и субтитрами")
+    if mode == "anim" and whole < 0.5:                       # свой мультипликатор — бесплатно: спрашивать о цене нечего
+        folder = studio.new_project(title, scenes, style_extra, ratio, mode, {"script": script, "look": look})
+        upto = len(scenes) if full or len(scenes) <= 3 else studio.preview_count(scenes)
+        return _launch(folder, title, scenes, style_extra, ratio, mode, upto, a.get("open", True) is not False, look)
     if upto < len(scenes):
         question = ("Ролик «{}»: {} сцен, {}. Сначала пробный кусок — {} сцены (~20 секунд), примерно {:.0f} % месячного пакета Qwen; "
                     "весь ролик потом — ещё около {:.0f} %. Сцены: {}").format(title, len(scenes), what, upto, max(1, part),
@@ -211,11 +225,11 @@ def tool_make_film(a):
             title, len(scenes), what, max(1, whole), plan)
     if not confirm(question):
         return "Не делаю ролик."
-    folder = studio.new_project(title, scenes, style_extra, ratio, mode, {"script": script})
-    return _launch(folder, title, scenes, style_extra, ratio, mode, upto, a.get("open", True) is not False)
+    folder = studio.new_project(title, scenes, style_extra, ratio, mode, {"script": script, "look": look})
+    return _launch(folder, title, scenes, style_extra, ratio, mode, upto, a.get("open", True) is not False, look)
 
 
-def _launch(folder, title, scenes, style, ratio, mode, upto, open_result=True):
+def _launch(folder, title, scenes, style, ratio, mode, upto, open_result=True, look=None):
     holder = {}
 
     def progress(text):
@@ -225,14 +239,15 @@ def _launch(folder, title, scenes, style, ratio, mode, upto, open_result=True):
             job["step"] = "готово сцен: {} из {}".format(job["done"], upto)
 
     kind = "preview" if upto < len(scenes) else "film"
-    job = _start(kind, title, lambda: studio.make_film(title, scenes, style, ratio, mode, progress, project=folder, upto=upto),
-                 open_result)
+    job = _start(kind, title, lambda: studio.make_film(title, scenes, style, ratio, mode, progress, project=folder, upto=upto,
+                                                       look=look), open_result)
     holder["id"] = job
     if kind == "preview":
         return ("Начала пробный кусок (#{}): первые {} сцены со звуком и субтитрами. Когда будет готово — скажу и открою. "
                 "Весь ролик — после слов пользователя «делай весь ролик» (make_film action=continue).".format(job, upto))
     return ("Начала ролик (#{}): {} сцен, {}. Когда будет готово — скажу и открою. Файл — в {}. Как идёт — create_media status."
-            .format(job, len(scenes), "это 10–20 минут" if mode == "live" else "это несколько минут", qm.short(qm.VIDEO_DIR)))
+            .format(job, len(scenes), {"live": "это 10–20 минут", "anim": "это пара минут, кредиты не тратятся"}.get(
+                mode, "это несколько минут"), qm.short(qm.VIDEO_DIR)))
 
 
 def _continue_film(a):
@@ -246,11 +261,13 @@ def _continue_film(a):
     rest = scenes[done:]
     if not rest:
         return "Ролик «{}» уже сделан целиком — он в {}.".format(p["title"], qm.short(qm.VIDEO_DIR))
-    if not confirm("Доделать ролик «{}»: ещё {} сцен из {}, примерно {:.0f} % месячного пакета Qwen?".format(
-            p["title"], len(rest), len(scenes), max(1, studio.estimate(rest, mode)))):
+    look = p.get("look")
+    cost = studio.estimate(rest, mode, look)
+    if cost >= 0.5 and not confirm("Доделать ролик «{}»: ещё {} сцен из {}, примерно {:.0f} % месячного пакета Qwen?".format(
+            p["title"], len(rest), len(scenes), max(1, cost))):
         return "Не доделываю."
     return _launch(p["folder"], p["title"], scenes, p.get("style", ""), p.get("ratio", "16:9"), mode, len(scenes),
-                   a.get("open", True) is not False)
+                   a.get("open", True) is not False, look)
 
 
 LONG = 30        # минут звука: дольше — сначала спросить

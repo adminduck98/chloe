@@ -24,8 +24,8 @@ jobs:
           cache: pip
       - name: Системные библиотеки (микрофон, экран без монитора)
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q portaudio19-dev xvfb xdotool espeak-ng
+          sudo apt-get update -q -o Acquire::Retries=5
+          sudo apt-get install -y -q -o Acquire::Retries=5 portaudio19-dev xvfb xdotool espeak-ng libcairo2-dev pkg-config
       - name: Зависимости
         run: |
           python -m pip install -q --upgrade pip
