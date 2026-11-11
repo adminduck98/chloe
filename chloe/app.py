@@ -145,6 +145,9 @@ def assistant(args):
 
     proactive.start(voice.say)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
     missions.start(voice.say)      # задания: шаги по одному, когда Chloe свободна; прерванные — по слову «продолжи задание»
+    from .voice import warm_phrases
+
+    threading.Thread(target=warm_phrases, daemon=True, name="voice-phrases").start()   # «Да?» — сразу, без сервера
     from . import visual as visual_mem
 
     visual_mem.start()             # визуальная память: новые скриншоты и картинки — описание и поиск

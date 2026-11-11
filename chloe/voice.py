@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import config, qwen_audio, speech_stream
+from . import config, phrase_cache, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -361,8 +361,19 @@ class Voice:
     def _say_edge(self, text):
         """Голос Светланы (Microsoft, нужен интернет). Длинный ответ — частями по предложениям: следующая часть
         озвучивается, пока звучит текущая, поэтому даже длинный ответ из поиска говорит Светлана, а не запасной голос."""
+        cached = phrase_cache.get(text, cache_voice())          # «Да?», «Остановилась.» — из готового файла, сразу
+        if cached:
+            self._play(str(cached))
+            return True
         if time.time() < self.voice_down_until:
             return False
+        if phrase_cache.worth(text):                            # частая или повторилась: один раз с сервера — и в запас
+            data = voice_mp3(text, timeout=15)
+            if not data:                                        # voice_mp3 уже пробовал 5 раз — сервер недоступен
+                self.voice_down_until = time.time() + 60
+                return False
+            self._play(str(phrase_cache.put(text, cache_voice(), data)))
+            return True
         parts = pieces(text)
         if not parts:
             return True
@@ -488,6 +499,21 @@ def pieces(text, size=300, first=140):
     if cur:
         out.append(cur)
     return out
+
+
+def cache_voice():
+    """Чей голос в готовых фразах: сменили голос (CHLOE_VOICE, CHLOE_TTS) — фразы запишутся заново."""
+    return "{}:{}".format(TTS, VOICES[0])
+
+
+def warm_phrases():
+    """При запуске, в фоне: частые короткие фразы — заранее, чтобы первое «Да?» прозвучало сразу."""
+    try:
+        n = phrase_cache.warm(cache_voice(), lambda t: voice_mp3(t, timeout=20))
+        if n:
+            print("[голос: заготовлено фраз — {}]".format(n))
+    except Exception as e:
+        print("[голос: заготовки — {}]".format(str(e)[:80]))
 
 
 def voice_mp3(text, timeout=60):
