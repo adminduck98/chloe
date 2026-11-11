@@ -81,7 +81,7 @@ def clean_scenes(scenes):
         narration = str(s.get("narration") or s.get("text") or "").strip()
         if picture:
             sc = {"picture": picture, "narration": narration}
-            for k in ("video", "stage", "place"):             # раскадровка: движение для генератора, этап сюжета, место
+            for k in ("video", "stage", "place", "beat", "shot"):   # раскадровка: движение, этап сюжета, место, тип сцены, план
                 if s.get(k):
                     sc[k] = str(s[k]).strip()
             if isinstance(s.get("anim"), dict):               # мультфильм: кто что делает и когда (chloe/animator.py)
@@ -351,7 +351,7 @@ def background(place, look, ratio, work):
     return path
 
 
-def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: None, captions=True, sfx=True, look=None):
+def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: None, captions=True, sfx=True, look=None, hold=0.0):
     """Одна сцена целиком: картинка, голос, субтитры, клип. Всё лежит в папке проекта: прерванный ролик
     продолжается с того же места, готовое не делается и не оплачивается второй раз."""
     work = pathlib.Path(work)
@@ -373,7 +373,7 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
         if voice_file:
             words_file.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
     lead = LEAD if (sfx and i > 0 and voice_file) else 0.0
-    secs = max(MIN_SCENE, (duration(voice_file) + TAIL + lead) if voice_file else MIN_SCENE)
+    secs = max(MIN_SCENE, (duration(voice_file) + TAIL + lead) if voice_file else MIN_SCENE) + hold
     ass = captions_ass(words, size, work / "captions{:02d}.ass".format(i), shift=lead) if (captions and words) else None
     whoosh_file = whoosh(work / "whoosh.wav") if (sfx and i > 0) else None
     part = work / "clip{:02d}.part.mp4".format(i)
@@ -381,7 +381,11 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
         from . import animator
 
         bg = background(scene["place"], look, ratio, work) if (look in BG_LOOKS and scene.get("place")) else None
-        animator.anim_clip(scene.get("anim") or {}, look or "classic_light", voice_file, secs, size, part, ass, whoosh_file, lead, bg,
+        spec = dict(scene.get("anim") or {})
+        for k in ("shot", "beat"):                       # план и тип сцены — камере и звукам мультипликатора
+            if scene.get(k) and not spec.get(k):
+                spec[k] = scene[k]
+        animator.anim_clip(spec, look or "classic_light", voice_file, secs, size, part, ass, whoosh_file, lead, bg,
                            words)
     elif mode == "live":
         task = qm.video_start(scene.get("video") or scene["picture"], str(image), seconds=min(15, int(secs + 0.99)), resolution="720P")
@@ -439,8 +443,11 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
     with tempfile.TemporaryDirectory(prefix="chloe-film-") as tmp:
         work = pathlib.Path(project) if project else pathlib.Path(tmp)
         work.mkdir(parents=True, exist_ok=True)
+        cuts = transition_plan(scenes) if sfx else set()
+        hold = ending_hold(scenes) if count == len(scenes) else 0.0
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            jobs = [pool.submit(make_scene, i, s, style, ratio, mode, size, work, progress, captions, sfx, look)
+            jobs = [pool.submit(make_scene, i, s, style, ratio, mode, size, work, progress, captions, i in cuts, look,
+                                hold if i == len(scenes) - 1 else 0.0)
                     for i, s in enumerate(scenes[:count])]
             try:
                 clips = [j.result() for j in jobs]
@@ -454,25 +461,82 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
         joined = work / "joined.mp4"
         join(clips, joined)
         track = music_track() if music else None
+        mixed = work / "mixed.mp4"
         if track:
-            add_music(joined, track, out)
+            add_music(joined, track, mixed)
         else:
-            shutil.copyfile(joined, out)
+            os.replace(joined, mixed)
+        try:
+            master(mixed, out)
+        except (StudioError, OSError) as e:      # громкость не выровнялась — ролик всё равно отдаём
+            log.info("мастеринг не вышел: %s", e)
+            shutil.copyfile(mixed, out)
         joined.unlink(missing_ok=True)
+        mixed.unlink(missing_ok=True)
         if project:
-            hear(out, work)
+            hear(out, work, [duration(c) for c in clips])
     return out
 
 
-def hear(video, folder):
-    """Хлоя слушает готовый ролик: громкость, перегруз, провалы тишины — отчёт в папку проекта (проверка-звука.json).
-    Ошибка проверки ролик не ломает."""
+def transition_plan(scenes):
+    """На каких стыках звучит «вжух» (номера сцен). Не на каждом: только где меняется этап сюжета или сцена — перемена,
+    путь, поворот; никогда два стыка подряд, не больше двух за 30 секунд, перед тихой сценой — ничего.
+    Без пометок этапов — через стык."""
+    marked = any(sc.get("stage") or sc.get("beat") for sc in scenes)
+    plan, starts, t = set(), [], 0.0
+    for i, sc in enumerate(scenes):
+        starts.append(t)
+        t += scene_seconds(sc)
+        if i == 0:
+            continue
+        if marked:
+            want = sc.get("stage") != scenes[i - 1].get("stage") or sc.get("beat") in ("change", "travel", "turn")
+        else:
+            want = i % 2 == 1
+        if sc.get("beat") == "quiet" or (i - 1) in plan:
+            want = False
+        if want and sum(1 for j in plan if starts[i] - starts[j] < 30) < 2:
+            plan.add(i)
+    return plan
+
+
+def ending_hold(scenes):
+    """Финалу — свои секунды после последней фразы: до минуты — 2 с, длиннее — 4 с (вместе с обычной паузой)."""
+    total = sum(scene_seconds(sc) for sc in scenes)
+    return max(0.0, (2.0 if total <= 70 else 4.0) - TAIL)
+
+
+LOUDNESS = -14.0     # LUFS: как у роликов в сети; пики не выше -1,5 dBTP (AAC поднимает пики)
+
+
+def master(video, out):
+    """Громкость ролика к единой норме (два прохода loudnorm): все ролики Хлои звучат одинаково громко, без перегруза.
+    Картинка копируется без перекодирования."""
+    target = "I={}:TP=-1.5:LRA=11".format(LOUDNESS)
+    err = run_ffmpeg(["-i", video, "-vn", "-af", "loudnorm={}:print_format=json".format(target), "-f", "null", "-"])
+    m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", err)
+    if not m:
+        raise StudioError("loudnorm не измерил громкость")
+    v = json.loads(m.group(0))
+    if float(v["input_i"]) < -70:                  # тишина — нормировать нечего
+        shutil.copyfile(video, out)
+        return out
+    second = ("loudnorm={t}:measured_I={input_i}:measured_TP={input_tp}:measured_LRA={input_lra}:"
+              "measured_thresh={input_thresh}:offset={target_offset}:linear=true").format(t=target, **v)
+    run_ffmpeg(["-i", video, "-map", "0:v", "-map", "0:a", "-c:v", "copy", "-af", second + ",aresample=44100"] + AUDIO_OUT +
+               ["-movflags", "+faststart", out])
+    return out
+
+
+def hear(video, folder, scenes=None):
+    """Хлоя слушает готовый ролик: громкость, перегруз, провалы тишины, сцены намного громче или тише остальных
+    (scenes — длины сцен в секундах) — отчёт в папку проекта (проверка-звука.json). Ошибка проверки ролик не ломает."""
     from . import sfx
 
     wav = pathlib.Path(folder) / "heard.wav"
     try:
         run_ffmpeg(["-i", video, "-vn", "-ac", "2", "-ar", str(sfx.SR), "-c:a", "pcm_s16le", wav])
-        report = sfx.listen(wav)
+        report = sfx.listen(wav, scenes)
         (pathlib.Path(folder) / "проверка-звука.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
         if report["notes"]:
             log.info("звук ролика: %s", "; ".join(report["notes"]))

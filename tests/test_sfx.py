@@ -107,6 +107,22 @@ class Events(unittest.TestCase):
         self.assertIsNone(A.scene_sounds(dict(spec, sounds=False), "classic_light", (320, 180), 2.0, d / "c.mp4"))
 
 
+class Turn(unittest.TestCase):
+    def test_silence_before_the_biggest_hit(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        spec = {"actors": [{"id": "a"}], "acting": [{"who": "a", "do": "walk", "from": 0, "to": 0.5, "x": 0.7},
+                                                    {"who": "a", "do": "fall", "from": 0.5, "to": 1}]}
+        plain, _ = S.load_wav(A.scene_sounds(spec, "classic_light", (320, 180), 4.0, d / "a.mp4"))
+        turn, _ = S.load_wav(A.scene_sounds(dict(spec, beat="turn"), "classic_light", (320, 180), 4.0, d / "b.mp4"))
+        hit = 2.0 + 2.0 * 0.625
+        before = slice(int((hit - 0.5) * S.SR), int((hit - 0.1) * S.SR))
+        self.assertLess(np.abs(turn[before]).max(), np.abs(plain[before]).max() * 0.5)     # перед ударом стихло
+        self.assertGreater(np.abs(turn[before]).max(), 0)                                  # но не цифровой ноль
+        at = slice(int((hit - 0.02) * S.SR), int((hit + 0.05) * S.SR))
+        self.assertGreater(np.abs(turn[at]).max(), np.abs(plain[at]).max())               # а удар — громче
+
+
 class Hearing(unittest.TestCase):
     def setUp(self):
         self.dir = pathlib.Path(tempfile.mkdtemp())
@@ -123,6 +139,13 @@ class Hearing(unittest.TestCase):
         report = S.listen(self.wav(x))
         self.assertFalse(report["ok"])
         self.assertIn("звук пропадает", report["notes"][0])
+
+    def test_hears_a_scene_much_louder_than_others(self):
+        t = np.arange(8 * S.SR) / S.SR
+        x = 0.1 * np.sin(2 * np.pi * 220 * t)
+        x[4 * S.SR:6 * S.SR] *= 3                                            # третья сцена из четырёх — на 9,5 дБ громче
+        report = S.listen(self.wav(x), [2, 2, 2, 2])
+        self.assertIn("3 (+", " ".join(report["notes"]))
 
     def test_hears_overload(self):
         t = np.arange(3 * S.SR) / S.SR

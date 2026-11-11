@@ -88,6 +88,8 @@ SYNONYMS = {"drag": "push", "pull": "push", "lift": "push", "freeze": "surprised
 HAND_PROPS = ("phone", "book", "sword", "ball", "cup", "flag")
 SCENE_PROPS = ("table", "laptop", "box", "door", "tree", "chair", "screen", "rock", "ladder", "wall")
 EFFECTS = ("bulb", "heart", "sweat", "sparkle", "shock", "zzz", "question")
+SHOTS = {"wide": 1.0, "medium": 1.14, "close": 1.32}    # план сцены → приближение к главному герою
+DRIFT = 0.05                                               # камера за сцену приближается на 5 %: кадр живой с первой секунды
 # какой звук у значка над головой
 SFX_OF_EFFECT = {"bulb": "ding", "heart": "boop", "sparkle": "sparkle", "shock": "stinger", "question": "boop"}
 
@@ -679,6 +681,8 @@ class Scene:
         self.props = [p for p in (spec or {}).get("props") or [] if p.get("kind") in SCENE_PROPS]
         tables = [float(p.get("x", 0.5)) for p in self.props if p["kind"] == "table"]
         self.camera = (spec or {}).get("camera") or []
+        self.shot = (spec or {}).get("shot") if (spec or {}).get("shot") in SHOTS else None
+        self.beat = (spec or {}).get("beat") or ""
         self.words = words or []
         self._track()
         self._items()
@@ -873,14 +877,25 @@ class Scene:
         return any(a <= t <= b for a, b, _w in self.words)
 
     def cam(self, t):
-        """Приближение и тряска камеры: (масштаб, центр x, центр y, сдвиг)."""
+        """Приближение и тряска камеры: (масштаб, центр x, центр y, сдвиг).
+        План сцены (shot) задаёт исходное приближение к главному герою; камера всегда чуть плывёт вперёд —
+        движется уже на первом кадре и ещё движется на стыке (кроме тихих сцен и финала: там держится)."""
         zoom, fx, fy = 1.0, self.w / 2, self.h / 2
+        if self.shot:
+            base = SHOTS[self.shot]
+            drift = 0.0 if self.beat in ("quiet", "ending") else DRIFT * t / self.secs
+            zoom = base * (1 + drift)
+            if base > 1.0 and self.actors:
+                x, _ = self.where(next(iter(self.actors)), t)
+                k = (base - 1) / (SHOTS["close"] - 1)
+                fx = fx + (x * self.w - fx) * k
+                fy = fy + ((self.ground - self.fig * 0.55) - fy) * k
         for cm in self.camera:
             a, b = float(cm.get("from", 0)) * self.secs, float(cm.get("to", 1)) * self.secs
             if a <= t <= b + 0.4:
                 k = ease((t - a) / 0.6) * (1 - ease((t - b) / 0.4))
                 z = max(1.0, min(2.0, float(cm.get("zoom", 1.3))))
-                zoom = 1 + (z - 1) * k
+                zoom = max(zoom, 1 + (z - 1) * k)
                 on = cm.get("on")
                 if on in self.actors:
                     x, _ = self.where(on, t)
@@ -1010,10 +1025,22 @@ def scene_sounds(spec, style, size, secs, out, transition=False):
         return None
     from . import sfx as S
 
-    events = Scene(spec, style, size, secs).sound_events()
+    scene = Scene(spec, style, size, secs)
+    events = scene.sound_events()
+    stop = None
+    if scene.beat == "turn":                   # поворот: тишина перед самым сильным ударом, удар — громче всех
+        big = [e for e in events if e["kind"] in ("punch", "thud", "stinger")]
+        if big:
+            hit = max(big, key=lambda e: S.LEVEL_DB[e["kind"]] + e.get("gain_db", 0))
+            hit["gain_db"] = hit.get("gain_db", 0) + 3
+            stop = (max(0.0, hit["t"] - 0.7), hit["t"] - 0.03)
+            events = [e for e in events if e is hit or not (stop[0] <= e["t"] < stop[1])]
+    elif scene.beat in ("quiet", "ending"):
+        for e in events:
+            e["gain_db"] = e.get("gain_db", 0) - 4
     if transition:
         events.append({"t": 0.33, "kind": "whoosh", "pan": 0.0, "gain_db": 7, "args": {"dur": 0.55}})
-    track, placed = S.render(events, secs)
+    track, placed = S.render(events, secs, stop=stop)
     path = pathlib.Path(str(out)).with_suffix("").with_suffix(".sfx.wav")
     S.save_wav(path, track)
     report = S.sync_report(track, placed)

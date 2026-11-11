@@ -76,8 +76,9 @@ class Film(unittest.TestCase):
                 mock.patch.object(studio, "slide_clip", side_effect=clip), \
                 mock.patch.object(studio, "join", side_effect=lambda clips, out: pathlib.Path(out).write_bytes(b"mp4") or out) as join:
             out = studio.make_film("Кошка", SCENES, style="акварель", ratio="9:16")
-        # сцена с голосом — субтитры; вторая сцена — со звуком перехода
-        self.assertEqual(sorted(made), [(0, 4.5, (720, 1280), True, False), (1, 3.0, (720, 1280), False, True)])
+        # сцена с голосом — субтитры; вторая сцена — со звуком перехода; у последней — свои секунды финала
+        end = round(3.0 + studio.ending_hold(studio.clean_scenes(SCENES)), 2)
+        self.assertEqual(sorted(made), [(0, 4.5, (720, 1280), True, False), (1, end, (720, 1280), False, True)])
         self.assertEqual({c[0][0] for c in image.call_args_list}, {"кошка на окне. акварель", "город ночью. акварель"})
         self.assertEqual([c.name for c in join.call_args[0][0]], ["clip00.mp4", "clip01.mp4"])
         self.assertEqual(out.parent, self.dir / "vid")
@@ -96,7 +97,7 @@ class Film(unittest.TestCase):
                 mock.patch.object(studio, "MIN_SCENE", 1.0), mock.patch.object(studio, "music_track", return_value=None):
             out = studio.make_film("Проба", SCENES, ratio="1:1")
         self.assertTrue(out.is_file())
-        self.assertAlmostEqual(studio.duration(out), 2.0, delta=0.3)
+        self.assertAlmostEqual(studio.duration(out), 2.0 + studio.ending_hold(studio.clean_scenes(SCENES)), delta=0.3)
 
 
 class Tool(unittest.TestCase):

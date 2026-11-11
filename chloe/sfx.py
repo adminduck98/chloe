@@ -249,11 +249,17 @@ def make(kind, seed=0, **kw):
 
 
 # --- дорожка сцены ---
-def render(events, secs, voice_peak_db=-3.0, room=True):
+def render(events, secs, voice_peak_db=-3.0, room=True, stop=None):
     """События [{t, kind, pan (-1..1), gain_db?, seed?, args?}] → стерео-дорожка звуков на secs секунд.
-    Пик каждого звука ставится в момент события (чуть раньше — на LEAD). room — подложить фон комнаты."""
+    Пик каждого звука ставится в момент события (чуть раньше — на LEAD). room — подложить фон комнаты.
+    stop=(a, b) — тишина перед большим моментом: фон уходит почти в ноль (но не в цифровой ноль) и возвращается с ударом."""
     n = _n(secs)
     out = room_tone(secs, int(secs * 1000)) if room else np.zeros((n, 2))
+    if stop and room:
+        t = np.arange(n) / SR
+        a, b = stop
+        dip = np.clip((t - a) / 0.15, 0, 1) * np.clip((b + 0.05 - t) / 0.05, 0, 1)
+        out *= (1 - 0.85 * dip)[:, None]
     placed = []
     for i, e in enumerate(sorted(events, key=lambda e: e["t"])):
         kind = e["kind"]
@@ -369,8 +375,9 @@ def sync_report(track, placed, sr=SR, early=0.045, late=0.06):
     return {"checked": checked, "off": bad}
 
 
-def listen(path, voice_band=(200, 4000)):
-    """«Слух» Хлои на готовом ролике (wav): громкость, пики, провалы тишины. Возвращает отчёт словами и цифрами."""
+def listen(path, scenes=None):
+    """«Слух» Хлои на готовом ролике (wav): громкость, пики, провалы тишины; scenes — длины сцен (с): сцена громче или тише
+    средней больше чем на 3 дБ — замечание. Возвращает отчёт словами и цифрами."""
     x, sr = load_wav(path)
     if not len(x):
         return {"ok": False, "notes": ["звука нет"]}
@@ -402,6 +409,16 @@ def listen(path, voice_band=(200, 4000)):
         notes.append("пики почти на пределе ({:.1f} дБ) — возможен перегруз".format(peak_db))
     if loud < -30:
         notes.append("в целом тихо ({:.0f} дБ)".format(loud))
+    if scenes and len(scenes) > 2:
+        levels, at = [], 0.0
+        for d in scenes:
+            seg = x[int(at * sr):int((at + d) * sr)]
+            at += d
+            levels.append(20 * math.log10(np.sqrt(np.mean(seg ** 2)) + 1e-9) if len(seg) else -120.0)
+        mid = float(np.median(levels))
+        odd = [(i + 1, round(lv - mid, 1)) for i, lv in enumerate(levels) if abs(lv - mid) > 3]
+        if odd:
+            notes.append("сцены громче или тише остальных: " + ", ".join("{} ({:+} дБ)".format(i, d) for i, d in odd))
     clip = int(np.sum(np.abs(x) > 0.999))
     if clip > 10:
         notes.append("перегруз: {} обрезанных сэмплов".format(clip))

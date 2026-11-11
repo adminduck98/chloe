@@ -32,12 +32,33 @@ GUIDE = """Ты — режиссёр и сценарист коротких ан
 4. truth — Главная правда: вывод, ради которого смотрели, с самой сильной картинкой.
 5. finale — Финал: запоминающаяся фраза и вопрос зрителю, о котором хочется спорить в комментариях.
 
+ПОВОРОТ И ФИНАЛ (сначала придумай их, потом остальное)
+- Один ясный поворот: «до: … / после: …». Виды: роли меняются местами; деталь раскрывает целое; одно и то же во времени;
+  момент перед событием и что оно изменило; последний кадр повторяет первый с новым смыслом; слова говорят одно, картинка — другое.
+- Финал придумай первым: всё, что ему нужно (предмет, правило, герой), появляется в первой трети.
+- Крючок — вопрос, а не сведения: в первой сцене что-то недосказано, герой ДВИЖЕТСЯ с первого кадра, голос — в первые 2 секунды.
+- Ролик длиннее минуты: цепочка вопросов — каждый ответ открывает следующий вопрос, новое звено каждые 15–20 секунд.
+  Длиннее трёх минут: в первые 30 секунд обещание (вопрос, на который ответит финал), поворот или открытие каждые 60–90 секунд,
+  открытых больших вопросов не больше двух; дольше — значит больше событий, а не те же события медленнее.
+
+ТИП СЦЕНЫ (beat) — от него темп, камера и звук: start (мир до событий, спокойно) · build (детали копятся) · change (что-то меняется,
+удар на изменении) · travel (путь, одно движение) · turn (поворот: перед ним тишина, потом самый громкий удар — один-два на ролик) ·
+quiet (один, тихо) · connection (встреча с тем, ради чего всё) · ending (последний кадр, держится).
+Три сцены одного темпа подряд нельзя: контраст быстрого, вдоха и паузы и есть ритм.
+ПЛАН (shot): wide · medium · close — у соседних сцен разный; повтор — только нарочно.
+
 РИТМ
 - Сцена — около {sec} секунд: закадровый текст {words} слов, живой разговорный русский, с характером. Не повторяй то, что видно на картинке.
 - В каждой сцене три действия героя по времени (beats), картинка меняется каждые 2–3 секунды. Герой никогда не стоит без дела:
   прыгает, тянет, рисует, открывает, спотыкается, указывает. Никаких абстрактных «переливающихся форм».
 - Стык сцен: конец одной сцены переходит в начало следующей — через действие, предмет в руках, направление движения или явную смену места.
 - Не выдумывай факты, цифры и цитаты: если в материалах из интернета этого нет — не утверждай.
+- Текст не подпись к картинке: он добавляет то, чего не видно (причину, прошлое, мысль героя, число, правило).
+  Одна мысль — одна фраза, фразы короткие, конкретные слова вместо общих. Мораль вслух не объясняй — её показывает финальный кадр.
+- Штампы запрещены: «в мире, где…», «представьте…», «а что, если…», «и тогда всё изменилось», «больше чем просто…»,
+  «это не про X, это про Y», «история о надежде/любви», «путешествие» как метафора, «магия происходит», «следуй за мечтой»,
+  «одно можно сказать точно», «незабываемый», «захватывающий», «уникальный», списки из трёх абстрактных слов,
+  риторические вопросы зрителю в середине, больше двух восклицательных знаков на весь ролик.
 
 КАДР (picture и video — ПО-АНГЛИЙСКИ, так их точнее понимают генераторы)
 - picture: первый кадр сцены — кто, что делает, где, план (wide / medium / close-up), ракурс. Одно главное действие.
@@ -51,7 +72,9 @@ GUIDE = """Ты — режиссёр и сценарист коротких ан
 Ответь ТОЛЬКО JSON без пояснений:
 {{"title": "...", "logline": "...", "style_key": "...",
  "characters": "паспорт героев по-английски (только если героев больше одного или стиль требует особой внешности; иначе пусто)",
- "scenes": [{{"stage": "hook|myth|secret|truth|finale", "picture": "...", "video": "...", "beats": ["...", "...", "..."], "narration": "..."}}]}}
+ "turn": "до: … / после: …",
+ "scenes": [{{"stage": "hook|myth|secret|truth|finale", "beat": "start|build|change|travel|turn|quiet|connection|ending",
+             "shot": "wide|medium|close", "picture": "...", "video": "...", "beats": ["...", "...", "..."], "narration": "..."}}]}}
 Сцен — ровно {n}."""
 
 EDIT = """Ты — строгий редактор стикмен-роликов. Ниже сценарий. Найди слабые места и ПЕРЕПИШИ сценарий целиком.
@@ -63,10 +86,13 @@ EDIT = """Ты — строгий редактор стикмен-роликов
 - закадровый текст пересказывает картинку, штампы, длиннее {words} слов на сцену;
 - соседние сцены не стыкуются (действие, предмет, направление);
 - в picture/video описана внешность героя (её вставит программа) или есть надписи в кадре;
-- выдуманные факты и цифры.
+- выдуманные факты и цифры;
+- нет ясного поворота («до / после») или финал не отвечает на вопрос начала;
+- три сцены одного темпа (beat) подряд, у соседних сцен одинаковый план (shot), поворотов (turn) больше двух;
+- штампы, риторические вопросы, мораль словами, больше двух «!» на ролик.
 
 Ответь ТОЛЬКО JSON в том же формате и с тем же числом сцен ({n}):
-{{"title", "logline", "style_key", "characters", "scenes": [{{"stage", "picture", "video", "beats", "narration"}}]}}."""
+{{"title", "logline", "style_key", "characters", "turn", "scenes": [{{"stage", "beat", "shot", "picture", "video", "beats", "narration"}}]}}."""
 
 ANIM = """
 МУЛЬТФИЛЬМ: человечков рисует и двигает программа по твоему описанию. Для КАЖДОЙ сцены добавь поле "anim" и "place":
@@ -87,8 +113,9 @@ ANIM_FORMAT = """
 ВАЖНО: это мультфильм — в КАЖДОЙ из {n} сцен обязательны поля "place" и "anim" (без них человечки будут стоять).
 Ответь ТОЛЬКО JSON:
 {{"title": "...", "logline": "...", "style_key": "...", "characters": "",
- "scenes": [{{"stage": "hook", "picture": "...", "video": "...", "beats": ["...", "...", "..."], "narration": "...",
-             "place": "...", "anim": {{"actors": [...], "props": [...], "acting": [...], "camera": [...]}}}}]}}"""
+ "turn": "до: … / после: …",
+ "scenes": [{{"stage": "hook", "beat": "start", "shot": "wide", "picture": "...", "video": "...", "beats": ["...", "...", "..."],
+             "narration": "...", "place": "...", "anim": {{"actors": [...], "props": [...], "acting": [...], "camera": [...]}}}}]}}"""
 
 WORDS_PER_SEC = 2.1          # замер 11.11.2026: Светлана в голосе Chloe — 13,3 знака (~2,1 слова) в секунду
 CHARS_PER_SEC = 13.3
@@ -118,7 +145,64 @@ def fill_anim(script):
         if not isinstance(sc.get("anim"), dict) or not sc["anim"].get("acting"):
             sc["anim"] = default_anim(sc, i)
             sc["anim_auto"] = True
+    if script["scenes"]:
+        hook_motion(script["scenes"][0]["anim"])
     return script          # русская речь Светланы: ~2,2 слова в секунду
+
+
+CLICHES = ("в мире, где", "представьте", "а что, если", "а что если", "всё изменилось", "все изменилось", "больше чем просто",
+           "больше, чем просто", "история о надежде", "история о любви", "магия происходит", "следуй за мечтой",
+           "одно можно сказать точно", "незабываем", "захватывающ", "уникальн", "погрузимся", "давайте разберёмся")
+BEATS = ("start", "build", "change", "travel", "turn", "quiet", "connection", "ending")
+FAST, SLOW = ("change", "travel", "turn"), ("start", "quiet", "connection", "ending")
+
+
+def check_words(script):
+    """Проверка сценария без модели: штампы, лишние «!», три сцены одного темпа подряд, одинаковый план у соседей,
+    больше двух поворотов. Возвращает список замечаний для редактора."""
+    found = []
+    scenes = script.get("scenes") or []
+    text = " ".join(sc.get("narration", "") for sc in scenes)
+    low = text.lower()
+    for c in CLICHES:
+        if c in low:
+            found.append("штамп «{}» — замени конкретной картинкой".format(c))
+    if text.count("!") > 2:
+        found.append("восклицательных знаков {} — оставь не больше двух".format(text.count("!")))
+    tempo = ["fast" if sc.get("beat") in FAST else "slow" if sc.get("beat") in SLOW else sc.get("beat") or "" for sc in scenes]
+    for i in range(2, len(tempo)):
+        if tempo[i] and tempo[i] == tempo[i - 1] == tempo[i - 2]:
+            found.append("сцены {}–{}: три подряд одного темпа — нужен контраст".format(i - 1, i + 1))
+            break
+    for i in range(1, len(scenes)):
+        if scenes[i].get("shot") and scenes[i].get("shot") == scenes[i - 1].get("shot"):
+            found.append("сцены {} и {}: одинаковый план ({}) — смени план".format(i, i + 1, scenes[i]["shot"]))
+            break
+    if sum(sc.get("beat") == "turn" for sc in scenes) > 2:
+        found.append("поворотов (turn) больше двух — самый громкий момент должен быть один-два")
+    if not script.get("turn"):
+        found.append("нет поворота: напиши «до: … / после: …» и построй на нём финал")
+    return found
+
+
+ACTIVE = ("walk", "run", "jump", "wave", "dance", "fight", "punch", "kick", "fall", "crawl", "climb", "throw", "fly", "sneak",
+          "cheer", "push", "give", "catch", "hug", "point")
+
+
+def hook_motion(anim):
+    """Крючок: в первой сцене кто-то движется с первого кадра (не стоит и не просто говорит)."""
+    acting = anim.get("acting") or []
+    if any(float(a.get("from", 0)) <= 0.05 and a.get("do") in ACTIVE for a in acting):
+        return anim
+    actors = anim.get("actors") or [{"id": "hero", "x": 0.3}]
+    who = actors[0].get("id", "hero")
+    x = float(actors[0].get("x", 0.3))
+    for a in acting:
+        if a.get("who", who) == who and float(a.get("from", 0)) < 0.18:
+            a["from"] = 0.18
+    acting.insert(0, {"who": who, "do": "walk", "from": 0.0, "to": 0.18, "x": min(0.9, x + 0.1)})
+    anim["acting"] = acting
+    return anim
 
 
 def pacing(duration):
@@ -151,7 +235,7 @@ def parse(text):
     key = ST.find(str(data.get("style_key") or "")) or ST.DEFAULT
     return {"title": str(data.get("title") or "").strip(), "logline": str(data.get("logline") or "").strip(),
             "style_key": key, "style": str(data.get("style") or "").strip(),
-            "characters": str(data.get("characters") or "").strip(), "scenes": scenes}
+            "characters": str(data.get("characters") or "").strip(), "turn": str(data.get("turn") or "").strip(), "scenes": scenes}
 
 
 def research(topic, search=None, count=5):
@@ -281,7 +365,10 @@ def write(idea, notes="", duration=None, ask=None, search=None, refine=True, sty
         return fill_anim(first) if anim else first
     try:
         n, _sec, words = pacing(duration)
-        draft = json.dumps({k: first[k] for k in ("title", "logline", "style_key", "characters", "scenes")}, ensure_ascii=False)
+        draft = json.dumps({k: first[k] for k in ("title", "logline", "style_key", "characters", "turn", "scenes")}, ensure_ascii=False)
+        found = check_words(first)
+        if found:
+            draft += "\n\nНАЙДЕНО ПРОВЕРКОЙ (исправь обязательно):\n- " + "\n- ".join(found)
         keep = ("\nПоля anim и place у сцен сохрани (поправь действия, если они не совпадают с текстом)." if anim else "")
         better = parse(call(ask, EDIT.format(n=n, words=words) + keep + "\n\nИДЕЯ ПОЛЬЗОВАТЕЛЯ: " + idea + "\n\nСЦЕНАРИЙ:\n" + draft, False))
         if len(better["scenes"]) != len(first["scenes"]) or \
@@ -296,7 +383,7 @@ def write(idea, notes="", duration=None, ask=None, search=None, refine=True, sty
         print("[сценарий: редактор — {}]".format(str(e)[:80]))
         first = fit_length(first, duration, ask)
         return fill_anim(first) if anim else first
-    for k in ("title", "style", "characters"):
+    for k in ("title", "style", "characters", "turn"):
         better[k] = better[k] or first[k]
     better = fit_length(better, duration, ask)
     if anim:

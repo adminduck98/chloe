@@ -143,6 +143,94 @@ class Tool(unittest.TestCase):
         self.assertIn("нет начатых роликов", media.tool_make_film({"action": "continue"}))
 
 
+class Craft(unittest.TestCase):
+    """Приёмы cinecode: поворот, тип и план сцены, крючок в движении, «вжух» не на каждом стыке, секунды финала, громкость."""
+
+    def good(self):
+        beats, shots = ["start", "change", "quiet", "turn", "connection", "ending"], ["wide", "medium", "close", "wide", "medium", "close"]
+        s = script(6)
+        s["turn"] = "до: прячется / после: спорит"
+        for sc, b, sh in zip(s["scenes"], beats, shots):
+            sc.update(beat=b, shot=sh)
+        return s
+
+    def test_check_words(self):
+        self.assertEqual(sp.check_words(self.good()), [])
+        s = self.good()
+        s["turn"] = ""
+        s["scenes"][0]["narration"] = "Представьте мир! Ура! Да! Вот!"
+        for sc in s["scenes"][:3]:
+            sc["beat"] = "change"
+        s["scenes"][4]["shot"] = s["scenes"][3]["shot"]
+        found = " | ".join(sp.check_words(s))
+        for part in ("представьте", "восклицательных", "три подряд", "одинаковый план", "нет поворота"):
+            self.assertIn(part, found)
+
+    def test_prompt_and_parse_keep_turn_beat_shot(self):
+        p = sp.prompt("видео про стикмена", duration=60)
+        self.assertIn("ТИП СЦЕНЫ", p)
+        self.assertIn("Штампы запрещены", p)
+        out = sp.parse(json.dumps(self.good(), ensure_ascii=False))
+        self.assertEqual(out["turn"], "до: прячется / после: спорит")
+        self.assertEqual((out["scenes"][3]["beat"], out["scenes"][3]["shot"]), ("turn", "wide"))
+
+    def test_editor_gets_found_problems(self):
+        bad = dict(self.good(), turn="")
+        asked = []
+
+        def ask(text, think=True):
+            asked.append(text)
+            return json.dumps(self.good(), ensure_ascii=False)
+
+        with mock.patch.object(sp, "call", side_effect=lambda a, text, think: ask(text) if asked else (asked.append(text) or json.dumps(bad, ensure_ascii=False))), \
+                mock.patch.object(sp, "research", return_value=""), mock.patch.object(sp, "fit_length", side_effect=lambda s, d, a: s):
+            sp.write("стикмен", duration=48)
+        self.assertIn("НАЙДЕНО ПРОВЕРКОЙ", asked[1])
+        self.assertIn("нет поворота", asked[1])
+
+    def test_hook_moves_from_the_first_frame(self):
+        anim = {"actors": [{"id": "hero", "x": 0.3}], "acting": [{"who": "hero", "do": "talk", "from": 0, "to": 1}]}
+        sp.hook_motion(anim)
+        self.assertEqual(anim["acting"][0]["do"], "walk")
+        self.assertEqual(anim["acting"][1]["from"], 0.18)
+        busy = {"actors": [{"id": "hero"}], "acting": [{"who": "hero", "do": "run", "from": 0, "to": 1, "x": 0.8}]}
+        self.assertEqual(len(sp.hook_motion(busy)["acting"]), 1)
+        s = sp.fill_anim(script(3))
+        self.assertIn(s["scenes"][0]["anim"]["acting"][0]["do"], sp.ACTIVE)
+
+    def test_whoosh_only_on_some_cuts(self):
+        scenes = [{"narration": "а" * 80, "stage": st, "beat": b} for st, b in
+                  (("hook", "start"), ("myth", "change"), ("myth", "travel"), ("secret", "build"), ("secret", "quiet"),
+                   ("truth", "turn"), ("truth", "build"), ("finale", "ending"))]
+        plan = studio.transition_plan(scenes)
+        self.assertTrue(plan)
+        self.assertFalse(any(i - 1 in plan for i in plan))              # никогда два стыка подряд
+        self.assertNotIn(4, plan)                                         # перед тихой сценой — тишина
+        self.assertNotIn(0, plan)
+        self.assertEqual(studio.transition_plan([{"narration": "x"}] * 5), {1, 3})   # без пометок — через стык
+        many = [{"narration": "а" * 10, "beat": "change"} for _ in range(12)]          # короткие сцены по ~3 с
+        starts = [sum(studio.scene_seconds(sc) for sc in many[:i]) for i in range(len(many))]
+        plan = sorted(studio.transition_plan(many))
+        self.assertTrue(all(sum(1 for j in plan if 0 <= starts[i] - starts[j] < 30) <= 2 for i in plan))   # не больше двух за 30 с
+
+    def test_ending_keeps_its_seconds(self):
+        self.assertAlmostEqual(studio.ending_hold([{"narration": "а" * 100}] * 3) + studio.TAIL, 2.0)
+        self.assertAlmostEqual(studio.ending_hold([{"narration": "а" * 100}] * 20) + studio.TAIL, 4.0)
+
+    def test_shot_sets_the_camera_and_it_drifts(self):
+        from chloe import animator as A
+
+        def zoom(shot, beat="build", t=0.0):
+            spec = {"actors": [{"id": "a", "x": 0.3}], "acting": [], "shot": shot, "beat": beat}
+            return A.Scene(spec, "classic_light", (320, 180), 4.0).cam(t)[0]
+
+        self.assertLess(zoom("wide"), zoom("medium"))
+        self.assertLess(zoom("medium"), zoom("close"))
+        self.assertGreater(zoom("medium", t=3.9), zoom("medium", t=0.0))   # камера плывёт до самого стыка
+        self.assertEqual(zoom("close", "quiet", 3.9), zoom("close", "quiet", 0.0))
+        self.assertEqual(A.Scene({"actors": [{"id": "a"}]}, "classic_light", (320, 180), 4.0).cam(2.0)[0], 1.0)
+
+
 def has_ffmpeg():
     try:
         studio.ffmpeg()
@@ -152,6 +240,18 @@ def has_ffmpeg():
 
 
 class RealFilm(unittest.TestCase):
+    @unittest.skipUnless(has_ffmpeg(), "нет ffmpeg")
+    def test_master_brings_loudness_to_target(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        src = d / "quiet.mp4"
+        studio.run_ffmpeg(["-f", "lavfi", "-i", "color=c=black:s=64x64:d=4", "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+                           "-af", "volume=0.05", "-shortest"] + studio.VIDEO_OUT + studio.AUDIO_OUT + [src])
+        out = studio.master(src, d / "loud.mp4")
+        err = studio.run_ffmpeg(["-i", out, "-af", "ebur128", "-f", "null", "-"])
+        loud = float([ln for ln in err.splitlines() if ln.strip().startswith("I:")][-1].split()[1])
+        self.assertAlmostEqual(loud, studio.LOUDNESS, delta=1.0)
+
     @unittest.skipUnless(has_ffmpeg(), "нет ffmpeg")
     def test_captions_and_whoosh_render(self):
         from PIL import Image
@@ -176,9 +276,10 @@ class RealFilm(unittest.TestCase):
         self.assertTrue(out.is_file())
         self.assertTrue((d / "proj" / "captions00.ass").exists())
         self.assertTrue((d / "proj" / "whoosh.wav").exists())      # звук перехода — со второй сцены
-        # вторая сцена длиннее первой на вступление после «вжуха»
+        # вторая сцена длиннее первой на вступление после «вжуха» и на секунды финала
         self.assertAlmostEqual(studio.duration(d / "proj" / "clip01.mp4") - studio.duration(d / "proj" / "clip00.mp4"),
-                               studio.LEAD, delta=0.15)
+                               studio.LEAD + studio.ending_hold(scenes), delta=0.15)
+        self.assertTrue((d / "proj" / "проверка-звука.json").exists())     # Хлоя послушала готовый ролик
 
 
 if __name__ == "__main__":
