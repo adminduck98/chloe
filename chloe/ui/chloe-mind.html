@@ -4065,7 +4065,9 @@
   window.chloeError = function (name, why) { touch(); error(findSkill(name), why); };
   window.chloeSuccess = function () { touch(); success(); };
   window.chloeState = function (name) {
-    if (name !== "sleeping") touch();
+    // активность — только настоящая смена состояния: слух на каждый шум в комнате шлёт «idle» повторно,
+    // и это держало мозг на полной частоте кадров (40 % ядра в покое)
+    if (name !== "sleeping" && name !== STATE.name) touch();
     setState(name);
     if (name === "idle") setTimeout(function () { if (STATE.name === "idle") replyEl.style.opacity = 0; }, 3500);
   };
@@ -4136,7 +4138,9 @@
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, size, rows, gl.RGBA, gl.FLOAT, data.subarray(0, rows * size * 4));
   }
   window.chloePerf = function () {   // замер скорости: кадров в секунду, мс JS на кадр, уровень качества
-    return { fps: Math.round(quality.fps * 10) / 10, jsMs: Math.round(perf.js * 100) / 100, level: quality.level, neurons: nCount, links: lCount };
+    return { fps: Math.round(quality.fps * 10) / 10, jsMs: Math.round(perf.js * 100) / 100, level: quality.level, neurons: nCount,
+             links: lCount, drawn: drawn, quiet: Math.round(now() - lastActivity), state: STATE.name, focus: document.hasFocus(),
+             gap: lastGap, signals: signals.length, flashes: synFlashes.length, dragging: !!dragging, playing: !!playing, replaying: !!replaying };
   };
   // самозамер: n кадров подряд, с ожиданием видеокарты (gl.finish) — честное время кадра, даже если окно не видно
   window.chloeBench = function (n, hide, lod) {
@@ -4152,15 +4156,26 @@
     return Math.round((performance.now() - t0) / (n || 60) * 100) / 100;
   };
   // в покое незачем 60 кадров: 30, во сне 20 — меньше нагрев и батарея; любое действие сразу возвращает полную частоту
-  var lastDraw = 0;
+  var lastDraw = 0, drawn = 0, lastGap = 0;   // drawn — сколько кадров нарисовано (замер нагрузки: chloePerf)
   function animate() {
     requestAnimationFrame(animate);
     var nowMs = performance.now();
-    var calm = !signals.length && !synFlashes.length && !dragging && !playing && !replaying && now() - lastActivity > 4 &&
+    var quiet = now() - lastActivity;
+    var calm = !signals.length && !synFlashes.length && !dragging && !playing && !replaying && quiet > 4 &&
                (STATE.name === "idle" || STATE.name === "sleeping");
-    var gap = calm ? (STATE.name === "sleeping" ? 50 : 33) : 0;
+    // в покое мозг дышит реже: без GPU-драйвера каждый кадр — это процессор (замер 11.11.2026: 30 к/с в покое —
+    // 40 % ядра). Минута тишины — 15 к/с, сон или окно не в фокусе — 8 к/с; заговорили — сразу полная частота
+    var gap = 0;
+    lastGap = gap;
+    if (calm) {
+      gap = 33;
+      if (quiet > 60) gap = 66;
+      if (STATE.name === "sleeping" || !document.hasFocus()) gap = 125;
+    }
+    lastGap = gap;
     if (gap && nowMs - lastDraw < gap - 4) return;
     lastDraw = nowMs;
+    drawn++;
     frame(nowMs, false, calm);   // ограниченная частота — не повод менять качество
   }
   function frame(nowMs, bench, calm) {

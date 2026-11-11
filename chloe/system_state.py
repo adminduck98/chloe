@@ -401,3 +401,48 @@ def save(items):
         os.chmod(snapshot_file(), 0o600)
     except OSError:
         pass
+
+
+# --- нагрузка: сколько процессора тратит каждый поток Chloe ---
+def _thread_ticks():
+    import os
+    import threading
+
+    out = {}
+    for t in threading.enumerate():
+        tid = getattr(t, "native_id", None)
+        try:
+            with open("/proc/{}/task/{}/stat".format(os.getpid(), tid)) as f:
+                parts = f.read().rsplit(")", 1)[1].split()
+            out[t.name] = out.get(t.name, 0) + int(parts[11]) + int(parts[12])      # utime + stime, в тиках
+        except (OSError, IndexError, ValueError):
+            pass
+    return out
+
+
+def threads_load(seconds=20.0, sleep=time.sleep):
+    """[(имя потока, % одного ядра)] за seconds — самые прожорливые первыми (только Linux)."""
+    import os
+
+    hz = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
+    a = _thread_ticks()
+    sleep(seconds)
+    b = _thread_ticks()
+    rows = [(name, round((b[name] - a.get(name, 0)) * 100.0 / hz / seconds, 1)) for name in b]
+    return sorted([r for r in rows if r[1] > 0], key=lambda r: -r[1])
+
+
+def profile_loop(every=60):
+    """CHLOE_PROFILE=1: раз в минуту печатать, какие потоки сколько тратят — для поиска лишней нагрузки."""
+    while True:
+        try:
+            rows = threads_load(every)
+            print("[нагрузка за {} с: {}]".format(every, ", ".join("{} {}%".format(n, p) for n, p in rows[:8]) or "ничего"))
+            try:
+                from .brain import brain
+
+                print("[окно: {}]".format(brain.window.evaluate_js("JSON.stringify(window.chloePerf())")))
+            except Exception as e:
+                print("[окно: {}]".format(str(e)[:60]))
+        except Exception as e:
+            print("[нагрузка: {}]".format(str(e)[:80]))

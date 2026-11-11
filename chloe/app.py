@@ -132,9 +132,9 @@ def assistant(args):
         voice.say(greeting() + startup_notices() + payment_notice() + startup_reminder())
     state["listen_until"] = time.time() + ACTIVE_WINDOW
     if voice.enabled and not args.text:
-        threading.Thread(target=recorder, daemon=True).start()
-        threading.Thread(target=listener, daemon=True).start()
-    threading.Thread(target=reminder_watcher, args=(voice.say,), daemon=True).start()
+        threading.Thread(target=recorder, daemon=True, name="recorder").start()
+        threading.Thread(target=listener, daemon=True, name="listener").start()
+    threading.Thread(target=reminder_watcher, args=(voice.say,), daemon=True, name="reminders").start()
     from .tools import social as social_tool
 
     social_tool.start(voice.say)   # запланированные посты: одобренные — в канал, остальные — напоминание и пакет
@@ -148,6 +148,10 @@ def assistant(args):
     from .voice import warm_phrases
 
     threading.Thread(target=warm_phrases, daemon=True, name="voice-phrases").start()   # «Да?» — сразу, без сервера
+    if os.environ.get("CHLOE_PROFILE") == "1":
+        from .system_state import profile_loop
+
+        threading.Thread(target=profile_loop, daemon=True, name="profile").start()
     from . import visual as visual_mem
 
     visual_mem.start()             # визуальная память: новые скриншоты и картинки — описание и поиск
@@ -686,7 +690,7 @@ def serve_ui():
             pass
 
     httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Quiet)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    threading.Thread(target=httpd.serve_forever, daemon=True, name="phone-server").start()
     return "http://127.0.0.1:{}/chloe-mind.html?app=1".format(httpd.server_address[1])
 
 
@@ -801,6 +805,6 @@ def main():
     brain.window = window
     window.events.loaded += on_loaded
     window.events.before_load += brain.pause   # перезагрузка окна (после «забудь») — события ждут, а не теряются
-    threading.Thread(target=assistant, args=(args,), daemon=True).start()
+    threading.Thread(target=assistant, args=(args,), daemon=True, name="assistant").start()
     webview.start(private_mode=False, storage_path=str(DATA / "webview"))
     os._exit(0)

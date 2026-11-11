@@ -94,6 +94,13 @@ class ListenerTest(unittest.TestCase):
         self.assertEqual(got, "ну ты всё равно не так хорошо")
         self.assertAlmostEqual(got.started, time.time() - 5.0, delta=1.0)
 
+    def test_noise_does_not_leave_brain_listening(self):
+        states = []
+        with mock.patch("chloe.voice.route_phrase", lambda audio, started: "cloud"), \
+                mock.patch("chloe.voice.brain.state", lambda name: states.append(name)):
+            self.hear("")                                            # распознавание ничего не нашло
+        self.assertEqual(states[-1], "idle")
+
     def test_cases(self):
         self.assertEqual(self.hear("стоп", busy_now=True), (True, False))
         self.assertEqual(self.hear("открой браузер", busy_now=True), (False, False))

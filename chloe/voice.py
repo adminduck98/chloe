@@ -681,6 +681,8 @@ def listener():
             voice.recognizing = False
             brain.voice(0, "user")
         if not text:
+            if not busy.is_set() and not voice.awaiting and heard_q.empty():
+                brain.state("idle")      # шум без слов: «Слушает» не должно висеть (мозг рисовал бы 60 к/с без конца)
             continue
         overlapped = bool(voice.saying) or started < voice.spoke_until
         if voice.awaiting and not overlapped:
