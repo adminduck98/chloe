@@ -26,7 +26,7 @@ def has_ffmpeg():
 class Script(unittest.TestCase):
     def test_clean_scenes(self):
         raw = [{"picture": " кот ", "narration": " Привет. "}, {"narration": "без картинки"}, "мусор",
-               {"image": "дом", "text": "Дом."}] + [{"picture": "x"}] * 20
+               {"image": "дом", "text": "Дом."}] + [{"picture": "x"}] * 40
         out = studio.clean_scenes(raw)
         self.assertEqual(out[0], {"picture": "кот", "narration": "Привет."})
         self.assertEqual(out[1], {"picture": "дом", "narration": "Дом."})
@@ -60,14 +60,24 @@ class Film(unittest.TestCase):
     def test_pipeline_calls(self):
         """Без ffmpeg: каждая сцена рисуется со стилем, клипы склеиваются по порядку."""
         made = []
+        (self.dir / "i.png").write_bytes(b"png")
+
+        def clip(img, v, secs, size, out, i=0, ass=None, sfx=None, lead=0.0):
+            made.append((i, round(secs, 2), size, bool(ass), bool(sfx)))
+            pathlib.Path(out).write_bytes(b"mp4")
+            return out
+
         with mock.patch.object(qm, "image", side_effect=lambda prompt, ratio: [self.dir / "i.png"]) as image, \
-                mock.patch.object(studio, "narrate", side_effect=lambda text, path: path if text else None), \
+                mock.patch.object(studio, "narrate_words", side_effect=lambda text, path: (path, [(0, 1, "слово")], True) if text else (None, [], True)), \
                 mock.patch.object(studio, "duration", return_value=4.0), \
                 mock.patch.object(studio, "ffmpeg", return_value="ffmpeg"), \
-                mock.patch.object(studio, "slide_clip", side_effect=lambda img, v, secs, size, out, i=0: made.append((i, secs, size)) or out), \
-                mock.patch.object(studio, "join", side_effect=lambda clips, out: out) as join:
+                mock.patch.object(studio, "whoosh", side_effect=lambda path: path), \
+                mock.patch.object(studio, "music_track", return_value=None), \
+                mock.patch.object(studio, "slide_clip", side_effect=clip), \
+                mock.patch.object(studio, "join", side_effect=lambda clips, out: pathlib.Path(out).write_bytes(b"mp4") or out) as join:
             out = studio.make_film("Кошка", SCENES, style="акварель", ratio="9:16")
-        self.assertEqual(sorted(made), [(0, 4.5, (720, 1280)), (1, 3.0, (720, 1280))])
+        # сцена с голосом — субтитры; вторая сцена — со звуком перехода
+        self.assertEqual(sorted(made), [(0, 4.5, (720, 1280), True, False), (1, 3.0, (720, 1280), False, True)])
         self.assertEqual({c[0][0] for c in image.call_args_list}, {"кошка на окне. акварель", "город ночью. акварель"})
         self.assertEqual([c.name for c in join.call_args[0][0]], ["clip00.mp4", "clip01.mp4"])
         self.assertEqual(out.parent, self.dir / "vid")
@@ -82,8 +92,8 @@ class Film(unittest.TestCase):
     @unittest.skipUnless(has_ffmpeg(), "нет ffmpeg")
     def test_real_ffmpeg_film(self):
         img = self.picture()
-        with mock.patch.object(qm, "image", return_value=[img]), mock.patch.object(studio, "narrate", return_value=None), \
-                mock.patch.object(studio, "MIN_SCENE", 1.0):
+        with mock.patch.object(qm, "image", return_value=[img]), mock.patch.object(studio, "narrate_words", return_value=(None, [], True)), \
+                mock.patch.object(studio, "MIN_SCENE", 1.0), mock.patch.object(studio, "music_track", return_value=None):
             out = studio.make_film("Проба", SCENES, ratio="1:1")
         self.assertTrue(out.is_file())
         self.assertAlmostEqual(studio.duration(out), 2.0, delta=0.3)

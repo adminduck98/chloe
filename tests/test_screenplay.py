@@ -78,7 +78,7 @@ class Tool(unittest.TestCase):
         with mock.patch.object(sp, "write", return_value=sp.parse(script("т"))) as w, \
                 mock.patch.object(media, "confirm", return_value=False) as ask:
             out = media.tool_make_film({"idea": "видео про стикмена", "notes": "смотри на YouTube"})
-        w.assert_called_once_with("видео про стикмена", "смотри на YouTube")
+        w.assert_called_once_with("видео про стикмена", "смотри на YouTube", 60, style_key=None)
         self.assertEqual(out, "Не делаю ролик.")
         question = ask.call_args[0][0]
         self.assertIn("Ролик т", question)                                  # название от сценариста
