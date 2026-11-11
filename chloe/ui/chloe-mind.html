@@ -2206,7 +2206,7 @@
   }
 
   el.addEventListener("wheel", function (e) {
-    e.preventDefault(); touch();
+    e.preventDefault(); touch(); lastHands = performance.now();
     var rect = el.getBoundingClientRect();
     var d = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;
     zoomAt(Math.exp(-d * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
@@ -2240,6 +2240,7 @@
     wrap.classList.add("drag");
   });
   el.addEventListener("pointermove", function (e) {
+    if (e.buttons) lastHands = performance.now();
     if (pointers[e.pointerId]) { pointers[e.pointerId].x = e.clientX; pointers[e.pointerId].y = e.clientY; }
     if (pinch) {
       var ids = Object.keys(pointers);
@@ -3917,8 +3918,9 @@
     quality.fps = quality.frames * 1000 / quality.acc;
     quality.frames = 0; quality.acc = 0;
     if (!quality.auto || document.hidden) return;
-    if (quality.fps < 35) { quality.low++; quality.high = 0; } else if (quality.fps > 55) { quality.high++; quality.low = 0; } else { quality.low = 0; quality.high = 0; }
-    if (quality.low >= 3 && quality.level > 0) { setQuality(quality.level - 1); quality.low = 0; }
+    var goal = lastGap >= 30 ? 30 : 60;     // цель: 30 к/с в работе, 60 — когда мозг крутят рукой
+    if (quality.fps < goal * 0.6) { quality.low++; quality.high = 0; } else if (quality.fps > goal * 0.9) { quality.high++; quality.low = 0; } else { quality.low = 0; quality.high = 0; }
+    if (quality.low >= 5 && quality.level > 0) { setQuality(quality.level - 1); quality.low = 0; }   // 5 с подряд, а не 3: короткая занятость компьютера — не повод портить вид
     if (quality.high >= 8 && quality.level < 2) { setQuality(quality.level + 1); quality.high = 0; }
   }
 
@@ -4268,7 +4270,7 @@
     return Math.round((performance.now() - t0) / (n || 60) * 100) / 100;
   };
   // в покое незачем 60 кадров: 30, во сне 20 — меньше нагрев и батарея; любое действие сразу возвращает полную частоту
-  var lastDraw = 0, drawn = 0, lastGap = 0;   // drawn — сколько кадров нарисовано (замер нагрузки: chloePerf)
+  var lastDraw = 0, drawn = 0, lastGap = 0, lastHands = -1e9;   // drawn — сколько кадров нарисовано (замер нагрузки: chloePerf)
   function animate() {
     requestAnimationFrame(animate);
     var nowMs = performance.now();
@@ -4277,8 +4279,10 @@
                (STATE.name === "idle" || STATE.name === "sleeping");
     // в покое мозг дышит реже: без GPU-драйвера каждый кадр — это процессор (замер 11.11.2026: 30 к/с в покое —
     // 40 % ядра). Минута тишины — 15 к/с, сон или окно не в фокусе — 8 к/с; заговорили — сразу полная частота
-    var gap = 0;
-    lastGap = gap;
+    // работает (думает, говорит, слушает) — 30 к/с: глазу плавно, а видеокарте и процессору вдвое легче, чем 60.
+    // 60 к/с — только пока мозг крутят или приближают рукой (там задержка заметна)
+    var hands = dragging || nowMs - lastHands < 1200;
+    var gap = hands ? 0 : 33;
     if (calm) {
       gap = 33;
       if (quiet > 60) gap = 66;
