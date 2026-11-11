@@ -10,13 +10,13 @@ from .. import skillbook
 from ..journal import journal
 from ..permissions import permissions
 from ..signals import seen_text, state
-from . import access, calendar, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, goal, hints, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
+from . import access, calendar, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, task, goal, hints, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, remind, replay, screen, skill, system, talk, tg, undo, weather, web
 from ..secret import redact
 from .. import usage as usage_mod
 from .. import vision as vision_mod
 
 HANDLERS = {name[5:]: getattr(mod, name)
-            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, goal, hints, pics, house) for name in dir(mod) if name.startswith("tool_")}
+            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, pics, house) for name in dir(mod) if name.startswith("tool_")}
 
 
 # Навыки в мозге для каждого инструмента: (имя, описание, зона)
@@ -57,6 +57,7 @@ SKILLS = {
     "visual_memory": ("Визуальная память", "Помнит, что видела: скриншоты, экран телефона, свои картинки — поиск по описанию и дате", "Память"),
     "proactive": ("Подсказки", "Сама замечает, что стоит сделать, и предлагает — с причиной", "Навыки"),
     "goals": ("Цели", "Большие цели: этапы, шаги, прогресс и что дальше", "Проекты"),
+    "mission": ("Задания", "Большая работа по шагам: план, шаги по одному, продолжение после перезапуска", "Навыки"),
     "delegate": ("Агенты", "Поручает задачу агенту: исследователь, охранник, разработчик, менеджер проектов, творец", "Навыки"),
     "agents": ("Агенты", "", "Навыки"),
     "workflows": ("Автоматизации", "Делает сама по расписанию или по событию: новый файл, новое сообщение", "Навыки"),
@@ -120,8 +121,8 @@ def schema(props, required=()):
 S = {"type": "string"}
 TOOLS = [
     {"name": "screenshot", "description": "Скриншот экрана. Координаты для mouse_click берутся с него.", "input_schema": schema({})},
-    {"name": "vision", "description": "Постоянное зрение (ты всё время видишь экран): on — включить, off — выключить («не смотри на экран»), hide — не смотреть окна со словом word («не смотри на почту»), history — какие окна были открыты за minutes минут («что я делал последние полчаса»), status — включено ли.",
-     "input_schema": schema({"action": {"type": "string", "enum": ["on", "off", "hide", "history", "status"]},
+    {"name": "vision", "description": "Постоянное зрение (ты всё время видишь экран): on — включить, off — выключить («не смотри на экран»), hide — не смотреть окна со словом word («не смотри на почту»), history — какие окна были открыты за minutes минут («что я делал последние полчаса»), focus — над чем пользователь работает за последний час (проект, программа, файл, минуты), status — включено ли.",
+     "input_schema": schema({"action": {"type": "string", "enum": ["on", "off", "hide", "history", "focus", "status"]},
                              "word": S, "minutes": {"type": "integer"}}, ["action"])},
     {"name": "mouse_click", "description": "Клик мышью по координатам скриншота.",
      "input_schema": schema({"x": {"type": "integer"}, "y": {"type": "integer"},
@@ -365,6 +366,19 @@ TOOLS = [
                              "id": {"type": "integer"}, "goal": S, "title": S, "why": S, "project": S, "deadline": S,
                              "stages": {"type": "array", "items": schema({"title": S, "steps": {"type": "array", "items": S}}, ["title"])},
                              "step": S, "stage": S, "task_id": {"type": "integer"}, "all": {"type": "boolean"}}, ["action"])},
+    {"name": "mission", "description": "Задание — большая работа из нескольких шагов, которая не теряется при перезапуске: «подготовь "
+                                       "проект к запуску», «разберись с …и исправь», «собери отчёт по …». Для работы на 3+ действия, "
+                                       "которую можно разбить на этапы (простую просьбу делай сразу, без задания). plan — title, steps "
+                                       "(2–10 конкретных шагов, каждый — одно проверяемое дело), request (слова пользователя): сама спросит "
+                                       "согласие и поведёт шаги по одному, САМИ ШАГИ сейчас не делай. Когда получишь шаг задания — сделай "
+                                       "его и обязательно report — id, outcome (done / failed / need_user), result (что сделано и что нашлось), "
+                                       "question (для need_user). list — незаконченные задания; show — id: план и итоги шагов; resume — "
+                                       "«продолжи задание» (id или mission — слова; answer — ответ пользователя на вопрос задания); start — "
+                                       "начать записанный план; skip — пропустить застрявший шаг; cancel (спросит).",
+     "input_schema": schema({"action": {"type": "string", "enum": ["plan", "report", "list", "show", "resume", "start", "skip", "cancel"]},
+                             "id": {"type": "integer"}, "mission": S, "title": S, "request": S,
+                             "steps": {"type": "array", "items": S}, "outcome": {"type": "string", "enum": ["done", "failed", "need_user"]},
+                             "result": S, "question": S, "answer": S, "all": {"type": "boolean"}}, ["action"])},
     {"name": "proactive", "description": "Подсказки Chloe: что она сама заметила (застывший проект, срок цели, повторяющаяся ошибка, "
                                          "поломка, скорое списание, неодобренный пост…) — у каждой причина и источник. list — «что ты "
                                          "предлагаешь?», «есть идеи?»; dismiss — number: «не надо» (молчит неделю); mode — mode: silent "

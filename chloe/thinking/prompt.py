@@ -112,6 +112,18 @@ def start_thinking(user_text):
     old = memory.relevant(user_text, skip_ids=shown)   # давняя память, которой нет в подсказке, — по словам просьбы
     recall = ("\n[Из давней памяти, может пригодиться: " + "; ".join("[{}] {}".format(m["id"], m["text"]) for m in old) + "]") if old else ""
     seen = vision.context()   # постоянное зрение: какое окно открыто сейчас и что было до этого
+    work = ""
+    try:
+        work = vision.focus()     # над чем работает: проект, программа, файл, сколько минут
+        from ..missions import missions, describe
+
+        m = next((x for x in missions.all() if x["status"] in ("running", "waiting", "blocked", "paused")), None)
+        if m and not user_text.startswith("Задание №"):
+            work += ("\n" if work else "") + "[Незаконченное: " + describe(m) + "]"
+    except Exception:
+        pass
+    if work:
+        seen = (seen + "\n" + work) if seen else work
     if seen and wants_frame(user_text) and vision.fresh_frame():
         seen += " [Кадр экрана приложен — это то, что пользователь видит прямо сейчас.]"
     return "{}[{}] {}{}{}".format(before, time.strftime("%H:%M"), user_text, recall, ("\n" + seen) if seen else "")

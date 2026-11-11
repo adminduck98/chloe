@@ -141,9 +141,10 @@ def assistant(args):
     from . import workflows as wf
 
     wf.start()                     # автоматизации: по расписанию и по событиям — как обычные просьбы, со всеми проверками
-    from . import proactive
+    from . import missions, proactive
 
     proactive.start(voice.say)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
+    missions.start(voice.say)      # задания: шаги по одному, когда Chloe свободна; прерванные — по слову «продолжи задание»
     from . import visual as visual_mem
 
     visual_mem.start()             # визуальная память: новые скриншоты и картинки — описание и поиск

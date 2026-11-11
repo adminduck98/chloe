@@ -112,7 +112,7 @@ class Vision:
         self.title = ""
         self.private = False
         self.thumb = None          # маленький серый кадр — сравнивать, сменился ли экран
-        self.history = collections.deque(maxlen=60)   # (время, заголовок окна)
+        self.history = collections.deque(maxlen=400)  # (время, заголовок окна): смены окон за последние часы
         self.thread = None
         self.on_window = None      # куда сообщать о смене окна (мозг в окне Chloe)
         self.errors = 0
@@ -242,6 +242,24 @@ class Vision:
         seen = ""   # о кадре скажет сама просьба: он приложен, только когда она про экран (wants_frame)
         return "[Экран: {}.{} «Это», «тут», «вот это» — скорее всего про то, что на экране.]".format(". ".join(parts), seen)
 
+    def focus(self, projects=None):
+        """Над чем пользователь работает: проект, программа, файл, минуты (chloe/focus.py). "" — нечего сказать."""
+        if not self.enabled:
+            return ""
+        from . import focus as F
+
+        if projects is None:
+            try:
+                from .project_memory import project_memory
+
+                projects = project_memory.projects()
+            except Exception:
+                projects = []
+        with self.lock:
+            rows = list(self.history)
+        words = self.private_words()
+        return F.summary(rows, self.clock(), projects, lambda t: private_title(t, words))
+
     def recent(self, minutes=HISTORY_MINUTES):
         now = self.clock()
         with self.lock:
@@ -276,5 +294,8 @@ def tool_vision(a):
         if not rows:
             return "За это время окна не менялись или зрение было выключено."
         return "\n".join("{} — {}".format(time.strftime("%H:%M", time.localtime(t)), w) for t, w in rows)
+    if action == "focus":
+        return vision.focus() or ("Зрение выключено — не знаю, над чем вы работаете." if not vision.enabled else
+                                  "За последний час почти не было работы за компьютером (или окна были приватные).")
     state = "включено" if vision.enabled else "выключено"
     return "Постоянное зрение {}. Сейчас окно: {}.".format(state, vision.title or "неизвестно")

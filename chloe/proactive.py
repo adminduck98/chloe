@@ -121,6 +121,14 @@ def from_money(now):
 
 def from_waiting(now):
     out = []
+    from .missions import missions
+
+    for m in missions.all():
+        if m["status"] in ("waiting", "blocked", "paused"):
+            why = {"waiting": "ждёт ответа: " + (m["question"] or "")[:80], "blocked": "шаг не вышел",
+                   "paused": "прервано перезапуском"}[m["status"]]
+            out.append(tip("mission:{}:{}".format(m["id"], m["status"]), "Задание «{}» стоит".format(m["title"][:60]),
+                           "{}, сделано {} из {}".format(why, m["done_n"], len(m["steps"])), "задания", 1, "продолжи задание " + str(m["id"])))
     from .social import social
 
     for p in social.posts():
