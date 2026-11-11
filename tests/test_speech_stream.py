@@ -27,6 +27,12 @@ class Speak(unittest.TestCase):
     def setUp(self):
         SlowDownload.made = []
         self.addCleanup(mock.patch.stopall)
+        import pathlib
+        import tempfile
+
+        from chloe import phrase_cache                      # готовые фразы — свои в каждом тесте, без памяти о прошлых
+        mock.patch.object(phrase_cache, "_heard", {}).start()
+        mock.patch.object(phrase_cache, "DIR", pathlib.Path(tempfile.mkdtemp())).start()
         self.decoded = []
 
         def fake_feed(player, downloads):
@@ -98,7 +104,8 @@ class Speak(unittest.TestCase):
              mock.patch.object(ss, "available", lambda: True), \
              mock.patch.object(ss, "last_problem", "ClientConnectorError"), \
              mock.patch.object(ss, "speak", lambda parts, name, stop: False):
-            self.assertFalse(v._say_edge("Привет."))          # нет связи — минуту не ждём Светлану зря
+            self.assertFalse(v._say_edge("Добрый вечер."))    # нет связи — минуту не ждём Светлану зря
+            # (другая фраза: повторившаяся короткая пошла бы в запас готовых фраз, а не потоком)
             self.assertGreater(v.voice_down_until, time.time())
 
     def test_lost_piece_is_spoken_by_sentences(self):

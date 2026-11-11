@@ -55,6 +55,12 @@ class OnlineVoice(unittest.TestCase):
         self.v = Voice(enabled=True)
         self.played, self.asked, self.piper = [], [], []
         self.addCleanup(mock.patch.stopall)
+        import pathlib
+        import tempfile
+
+        from chloe import phrase_cache                      # готовые фразы — свои в каждом тесте, без памяти о прошлых
+        mock.patch.object(phrase_cache, "_heard", {}).start()
+        mock.patch.object(phrase_cache, "DIR", pathlib.Path(tempfile.mkdtemp())).start()
         mock.patch.object(self.v, "_play", lambda path: self.played.append(path)).start()
         mock.patch.object(self.v, "_say_piper", lambda t: self.piper.append(t) or True).start()
 
