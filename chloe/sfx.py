@@ -221,6 +221,23 @@ def flutter(seed=0):
     return finish(x, 0.35), 0.012
 
 
+def scribble(dur=1.2, seed=0):
+    """Маркер по бумаге: шуршащий шум 2–7 кГц, штрихами (5–8 в секунду, каждый чуть другой), с паузами на отрыв руки."""
+    rng = _rng(seed)
+    n = _n(dur)
+    x = band(rng.standard_normal(n), 1800, 7000, 0.3)
+    env = np.zeros(n)
+    t = 0.0
+    while t < dur:
+        ln = rng.uniform(0.08, 0.2)
+        a, b = int(t * SR), min(n, int((t + ln) * SR))
+        if b > a:
+            seg = np.sin(np.linspace(0, np.pi, b - a)) ** 0.6 * rng.uniform(0.55, 1.0)
+            env[a:b] = np.maximum(env[a:b], seg)
+        t += ln + rng.uniform(0.0, 0.06)
+    return finish(x * env, 0.5, 0.004, 0.03), 0.0
+
+
 def room_tone(secs, seed=0, level_db=-52.0):
     """Фон комнаты: еле слышный мягкий шум. Без него пауза между сценами — «мёртвая» цифровая тишина, будто звук пропал."""
     n = _n(secs)
@@ -234,10 +251,12 @@ def room_tone(secs, seed=0, level_db=-52.0):
 
 
 RECIPES = {"whoosh": whoosh, "swish": swish, "punch": punch, "thud": thud, "step": step, "tap": tap, "pop": pop,
-           "ding": ding, "sparkle": sparkle, "boop": boop, "stinger": stinger, "flutter": flutter}
+           "ding": ding, "sparkle": sparkle, "boop": boop, "stinger": stinger, "flutter": flutter,
+           "scribble": scribble}
 # громкость каждого рода звуков относительно голоса (дБ): удары громче всех, шаги и шорохи — тихо
 LEVEL_DB = {"punch": -9, "thud": -10, "stinger": -11, "whoosh": -16, "swish": -15, "step": -22, "tap": -18, "pop": -16,
-            "ding": -14, "sparkle": -17, "boop": -17, "flutter": -24}
+            "ding": -14, "sparkle": -17, "boop": -17, "flutter": -24,
+            "scribble": -24}
 
 
 def make(kind, seed=0, **kw):

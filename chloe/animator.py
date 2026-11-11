@@ -29,7 +29,7 @@ SEG = {"head": 0.095, "neck": 0.035, "torso": 0.30, "upper": 0.165, "fore": 0.15
 
 COLORS = {"black": (0.07, 0.07, 0.07), "white": (0.96, 0.96, 0.96), "red": (0.95, 0.27, 0.27), "blue": (0.25, 0.55, 1.0),
           "green": (0.25, 0.85, 0.45), "yellow": (1.0, 0.82, 0.2), "orange": (1.0, 0.55, 0.15), "purple": (0.7, 0.4, 1.0),
-          "pink": (1.0, 0.45, 0.7), "cyan": (0.2, 0.9, 0.95), "gray": (0.55, 0.55, 0.55)}
+          "pink": (1.0, 0.45, 0.7), "cyan": (0.2, 0.9, 0.95), "gray": (0.55, 0.55, 0.55), "graphite": (0.2, 0.2, 0.22)}
 ACCENT = {"red": (0.92, 0.25, 0.25), "blue": (0.22, 0.5, 0.95), "gold": (0.98, 0.75, 0.18)}
 
 # Оформление по стилю: фон, цвет героя, свечение линий, залитая голова
@@ -41,6 +41,10 @@ LOOKS = {
     "cozy": {"bg": (0.98, 0.95, 0.9), "ink": "black", "glow": 0.0, "ground": (0.8, 0.74, 0.66), "filled_head": True},
     "prehistoric": {"bg": (0.93, 0.86, 0.74), "ink": "black", "glow": 0.0, "ground": (0.62, 0.5, 0.36), "filled_head": True},
     "historical": {"bg": (0.95, 0.92, 0.85), "ink": "black", "glow": 0.0, "ground": (0.7, 0.62, 0.5), "filled_head": True},
+    # белая доска (по мотивам srt-whiteboard-animation, MIT): тёплая бумага #F5EBD7, графитовый маркер, акценты — только
+    # красный, синий, оранжевый; всё появляется под маркером по порядку рассказа, камера не плывёт
+    "whiteboard": {"bg": (0.961, 0.922, 0.843), "ink": "graphite", "glow": 0.0, "ground": (0.45, 0.43, 0.4), "filled_head": False,
+                   "draw": True, "still": True, "others": ("red", "blue", "orange")},
 }
 
 # --- позы: углы в градусах; 0 — вниз, плюс — вперёд (куда смотрит герой). Локоть и колено — сгиб относительно плеча/бедра.
@@ -661,7 +665,11 @@ class Scene:
         for i, a in enumerate((spec or {}).get("actors") or [{"id": "hero"}]):
             aid = str(a.get("id") or "hero{}".format(i))
             col = a.get("color") or "default"
-            color = COLORS.get(col) or (COLORS[ink_name] if i == 0 else COLORS[("red", "blue", "green", "orange")[i % 4]])
+            others = self.look.get("others")
+            if others:                                   # у стиля своя короткая палитра: чужой цвет заменяется её цветом
+                color = COLORS[col] if col in others else (COLORS[ink_name] if i == 0 else COLORS[others[(i - 1) % len(others)]])
+            else:
+                color = COLORS.get(col) or (COLORS[ink_name] if i == 0 else COLORS[("red", "blue", "green", "orange")[i % 4]])
             if style == "neon_desktop" and col == "default":
                 color = COLORS[("cyan", "red", "yellow", "green")[i % 4]]
             self.actors[aid] = {"id": aid, "color": color, "x": float(a.get("x", 0.3 + 0.4 * i)), "facing": 1 if a.get("facing", "right" if i == 0 else "left") != "left" else -1,
@@ -686,6 +694,7 @@ class Scene:
         self.words = words or []
         self._track()
         self._items()
+        self.plan = self._draw_plan((spec or {}).get("draw")) if self.look.get("draw") else {}
 
     def _items(self):
         """Предметы во времени: кто что держит (до «drop» или передачи), что летит (бросок, передача), что лежит на земле."""
@@ -722,6 +731,51 @@ class Scene:
         for k in self.holds:
             self.holds[k].sort(key=lambda e: e[0])
         del a0
+
+    def _draw_plan(self, draw):
+        """Белая доска: когда маркер рисует каждую часть картинки — {ключ: (t0, t1)}. Ключи: "ground", "prop:N", id героя.
+        Порядок по смыслу рассказа: место (земля, предметы) → герои; draw от сценариста задаёт свой порядок,
+        "word" — начать, когда голос скажет это слово (рисунок идёт за субтитрами)."""
+        keys = ["ground"] + ["prop:{}".format(i) for i in range(len(self.props))] + list(self.actors)
+        cost = {"ground": 0.5}
+        items = []
+        for d in draw or []:
+            what = str(d.get("what") or "")
+            if what not in keys:
+                what = next(("prop:{}".format(i) for i, p in enumerate(self.props) if p["kind"] == what and
+                             "prop:{}".format(i) not in [x[0] for x in items]), None)
+            if what and what not in [x[0] for x in items]:
+                items.append((what, d))
+        for k in keys:                                                   # что сценарист не назвал — рисуется по порядку
+            if k not in [x[0] for x in items]:
+                items.insert(0 if k == "ground" else len(items), (k, {}))
+        plan, t = {}, 0.15
+        budget = self.secs * 0.6                                         # рисунок готов к 60 % сцены — дальше действие
+        need = sum(cost.get(k, 1.6 if k in self.actors else 1.2) for k, _ in items) + 0.15 * len(items)
+        scale = min(1.0, (budget - 0.15) / max(need, 0.1))
+        for k, d in items:
+            dur = cost.get(k, 1.6 if k in self.actors else 1.2) * scale
+            if d.get("from") is not None:
+                t0 = float(d["from"]) * self.secs
+                dur = max(0.3, (float(d.get("to", d["from"])) - float(d["from"])) * self.secs) if d.get("to") is not None else dur
+            else:
+                t0 = self._word_time(d.get("word"), t) if d.get("word") else t
+            plan[k] = (t0, min(self.secs, t0 + dur))
+            t = max(t, plan[k][1] + 0.15 * scale)
+        return plan
+
+    def _prop_x(self, key):
+        if key.startswith("prop:"):
+            return float(self.props[int(key[5:])].get("x", 0.5))
+        return 0.5
+
+    def _word_time(self, word, default):
+        """Когда голос начинает слово (по основе: «банан» найдёт «бананы»)."""
+        stem = str(word).lower().strip()[:5]
+        for a, _b, w in self.words:
+            if stem and w.lower().strip(".,!?«»—:;").startswith(stem):
+                return a
+        return default
 
     def holding(self, aid, t):
         kind = None
@@ -865,6 +919,11 @@ class Scene:
                     add(t0 + 0.12, SFX_OF_EFFECT[s["effect"]], aid)
                 if do in ("surprised",) and not s.get("effect"):
                     add(t0 + 0.05, "boop", aid, gain_db=-3)
+        for key, (t0, t1) in self.plan.items():                        # белая доска: скрип маркера, пока он рисует
+            if t1 - t0 > 0.2:
+                aid = key if key in self.actors else next(iter(self.actors))
+                ev.append({"t": round(t0, 4), "kind": "scribble", "who": aid, "args": {"dur": round(t1 - t0, 3)},
+                           "pan": ((self.where(key, t0)[0] if key in self.actors else self._prop_x(key)) - 0.5) * 2})
         for f in self.flights:
             aid = f["to"] or f["from"]
             if f["to"]:
@@ -881,7 +940,7 @@ class Scene:
         План сцены (shot) задаёт исходное приближение к главному герою; камера всегда чуть плывёт вперёд —
         движется уже на первом кадре и ещё движется на стыке (кроме тихих сцен и финала: там держится)."""
         zoom, fx, fy = 1.0, self.w / 2, self.h / 2
-        if self.shot:
+        if self.shot and not self.look.get("still"):                   # доска стоит: рисунок виден целиком
             base = SHOTS[self.shot]
             drift = 0.0 if self.beat in ("quiet", "ending") else DRIFT * t / self.secs
             zoom = base * (1 + drift)
@@ -929,42 +988,49 @@ class Scene:
         c.translate(w / 2 + sx, h / 2 + sy)
         c.scale(zoom, zoom)
         c.translate(-fx, -fy)
-        if self.look["ground"] and self.bg_image is None:
-            c.set_source_rgb(*self.look["ground"])
-            c.set_line_width(max(1.5, h * 0.003))
-            _line(c, (-w, self.ground), (2 * w, self.ground))
-            c.stroke()
         ink = COLORS[self.look["ink"]]
+        pens = []                                                        # где сейчас маркер (белая доска)
+
+        def part(key, draw, strokes=None):
+            """Нарисовать часть картинки; на белой доске — только ту долю, что маркер уже провёл."""
+            t0, t1 = self.plan.get(key, (-1.0, -1.0))
+            if t >= t1:
+                draw(c)
+            elif t >= t0:
+                tip = reveal(c, cairo, draw, (t - t0) / max(t1 - t0, 0.01), strokes, self.fig)
+                if tip:
+                    pens.append(tip)
+
+        if self.look["ground"] and self.bg_image is None:
+            def ground(cc):
+                cc.set_source_rgb(*self.look["ground"])
+                cc.set_line_width(max(1.5, h * 0.003))
+                _line(cc, (-w, self.ground), (2 * w, self.ground))
+                cc.stroke()
+            part("ground", ground, [[(-w * 0.0, self.ground), (w * 1.0, self.ground)]])
         tables = [float(p.get("x", 0.5)) * w for p in self.props if p["kind"] == "table"]
-        for p in self.props:
+        for i, p in enumerate(self.props):
             px = float(p.get("x", 0.5)) * w
             look = dict(self.look, _table_at=px if any(abs(px - tx) < self.fig * 0.3 for tx in tables) else None)
-            draw_scene_prop(c, p["kind"], px, self.ground, self.fig, ink, look)
+            part("prop:{}".format(i), lambda cc, p=p, px=px, look=look: draw_scene_prop(self._pen(cc), p["kind"], px, self.ground, self.fig, ink, look))
         for when, kind, at, who in self.ground_items:                    # брошенное без адресата — лежит на земле
             if t >= when:
                 gx = (at if at is not None else self.where(who, when)[0] + 0.25 * self.where(who, when)[1]) * w
-                draw_hand_prop(c, kind, (gx, self.ground - self.fig * 0.02), 1, self.fig, ink)
+                draw_hand_prop(self._pen(c), kind, (gx, self.ground - self.fig * 0.02), 1, self.fig, ink)
         hands = {}
         for aid in sorted(self.actors, key=lambda k: self.actors[k]["scale"]):
-            a = self.actors[aid]
-            pose, emo, prop, effect, talk = self.state(aid, t)
-            x, facing = self.where(aid, t)
-            front = self._front
-            size = self.fig * a["scale"]
-            pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
-            hands[aid] = pts["hand1"]
-            speed = abs(x - self.where(aid, max(0.0, t - 0.06))[0]) * w / 0.06
-            if speed > size * 1.2:                                       # бежит быстро — линии скорости позади
-                draw_speed_lines(c, pts, size, -1 if x > self.where(aid, max(0.0, t - 0.06))[0] else 1, a["color"])
-            draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
-            if prop:
-                draw_hand_prop(c, prop, pts["hand1"], facing, size, a["color"])
-            if effect:
-                draw_effect(c, effect, pts["head"], r, t, ink)
-            if pose.get("_hit", 0) > 0.72:
-                draw_impact(c, pts[pose.get("_hand", "hand1")], size, t)
-            if pose.get("_land"):
-                draw_dust(c, pts, self.ground, size, t)
+            t0, t1 = self.plan.get(aid, (-1.0, -1.0))
+            if t < t0:
+                continue
+            tt = t1 if t < t1 else t                                    # пока маркер рисует героя — он замер
+            hands[aid], pts, r = self._actor(c, aid, tt, ink, measure=True)
+            if t < t1:
+                bones = [_circle(pts["head"], r)] + [[pts["hip"], pts["neck"]]] + \
+                        [[pts["shoulder"], pts["el" + s_], pts["hand" + s_]] for s_ in ("1", "2")] + \
+                        [[pts["hip"], pts["kn" + s_], pts["foot" + s_]] for s_ in ("1", "2")]
+                part(aid, lambda cc, aid=aid, tt=tt: self._actor(cc, aid, tt, ink), bones)
+            else:
+                self._actor(c, aid, t, ink)
         for f in self.flights:                                           # предмет в полёте: бросок — дугой, передача — из рук в руки
             if f["t0"] <= t <= f["t1"]:
                 k = (t - f["t0"]) / max(f["t1"] - f["t0"], 0.01)
@@ -976,7 +1042,186 @@ class Scene:
                     ey_ = self.ground - self.fig * 0.02
                 px_ = sx_ + (ex_ - sx_) * ease(k) if not f["arc"] else sx_ + (ex_ - sx_) * k
                 py_ = sy_ + (ey_ - sy_) * (ease(k) if not f["arc"] else k) - (math.sin(math.pi * k) * self.fig * 0.45 if f["arc"] else 0)
-                draw_hand_prop(c, f["kind"], (px_, py_), 1, self.fig, ink)
+                draw_hand_prop(self._pen(c), f["kind"], (px_, py_), 1, self.fig, ink)
+        for tip in pens:                                                 # маркер — поверх всего, в координатах экрана
+            draw_marker(c, tip, self.h, t)
+
+    def _pen(self, c):
+        return Sketch(c, COLORS[self.look["ink"]]) if self.look.get("draw") else c
+
+    def _actor(self, c, aid, t, ink, measure=False):
+        """Герой в момент t: фигура, предмет, значок, удар, пыль. measure — только посчитать точки, не рисовать."""
+        w = self.w
+        a = self.actors[aid]
+        pose, emo, prop, effect, talk = self.state(aid, t)
+        x, facing = self.where(aid, t)
+        front = self._front
+        size = self.fig * a["scale"]
+        pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+        if measure:
+            return pts["hand1"], pts, r
+        speed = abs(x - self.where(aid, max(0.0, t - 0.06))[0]) * w / 0.06
+        if speed > size * 1.2:                                           # бежит быстро — линии скорости позади
+            draw_speed_lines(c, pts, size, -1 if x > self.where(aid, max(0.0, t - 0.06))[0] else 1, a["color"])
+        draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
+        if prop:
+            draw_hand_prop(self._pen(c), prop, pts["hand1"], facing, size, a["color"])
+        if effect:
+            draw_effect(c, effect, pts["head"], r, t, ink)
+        if pose.get("_hit", 0) > 0.72:
+            draw_impact(c, pts[pose.get("_hand", "hand1")], size, t)
+        if pose.get("_land"):
+            draw_dust(c, pts, self.ground, size, t)
+        return pts["hand1"], pts, r
+
+
+def _accent_of(rgb):
+    """Цвет → акцент белой доски (красный, оранжевый, синий) или None — тогда это линия маркера."""
+    import colorsys
+
+    hh, ss, vv = colorsys.rgb_to_hsv(*rgb)
+    if ss < 0.45 or vv < 0.7:
+        return None
+    if hh < 0.04 or hh > 0.93:
+        return COLORS["red"]
+    if hh < 0.17:
+        return COLORS["orange"]
+    if 0.5 <= hh <= 0.72:
+        return COLORS["blue"]
+    return None
+
+
+class Sketch:
+    """Рисование «маркером»: заливки становятся контуром графитом, яркие цвета — тремя акцентами доски.
+    Обёртка над контекстом cairo — те же функции рисования предметов работают и для белой доски."""
+
+    def __init__(self, c, ink):
+        self._c, self._ink, self._accent = c, ink, None
+
+    def __getattr__(self, name):
+        return getattr(self._c, name)
+
+    def set_source_rgb(self, r, g, b):
+        self._accent = _accent_of((r, g, b))
+        self._c.set_source_rgb(*(self._accent or self._ink))
+
+    def fill(self):
+        self._c.fill() if self._accent else self._c.stroke()
+
+    def fill_preserve(self):
+        self._c.fill_preserve() if self._accent else self._c.stroke_preserve()
+
+
+def _circle(center, r, n=24):
+    """Окружность ломаной — по ней маркер обводит голову."""
+    a0 = -math.pi * 0.6
+    return [(center[0] + r * math.cos(a0 + 2 * math.pi * i / n), center[1] + r * math.sin(a0 + 2 * math.pi * i / n)) for i in range(n + 1)]
+
+
+def _cut(paths, k):
+    """Пройденная маркером часть путей (доля k общей длины) и где сейчас кончик."""
+    lens = [[math.dist(a, b) for a, b in zip(p, p[1:])] for p in paths]
+    total = sum(sum(x) for x in lens) or 1.0
+    left = total * max(0.0, min(1.0, k))
+    out, tip = [], paths[0][0] if paths and paths[0] else (0, 0)
+    for p, ls in zip(paths, lens):
+        if left <= 0:
+            break
+        done = [p[0]]
+        for (a, b), ln in zip(zip(p, p[1:]), ls):
+            if left >= ln:
+                done.append(b)
+                left -= ln
+            else:
+                q = left / ln if ln else 1
+                done.append((a[0] + (b[0] - a[0]) * q, a[1] + (b[1] - a[1]) * q))
+                left = 0
+                break
+        out.append(done)
+        tip = done[-1]
+    return out, tip
+
+
+def reveal(c, cairo, draw, k, strokes, fig):
+    """Маркер проявляет нарисованное: draw(cc) рисует часть целиком (во временный слой), видна только полоса,
+    по которой прошёл маркер. strokes — свои линии части (кости героя, земля): маркер идёт по ним, как рука;
+    без них — змейкой рядами по рамке рисунка (как «сетка» в srt-whiteboard-animation). Возвращает кончик маркера на экране."""
+    m = c.get_matrix()
+    rec = cairo.RecordingSurface(cairo.CONTENT_COLOR_ALPHA, None)
+    rc = cairo.Context(rec)
+    rc.set_matrix(m)
+    draw(rc)
+    x, y, bw, bh = rec.ink_extents()
+    if bw <= 0 or bh <= 0:
+        return None
+    if strokes:
+        paths = [[m.transform_point(*pt) for pt in p] for p in strokes if len(p) > 1]
+        width = max(6.0, fig * m.xx * 0.05)
+        rest = max(0.0, (k - 0.88) / 0.12)                              # напоследок проявляются лицо и мелочи
+        k = min(1.0, k / 0.88)
+    else:
+        rest = 0.0
+        rows = max(3, int(bh / max(8.0, fig * 0.08)))
+        step = bh / rows
+        paths, cur = [], []
+        for i in range(rows):
+            yy = y + step * (i + 0.5)
+            row = [(x, yy), (x + bw, yy)] if i % 2 == 0 else [(x + bw, yy), (x, yy)]
+            cur += row
+        paths = [cur]
+        width = step * 1.45
+    done, tip = _cut(paths, k)
+    c.save()
+    c.identity_matrix()
+    c.push_group_with_content(cairo.CONTENT_ALPHA)
+    c.set_line_width(width)
+    c.set_line_cap(cairo.LINE_CAP_ROUND)
+    c.set_line_join(cairo.LINE_JOIN_ROUND)
+    c.set_source_rgba(0, 0, 0, 1)
+    for p in done:
+        if len(p) > 1:
+            c.move_to(*p[0])
+            for pt in p[1:]:
+                c.line_to(*pt)
+            c.stroke()
+    if rest:
+        c.set_source_rgba(0, 0, 0, rest)
+        c.rectangle(x, y, bw, bh)
+        c.fill()
+    mask = c.pop_group()
+    c.set_source_surface(rec, 0, 0)
+    c.mask(mask)
+    c.restore()
+    return tip
+
+
+def draw_marker(c, tip, h, t):
+    """Маркер в руке: кончик на линии, корпус уходит вправо-вниз, колпачок красный; чуть дрожит, как в руке."""
+    c.save()
+    c.identity_matrix()
+    x, y = tip[0] + math.sin(t * 23) * 0.6, tip[1] + math.cos(t * 19) * 0.6
+    c.translate(x, y)
+    c.rotate(math.radians(-38))
+    L, W = h * 0.2, h * 0.034
+    c.set_source_rgba(0, 0, 0, 0.12)                                   # тень
+    c.rectangle(W * 0.6, -W / 2 + W * 0.5, L, W)
+    c.fill()
+    c.set_source_rgb(0.18, 0.18, 0.2)                                  # кончик
+    c.move_to(0, 0)
+    c.line_to(W * 0.75, -W * 0.32)
+    c.line_to(W * 0.75, W * 0.32)
+    c.close_path()
+    c.fill()
+    c.set_source_rgb(0.93, 0.93, 0.91)                                 # корпус
+    _round_rect(c, W * 0.7, -W / 2, L * 0.72, W, W * 0.2)
+    c.fill_preserve()
+    c.set_source_rgb(0.55, 0.55, 0.55)
+    c.set_line_width(max(1.0, h * 0.0015))
+    c.stroke()
+    c.set_source_rgb(0.85, 0.22, 0.2)                                  # колпачок
+    _round_rect(c, W * 0.7 + L * 0.72, -W * 0.55, L * 0.3, W * 1.1, W * 0.3)
+    c.fill()
+    c.restore()
 
 
 def load_background(path, size):
@@ -1083,5 +1328,7 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "give — передать предмет другому (\"target\": id), throw — бросить (\"target\": id — поймает, или \"at\": x — упадёт там). "
          "\"view\": \"front\" — лицом к зрителю (cheer, wave, shrug, dance, bow — и так лицом). "
          "Эмоции (emotion): {}. Предмет в руке (prop): {}. Значок над головой (effect): {}. Предметы сцены (props.kind): {}. "
-         "Камера: [{{\"from\", \"to\", \"zoom\": 1.1–1.8, \"on\": id героя}}].").format(
+         "Камера: [{{\"from\", \"to\", \"zoom\": 1.1–1.8, \"on\": id героя}}]. Стиль whiteboard (белая доска): картинка рисуется маркером "
+         "по ходу рассказа — \"draw\": [{{\"what\": id героя или kind предмета, \"word\": слово из текста, на котором рисовать}}] "
+         "(сначала место, потом герои; действия — после того, как всё нарисовано, примерно с 0.6 сцены).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))

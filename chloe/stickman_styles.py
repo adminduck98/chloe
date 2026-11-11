@@ -70,9 +70,19 @@ STYLES = {
         "world": ("full-color painterly historical setting with clean cel shading, era-correct architecture, clothes and props"),
         "music": "оркестровая, эпоха",
     },
+    "whiteboard": {
+        "name": "Белая доска (рисуется маркером)",
+        "when": "обучение, объяснение по шагам, как это устроено, лекции — картинка появляется вслед за словами",
+        "anchor": ("a minimalist hand-drawn stick figure in dark graphite marker lines: hollow round head, single-line torso and limbs, "
+                   "simple line face, sketchy notebook doodle look"),
+        "world": ("warm beige paper background (#F5EBD7), minimalist hand-drawn sketch, dark graphite lines, lots of empty space, "
+                  "only red, orange and blue as small concept accents; no text, no photo details, no 3D, no textures"),
+        "music": "тихое пианино или без музыки",
+    },
 }
 DEFAULT = "classic_light"
-ALIASES = {"тёмн": "classic_dark", "темн": "classic_dark", "чёрн": "classic_dark", "черн": "classic_dark",
+ALIASES = {"доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
+           "тёмн": "classic_dark", "темн": "classic_dark", "чёрн": "classic_dark", "черн": "classic_dark",
            "светл": "classic_light", "бел": "classic_light", "классик": "classic_light", "неон": "neon_desktop",
            "компьютер": "neon_desktop", "экран": "neon_desktop", "шапк": "beanie", "студи": "beanie", "уют": "cozy",
            "истори": "historical", "пещер": "prehistoric", "древн": "prehistoric"}   # основы слов: «в тёмном стиле»
