@@ -120,7 +120,7 @@ class Dodges(unittest.TestCase):
         return A.Scene(spec, "neon_desktop", (640, 360), 8.0)
 
     def test_new_moves_exist(self):
-        for name in ("duck", "slide", "climb", "roll", "breakdance", "kazachok", "moonwalk", "ballet"):
+        for name in ("duck", "slide", "climb", "roll", "breakdance", "kazachok", "moonwalk", "ballet", "guard", "diveroll"):
             self.assertIn(name, M.library())
         self.assertEqual(self.scene([{"who": "a", "do": "dodge", "from": 0, "to": 0.3}]).segs["a"][0]["do"], "duck")
 
@@ -134,6 +134,19 @@ class Dodges(unittest.TestCase):
         cur = [{"t": 0.0, "x": 0.9, "y": 0.1}, {"t": 0.3, "hit": "a"}]
         self.assertTrue(self.scene([], cursor=cur).knocks)
         self.assertEqual(self.scene([{"who": "a", "do": "roll", "from": 0.25, "to": 0.6}], cursor=cur).knocks, [])
+
+    def test_guard_blocks_hits_from_the_front_only(self):
+        punches = [{"who": "b", "do": "punch", "from": 0.2, "to": 0.5, "target": "a"}]
+        sc = self.scene(punches + [{"who": "a", "do": "guard", "from": 0.1, "to": 0.6}])
+        self.assertTrue(sc.knocks)
+        self.assertTrue(all(k.get("blocked") for k in sc.knocks))               # все удары — в блок, без отлёта
+        self.assertEqual(sc.knocked("a", sc.knocks[0]["t"] + 0.1)[0], "block")
+        kinds = [e["kind"] for e in sc.sound_events()]
+        self.assertIn("tap", kinds)                                              # звон блока
+        back = A.Scene({"actors": [{"id": "a", "x": 0.3, "facing": "left"}, {"id": "b", "x": 0.5, "facing": "left"}],
+                        "acting": punches + [{"who": "a", "do": "guard", "from": 0.1, "to": 0.6}]}, "neon_desktop", (640, 360), 8.0)
+        self.assertFalse(any(k.get("blocked") for k in back.knocks))             # спиной к обидчику — не блок
+        self.assertEqual(self.scene([{"who": "a", "do": "block", "from": 0, "to": 0.3}]).segs["a"][0]["do"], "guard")
 
     def test_low_hero_has_a_low_target_box(self):
         sc = self.scene([{"who": "a", "do": "duck", "from": 0.0, "to": 0.5}])

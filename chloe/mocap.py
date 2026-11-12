@@ -257,10 +257,12 @@ SELECTION = {
     "roll": ("90/90_33.bvh", "clip", 2.4, 5.0), "breakdance": ("90/90_28.bvh", "clip", 1.8, 6.0),
     "kazachok": ("90/90_30.bvh", "clip", 4.2, 9.0), "moonwalk": ("90/90_32.bvh", "clip", 2.0, 5.8),
     "ballet": ("05/05_02.bvh", "clip", 3.0, 7.0),
+    "guard": ("76/76_04.bvh", "clip_loop_mirror", 1.15, 1.85), "diveroll": ("127/127_23.bvh", "clip", 0.0, 2.2),
 }
+BLOCK = ("guard",)             # в стойке защиты удар не отбрасывает: блок
 FACE_FORWARD = ()               # низкие движения головой вперёд (подкат — ногами вперёд, его не трогаем); ползание из
                                 # записи 133_01 убрано — в ней суставы переворачиваются, ползание остаётся по формулам
-DODGE = ("duck", "slide", "roll", "crawl", "backflip", "sideflip", "cartwheel", "jump")   # в этих движениях удар проходит мимо
+DODGE = ("duck", "slide", "roll", "diveroll", "crawl", "backflip", "sideflip", "cartwheel", "jump")   # в этих движениях удар проходит мимо
 
 
 def despike(pos, fps, win=0.08):
@@ -341,6 +343,8 @@ def build(raw_dir, out=DATA, fps_out=25):
         lands = landings(w, fps, fps_out)
         if name in FACE_FORWARD:
             r = face_forward(r)
+        if kind.endswith("mirror"):                           # у этого актёра «вперёд» по тазу вышло наоборот
+            r = mirror(r)
         moves[name] = dict(r, loop=kind.startswith("loop") or kind.startswith("clip_loop"), hits=hits, lands=lands, src=f)
         report[name] = round(len(r["poses"]) / fps_out, 2)
     pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
@@ -351,6 +355,17 @@ def build(raw_dir, out=DATA, fps_out=25):
     return report
 
 
+MIRROR_KEYS = ("torso", "head", "sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2")
+
+
+def mirror(r):
+    """Отразить движение: лицом в другую сторону (все углы и шаг — с обратным знаком)."""
+    r = dict(r)
+    r["poses"] = [{k: (-v if k in MIRROR_KEYS else v) for k, v in p.items()} for p in r["poses"]]
+    r["fwd"] = [-v for v in r["fwd"]]
+    return r
+
+
 def face_forward(r):
     """Низкое движение (ползёт, лежит) с головой позади таза — зеркалим: у лежачего тела «вперёд» по тазу выходит наоборот.
     Зеркало: все углы и шаг меняют знак."""
@@ -359,13 +374,7 @@ def face_forward(r):
     if len(low) < len(r["poses"]) * 0.5:
         return r
     behind = sum(1 for a in low if a < 0) / len(low)                   # корпус наклонён назад — голова за тазом
-    if behind < 0.5:
-        return r
-    keys = ("torso", "head", "sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2")
-    r = dict(r)
-    r["poses"] = [{k: (-v if k in keys else v) for k, v in p.items()} for p in r["poses"]]
-    r["fwd"] = [-v for v in r["fwd"]]
-    return r
+    return mirror(r) if behind >= 0.5 else r
 
 
 def landings(pos, fps_in, fps_out=25):

@@ -83,14 +83,14 @@ POSES = {
 EMOTION_OF = {"hug": "happy", "catch": "surprised", "cheer": "happy", "sad": "sad", "surprised": "surprised", "think": "think", "facepalm": "sad", "angry": "angry",
               "shrug": "neutral", "dance": "happy", "fight": "angry", "punch": "angry", "kick": "angry", "fall": "surprised"}
 MOCAP_MOVES = ("jumpkick", "spinkick", "backflip", "sideflip", "cartwheel", "faceplant", "slip", "rugpull",
-               "duck", "slide", "roll", "breakdance", "kazachok", "moonwalk", "ballet")   # из живых записей
+               "duck", "slide", "roll", "breakdance", "kazachok", "moonwalk", "ballet", "guard", "diveroll")   # из живых записей
 ACTIONS = sorted(set(POSES) | set(MOCAP_MOVES) | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle",
                                 "crawl", "climb", "throw", "fly", "sneak"})
 MOVING = ("walk", "run", "sneak", "crawl", "fly")
 FRONT = ("cheer", "shrug", "surprised", "dance", "wave", "bow")   # эти позы — лицом к зрителю: так живее
 EMOTIONS = ("neutral", "happy", "sad", "angry", "surprised", "think")
 # похожие слова, которыми модель называет движения, — к своим (иначе герой стоял бы столбом)
-SYNONYMS = {"dodge": "duck", "evade": "duck", "slide_tackle": "slide", "tackle": "slide", "somersault_roll": "roll",
+SYNONYMS = {"block": "guard", "defend": "guard", "parry": "guard", "dive_roll": "diveroll", "dodge": "duck", "evade": "duck", "slide_tackle": "slide", "tackle": "slide", "somersault_roll": "roll",
             "dive": "roll", "break_dance": "breakdance", "russian_dance": "kazachok", "moon_walk": "moonwalk",
             "pirouette": "ballet", "flip": "backflip", "somersault": "backflip", "trip": "slip", "stumble": "slip", "tumble": "faceplant",
             "handspring": "cartwheel", "flying_kick": "jumpkick", "spin_kick": "spinkick", "drag": "push", "pull": "push", "lift": "push", "freeze": "surprised", "scared": "surprised", "shock": "surprised",
@@ -889,7 +889,8 @@ class Scene:
             x, facing, pts = a["x"], a["facing"], []
             drops = [{"t0": b, "t1": b, "x": max(0.06, min(0.94, self.cursor.pos(b)[0] / self.w)), "_drop": True}
                      for what, _a, b in self.cursor.grabs if what == aid and b <= self.secs]
-            knocks = [{"t0": k["t"], "t1": k["t"] + KNOCK_SLIDE * k["dur"], "_knock": k} for k in self.knocks if k["who"] == aid]
+            knocks = [{"t0": k["t"], "t1": k["t"] + (0.25 if k.get("blocked") else KNOCK_SLIDE * k["dur"]), "_knock": k}
+                      for k in self.knocks if k["who"] == aid and k["dist"] > 0]
             tr = getattr(self, "trashed", {}).get(aid)
             if tr and tr[1] is not None:                                  # выпрыгивает из корзины влево
                 bx = self.cursor.pos(tr[0])[0] / self.w
@@ -1104,6 +1105,10 @@ class Scene:
                 ax, af = self.where(aid, t)
                 vx, _ = self.where(victim, t)
                 d = 1 if (vx - ax) > 0.01 else -1 if (vx - ax) < -0.01 else af
+                if self.blocking(victim, t, ax):                          # в стойке защиты лицом к обидчику — блок
+                    out.append({"t": t, "who": victim, "by": aid, "dir": d, "big": False, "blocked": True, "dist": 0.025,
+                                "dur": 0.0})
+                    continue
                 last = i == len(hits) - 1
                 power = 1.3 if s["do"] == "kick" else 1.0
                 out.append({"t": t, "who": victim, "by": aid, "dir": d, "big": last, "dist": 0.2 * power if last else 0.0,
@@ -1117,6 +1122,17 @@ class Scene:
         from . import mocap as MC
 
         return any(s["t0"] <= t < s["t1"] and s["do"] in MC.library() for s in self.segs.get(aid, []))
+
+    def blocking(self, aid, t, from_x=None):
+        """Герой в стойке защиты (guard) и обидчик перед ним — удар в блок."""
+        from . import mocap as MC
+
+        if not any(s["t0"] <= t < s["t1"] and s["do"] in MC.BLOCK for s in self.segs.get(aid, [])):
+            return False
+        if from_x is None:
+            return True
+        x, facing = self.where(aid, t)
+        return (from_x - x) * facing >= -0.01
 
     def dodging(self, aid, t):
         """Герой в момент t уворачивается (пригнулся, подкат, кувырок, сальто, прыжок) — удар проходит мимо."""
@@ -1133,6 +1149,8 @@ class Scene:
         if not cur:
             return None
         dt = t - cur["t"]
+        if cur.get("blocked"):
+            return ("block", dt / 0.3, cur) if dt < 0.3 else None
         if not cur["big"]:
             return ("flinch", dt / 0.22, cur) if dt < 0.22 else None
         q = dt / cur["dur"]
@@ -1290,6 +1308,9 @@ class Scene:
                 add(ht - 0.06, "swish", victim, gain_db=-3)
                 add(ht, "punch", victim, args={"size": 0.85})
         for k in self.knocks:                                             # отлёт: свист полёта, удар о пол, шорох юзом
+            if k.get("blocked"):                                          # блок: глухой стук и звон
+                add(k["t"] + 0.005, "thud", k["who"], gain_db=-4, args={"size": 0.5})
+                add(k["t"] + 0.01, "tap", k["who"], args={"pitch": 240})
             if k["big"]:
                 add(k["t"] + 0.12, "whoosh", k["who"], args={"dur": 0.35}, gain_db=-3)
                 add(k["t"] + k["dur"] * KNOCK_FLY, "thud", k["who"])
@@ -1558,7 +1579,10 @@ class Scene:
             kn = self.knocked(aid, t)
             if kn:                                                         # получил удар: вздрогнул или отлетел
                 phase, k, info = kn
-                if phase == "flinch":
+                if phase == "block":                                        # удар в блок: качнулся назад, руки держит
+                    jolt = math.sin(math.pi * min(1.0, k))
+                    pose = dict(pose, torso=pose["torso"] - 10 * jolt, head=pose["head"] - 6 * jolt)
+                elif phase == "flinch":
                     jolt = math.sin(math.pi * min(1.0, k))
                     pose = dict(pose, torso=pose["torso"] - 22 * jolt, head=pose["head"] - 18 * jolt, sh1=pose["sh1"] + 25 * jolt,
                                 sh2=pose["sh2"] + 25 * jolt)
@@ -1590,6 +1614,8 @@ class Scene:
                 pts = {k_: (px, py + (self.ground - low)) for k_, (px, py) in pts.items()}   # прижать (у нас другие пропорции)
             if land is not None and land < 0.25 and not measure:
                 draw_dust(c, pts, self.ground, size, land * 2)
+            if kn and kn[0] == "block" and kn[1] < 0.35 and not measure and not getattr(self, "_ghost", False):
+                draw_impact(c, pts["hand1"], size * 0.8, t)                 # искры от удара в блок
             if kn and kn[0] in ("slide",) and not measure and not getattr(self, "_ghost", False):
                 draw_dust(c, {"foot1": pts["head"], "foot2": pts["hip"]}, self.ground, size, t)
         xs = [px for px, _py in pts.values()]                                # вся фигура — в кадре (и голова, и ноги)
@@ -1894,7 +1920,8 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "Живые движения из записей людей: jumpkick (пинок в прыжке), spinkick (с разворота), backflip (сальто назад), "
          "sideflip, cartwheel (колесо), faceplant (падение лицом), slip (поскользнулся), rugpull (выдернули ковёр), "
          "duck (уклон — пригнулся), slide (подкат), roll (кувырок), crawl, climb (по лестнице), танцы breakdance, kazachok, "
-         "moonwalk, ballet; уклон, подкат, кувырок, сальто и прыжок в момент удара — удар мимо, летящая иконка пролетает над пригнувшимся; "
+         "moonwalk, ballet, guard (стойка защиты — блок: удар спереди не отбрасывает), diveroll (нырок с кувырком на бегу); "
+         "уклон, подкат, кувырок, сальто и прыжок в момент удара — удар мимо, летящая иконка пролетает над пригнувшимся; "
          "walk, run, jump, punch, kick — тоже живые. Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
          "в серии — отлетает дугой, едет по полу и встаёт (~1,5 с, не ставь цели движений на это время).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))
