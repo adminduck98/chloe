@@ -367,7 +367,8 @@ def tool_learn_move(a):
         return "Нужно видео: путь к файлу (лучше снято сбоку, во весь рост, 3–15 секунд)."
     name = str(a.get("name") or path.stem)
     try:
-        key, secs, (found, total) = VM.learn(path, name, None if a.get("mirror") is None else bool(a.get("mirror")))
+        key, secs, (found, total) = VM.learn(path, name, None if a.get("mirror") is None else bool(a.get("mirror")),
+                                              strikes=a.get("strikes") is not False)
     except VM.VideoMocapError as e:
         return "Не получилось: {}.".format(e)
     return ("Выучила движение «{}»: {} с, человек найден на {} кадрах из {}. В мультфильме — do: \"{}\" "

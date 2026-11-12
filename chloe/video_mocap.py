@@ -155,7 +155,8 @@ def to_move(pts, fps=25, mirror=None):
 
 def hits(P, vis, fps=25):
     """Моменты ударов (секунды), как для записей CMU: кисть дальше всего от таза по горизонтали (пик выше 85-го
-    процентиля и заметно дальше обычного) или стопа выше всего относительно таза (пинок). Почти невидимые руки
+    процентиля и заметно дальше обычного) или стопа выше всего относительно таза (пинок) — и только если сразу после
+    пика рука (нога) пошла назад: вытянутая и удержанная рука (прицеливание, указывает) — не удар. Почти невидимые руки
     и ноги (дальняя сторона сбоку) не считаются — по ним одни догадки."""
     leg = float(np.median(np.hypot(P["kn1"][0] - P["hip1"][0], P["kn1"][1] - P["hip1"][1])
                           + np.hypot(P["foot1"][0] - P["kn1"][0], P["foot1"][1] - P["kn1"][1]))) or 1.0
@@ -170,8 +171,10 @@ def hits(P, vis, fps=25):
         else:
             d = P["hip"][1] - P[limb][1]                              # y вниз: чем больше, тем выше стопа над тазом
             thr, ok = d.min() + (d.max() - d.min()) * 0.7, -leg * 0.35   # пинок: стопа поднялась хотя бы к поясу
-        for i in range(1, len(d) - 1):
-            if d[i] >= thr and d[i] > ok and d[i] >= d[i - 1] and d[i] >= d[i + 1]:
+        k = max(2, int(round(fps * 0.45)))                             # удар — выброс и сразу назад: за 0,45 с после
+        for i in range(1, len(d) - 1):                                # пика кисть (стопа) вернулась хотя бы на четверть ноги
+            back = len(d[i + 1:i + k + 1]) and d[i] - d[i + 1:i + k + 1].min() > leg * 0.25
+            if d[i] >= thr and d[i] > ok and back and d[i] >= d[i - 1] and d[i] >= d[i + 1]:
                 if all(abs(i / fps - t) > 0.25 for t in out):
                     out.append(round(i / fps, 2))
     return sorted(out)
@@ -205,12 +208,14 @@ def save(name, move):
     return key
 
 
-def learn(video, name, mirror=None, fps=25):
+def learn(video, name, mirror=None, fps=25, strikes=True):
     """Видео → движение в личной библиотеке. Возвращает (имя, секунд, найдено кадров с человеком из скольких)."""
     pts, _size = landmarks(video, fps)
     found = int((~np.isnan(pts[:, 23, 0])).sum())
     if found < len(pts) * 0.5:
         raise VideoMocapError("человек виден только на {} кадрах из {} — снимите во весь рост и посветлее".format(found, len(pts)))
     move = to_move(smooth(fill_gaps(pts)), fps, mirror)
+    if not strikes:                                              # «это не удар» (танец, прицеливание) — без звёздочек и звуков
+        move["hits"] = []
     key = save(name, move)
     return key, round(len(move["poses"]) / fps, 1), (found, len(pts))

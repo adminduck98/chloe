@@ -70,6 +70,15 @@ class FromPoints(unittest.TestCase):
         move = VM.to_move(VM.smooth(out))
         self.assertTrue(all(np.isfinite(v) for p in move["poses"] for v in p.values()))
 
+    def test_held_arm_is_not_a_strike(self):
+        pts = walker(n=60, punch_at=200)                                 # без удара
+        for i in range(20, 60):                                          # с 20-го кадра правая рука вытянута и держится
+            x0 = pts[i, 23, 0] + 5
+            pts[i, 14, :2] = (x0 + 50, 210)
+            pts[i, 16, :2] = (x0 + 100, 215)
+        self.assertEqual(VM.to_move(pts)["hits"], [])
+        self.assertTrue(VM.to_move(walker())["hits"])                    # а выброс с возвратом — удар
+
     def test_gaps_are_filled(self):
         pts = walker()
         pts[10:14] = np.nan                                              # человек на миг пропал
