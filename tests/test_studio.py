@@ -78,7 +78,7 @@ class Film(unittest.TestCase):
             out = studio.make_film("Кошка", SCENES, style="акварель", ratio="9:16")
         # сцена с голосом — субтитры; вторая сцена — со звуком перехода; у последней — свои секунды финала
         end = round(3.0 + studio.ending_hold(studio.clean_scenes(SCENES)), 2)
-        self.assertEqual(sorted(made), [(0, 4.5, (720, 1280), True, False), (1, end, (720, 1280), False, True)])
+        self.assertEqual(sorted(made), [(0, 4.5, (1080, 1920), True, False), (1, end, (1080, 1920), False, True)])
         self.assertEqual({c[0][0] for c in image.call_args_list}, {"кошка на окне. акварель", "город ночью. акварель"})
         self.assertEqual([c.name for c in join.call_args[0][0]], ["clip00.mp4", "clip01.mp4"])
         self.assertEqual(out.parent, self.dir / "vid")
