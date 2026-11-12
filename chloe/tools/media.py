@@ -35,14 +35,16 @@ NAMES = {"image": ("Картинка", "готова", "не получилас�
          "film": ("Ролик", "готов (обложки, описание, теги, субтитры и Shorts для YouTube — в папке проекта «к публикации»)", "не получился"), "audio": ("Озвучка", "готова", "не получилась"),
          "shorts": ("Shorts", "готовы (названия — в shorts.txt рядом)", "не получились"),
          "human3d": ("3D-человек", "готов", "не получился"),
+         "clips": ("Нарезка Shorts", "готова (названия и описания — в clips.txt рядом)", "не получилась"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
 
 
 def _shorts_error():
+    from ..clipper import ClipperError
     from ..human3d import Human3DError
     from ..shorts import ShortsError
 
-    return (ShortsError, Human3DError)
+    return (ShortsError, Human3DError, ClipperError)
 
 
 def _run(job_id, kind, work, open_result=True):
@@ -384,6 +386,41 @@ def _human3d(a):
     return ("Снимаю «{}» 3D-человеком (#{}): тело и одежда MakeHuman, без лица, физика ткани{}. Это около {} мин — "
             "скажу, когда будет готово.".format(name, job, ", в руках: " + ", ".join(p["prop"] or "ничего" for p in H3.norm_props(props))
                                                if props else "", H3.estimate(len(move["body3d"]))))
+
+
+def tool_clip_video(a):
+    """Длинная запись игры или стрима → лучшие моменты → вертикальные Shorts с субтитрами (chloe/clipper.py), в фоне."""
+    from .. import clipper as CL
+
+    path = pathlib.Path(os.path.expanduser(str(a.get("path") or ""))).resolve() if a.get("path") else None
+    if not path or not path.is_file():
+        return "Нужна запись: путь к видео (геймплей или стрим, можно с веб-камерой)."
+    try:
+        info = CL.probe(path)
+    except CL.ClipperError as e:
+        return "Не получилось: {}.".format(e)
+    count = max(1, min(10, int(a.get("count") or 5)))
+    length = max(CL.LENGTH[0], min(CL.LENGTH[1], float(a.get("length") or 30)))
+    layout = a.get("layout") if a.get("layout") in ("auto", "streamer", "game") else "auto"
+    out_dir = path.with_name(path.stem + "-shorts")
+    holder = {}
+
+    def progress(text):
+        job = jobs.get(holder.get("id"))
+        if job:
+            job["step"] = str(text)
+
+    def work():
+        made = CL.clip(path, out_dir, count, length, str(a.get("game") or ""), layout, a.get("lang") or None,
+                       progress=progress)
+        return [m[0] for m in made]
+    job = _start("clips", path.name, work, a.get("open", True) is not False)
+    holder["id"] = job
+    mins = info["secs"] / 60
+    return ("Нарезаю Shorts из «{}» (#{}): {:.0f} мин записи, до {} клипов по ~{:.0f} с. Сначала слушаю речь и ищу "
+            "лучшие моменты — это примерно {:.0f}–{:.0f} мин, потом собираю клипы. Скажу, когда будет готово; клипы — в "
+            "папке {}.".format(path.name, job, mins, count, length, max(1, mins * 0.3), max(2, mins * 0.6) + count,
+                               qm.short(out_dir)))
 
 
 def tool_learn_move(a):
