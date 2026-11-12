@@ -19,20 +19,33 @@ def _ease(x):
 
 
 class Cursor:
-    """Курсор: точки пути со временем, нажат ли, что держит. Между точками — плавно, с лёгким «доводом» (как рука)."""
+    """Курсор-персонаж: путь со временем, нажат ли, что держит, настроение, удары.
+    Между точками — плавно, с лёгким «доводом»; перед быстрым броском — замах назад (как рука перед ударом).
+    Ключи: "grab": id (+ "by": "foot" — за ногу, вниз головой), "release", "click", "mood": "angry" | "happy" | "calm",
+    "hit": id героя — курсор врезается в него (x, y можно не писать: прилетит в голову)."""
 
     def __init__(self, keys, secs, w, h):
         self.w, self.h = w, h
-        self.keys = sorted(({"t": float(k.get("t", 0)) * secs, "x": float(k.get("x", 0.5)) * w, "y": float(k.get("y", 0.5)) * h,
-                             "grab": k.get("grab"), "release": bool(k.get("release")), "click": bool(k.get("click"))}
+        self.keys = sorted(({"t": float(k.get("t", 0)) * secs,
+                             "x": float(k["x"]) * w if k.get("x") is not None else None,
+                             "y": float(k["y"]) * h if k.get("y") is not None else None,
+                             "grab": k.get("grab"), "by": k.get("by"), "release": bool(k.get("release")), "click": bool(k.get("click")),
+                             "mood": k.get("mood"), "hit": k.get("hit")}
                             for k in keys or []), key=lambda k: k["t"])
-        self.grabs = []                                   # (что, t0, t1)
+        last = (w * 0.9, h * 0.1)
+        for k in self.keys:                               # точка без координат (удар по герою) — пока на месте прошлой
+            k["_auto"] = k["x"] is None or k["y"] is None
+            k["x"] = last[0] if k["x"] is None else k["x"]
+            k["y"] = last[1] if k["y"] is None else k["y"]
+            last = (k["x"], k["y"])
+        self.grabs, self.grab_by = [], {}                 # (что, t0, t1); за что держит
         held, since = None, 0.0
         for k in self.keys:
             if k["grab"]:
                 if held:
                     self.grabs.append((held, since, k["t"]))
                 held, since = str(k["grab"]), k["t"]
+                self.grab_by[(held, since)] = k["by"] or "head"
             elif k["release"] and held:
                 self.grabs.append((held, since, k["t"]))
                 held = None
@@ -42,6 +55,17 @@ class Cursor:
     def __bool__(self):
         return bool(self.keys)
 
+    def resolve(self, point_at):
+        """Точки без координат: удар — в голову цели, захват героя — за голову или ногу, где он сейчас стоит.
+        point_at(id, t, "head" | "foot") → (x, y) в пикселях или None (не герой)."""
+        for k in self.keys:
+            if not k["_auto"]:
+                continue
+            who, part = (k["hit"], "head") if k["hit"] else (k["grab"], k["by"] or "head") if k["grab"] else (None, None)
+            p = point_at(str(who), k["t"], part) if who else None
+            if p:
+                k["x"], k["y"] = p
+
     def pos(self, t):
         ks = self.keys
         if not ks:
@@ -50,14 +74,31 @@ class Cursor:
             return ks[0]["x"], ks[0]["y"]
         for a, b in zip(ks, ks[1:]):
             if a["t"] <= t <= b["t"]:
-                k = _ease((t - a["t"]) / max(b["t"] - a["t"], 1e-3))
-                over = math.sin(math.pi * k) * 0.04 * (1 - k)          # чуть проскакивает и возвращается
-                return a["x"] + (b["x"] - a["x"]) * (k + over), a["y"] + (b["y"] - a["y"]) * (k + over)
+                span = max(b["t"] - a["t"], 1e-3)
+                k = (t - a["t"]) / span
+                dist = math.hypot(b["x"] - a["x"], b["y"] - a["y"])
+                if dist / span > 1.3 * self.h and span > 0.25:             # быстрый бросок: замах назад, потом рывок
+                    if k < 0.3:
+                        q = -0.07 * math.sin(math.pi * k / 0.3)
+                    else:
+                        q = 1 - (1 - (k - 0.3) / 0.7) ** 3
+                else:
+                    q = _ease(k)
+                    q += math.sin(math.pi * q) * 0.04 * (1 - q)              # чуть проскакивает и возвращается
+                x, y = a["x"] + (b["x"] - a["x"]) * q, a["y"] + (b["y"] - a["y"]) * q
+                return x, y
         return ks[-1]["x"], ks[-1]["y"]
 
     def velocity(self, t, dt=0.04):
         p0, p1 = self.pos(t - dt), self.pos(t)
         return ((p1[0] - p0[0]) / dt, (p1[1] - p0[1]) / dt) if p0 and p1 else (0.0, 0.0)
+
+    def mood(self, t):
+        m = "calm"
+        for k in self.keys:
+            if k["t"] <= t and k["mood"]:
+                m = k["mood"]
+        return m
 
     def holding(self, t):
         for what, a, b in self.grabs:
@@ -65,12 +106,31 @@ class Cursor:
                 return what, a
         return None, None
 
+    def held_by(self, what, since):
+        return self.grab_by.get((what, since), "head")
+
     def presses(self):
         """Моменты нажатия (клик, захват) — для вспышки кольца и звука."""
         return [k["t"] for k in self.keys if k["grab"] or k["click"]]
 
     def releases(self):
         return [(what, b) for what, _a, b in self.grabs]
+
+    def grab_of_release(self, what, b):
+        """Как держал героя перед тем, как отпустить в момент b."""
+        for w_, a, b_ in self.grabs:
+            if w_ == what and b_ == b:
+                return self.held_by(w_, a)
+        return "head"
+
+    def hits(self):
+        """Удары курсором: [(время, кого, направление ±1)] — направление по тому, откуда прилетел."""
+        out = []
+        for i, k in enumerate(self.keys):
+            if k["hit"]:
+                prev = self.keys[i - 1] if i else k
+                out.append((k["t"], str(k["hit"]), 1 if k["x"] >= prev["x"] else -1))
+        return out
 
 
 class Windows:
@@ -205,12 +265,29 @@ def draw_window(c, rect, col, h):
         c.fill()
 
 
-def draw_cursor(c, pos, h, pressed_for=None, holding=False):
-    """Стрелка курсора с чёрной обводкой; при нажатии — расходящееся кольцо, при захвате стрелка чуть меньше."""
+def draw_cursor(c, pos, h, pressed_for=None, holding=False, mood="calm", vel=(0.0, 0.0), t=0.0):
+    """Стрелка курсора с чёрной обводкой. Нажатие — расходящееся кольцо; держит — стрелка чуть меньше;
+    наклоняется по движению; злой — краснеет и дрожит, с «паром»; весёлый — покачивается."""
     if not pos:
         return
     x, y = pos
     s = h * (0.05 if not holding else 0.044)
+    tilt = max(-0.5, min(0.5, vel[0] / h * 0.18))
+    fill = (1, 1, 1)
+    if mood == "angry":
+        x += math.sin(t * 157) * h * 0.003
+        y += math.cos(t * 131) * h * 0.003
+        fill = (1.0, 0.42, 0.38)
+        c.set_source_rgba(1, 0.5, 0.45, 0.5)                              # «пар» от злости
+        c.set_line_width(max(1.2, h * 0.0025))
+        for i, dx in enumerate((-0.3, 0.15, 0.6)):
+            ph = (t * 2.2 + i * 0.33) % 1.0
+            c.move_to(x + dx * s, y - s * (0.2 + ph * 0.7))
+            c.line_to(x + dx * s + s * 0.08 * math.sin(ph * 9), y - s * (0.45 + ph * 0.7))
+            c.stroke()
+    elif mood == "happy":
+        tilt += 0.22 * math.sin(t * 9)
+        fill = (0.85, 1.0, 0.85)
     if pressed_for is not None and pressed_for < 0.35:
         k = pressed_for / 0.35
         c.set_source_rgba(1, 1, 1, 0.7 * (1 - k))
@@ -218,15 +295,19 @@ def draw_cursor(c, pos, h, pressed_for=None, holding=False):
         c.arc(x, y, s * (0.3 + 1.1 * k), 0, 2 * math.pi)
         c.stroke()
     shape = [(0, 0), (0, 1.0), (0.26, 0.76), (0.45, 1.15), (0.6, 1.08), (0.42, 0.7), (0.75, 0.7)]
-    c.move_to(x, y)
+    c.save()
+    c.translate(x, y)
+    c.rotate(tilt)
+    c.move_to(0, 0)
     for px, py in shape[1:]:
-        c.line_to(x + px * s, y + py * s)
+        c.line_to(px * s, py * s)
     c.close_path()
-    c.set_source_rgb(1, 1, 1)
+    c.set_source_rgb(*fill)
     c.fill_preserve()
     c.set_source_rgb(0, 0, 0)
     c.set_line_width(max(1.2, h * 0.0022))
     c.stroke()
+    c.restore()
 
 
 def _rr(c, x, y, w, h, r):

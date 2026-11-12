@@ -737,9 +737,13 @@ class Scene:
         self._track()
         if self._reach():
             self._track()                                                 # подшагнул к цели — путь пересчитать
+        point = lambda aid, t, part: (self.where(aid, t)[0] * self.w,  # noqa: E731
+                                      self.ground - (self.fig * 0.92 if part == "head" else self.fig * 0.02)) if aid in self.actors else None
+        self.cursor.resolve(point)                                        # курсор летит к герою: в голову или за ногу
         self.knocks = self._knocks()
         if self.knocks:
             self._track()                                                 # отлёт сдвигает героя — путь пересчитать
+            self.cursor.resolve(point)                                    # а курсор ищет его уже на новом месте
         self._items()
         wids = [str(x.get("id") or "w{}".format(i + 1)) for i, x in enumerate((spec or {}).get("windows") or [])]
         breaks = [(s["target"], t, None) for t, aid, s in self.hit_times() if s.get("target") in wids]
@@ -890,20 +894,30 @@ class Scene:
         if what == aid:
             cx, cy = self.cursor.pos(t)
             vx, _ = self.cursor.velocity(t)
-            return {"head": (cx, cy + self.fig * 0.11), "swing": max(-35.0, min(35.0, -vx / self.h * 22)), "falling": False}
+            by = self.cursor.held_by(what, since)
+            return {"head": (cx, cy + self.fig * 0.11), "grip": (cx, cy), "by": by,
+                    "swing": max(-35.0, min(35.0, -vx / self.h * 22)), "falling": False}
         for what, b in self.cursor.releases():
             if what == aid and b <= t:
                 from . import desktop_play as DP
 
                 cx, cy = self.cursor.pos(b)
-                head0 = cy + self.fig * 0.11
+                head0 = self._drop_head(what, b)
                 stand_head = self.ground - self.fig * 0.92
                 drop = stand_head - head0
                 k = t - b
-                if k < DP.fall_time(drop, self.h):
-                    return {"head": (cx, head0 + 0.5 * DP.GRAVITY * self.h * k * k), "swing": 0.0, "falling": True}
+                fall = DP.fall_time(drop, self.h)
+                if k < fall:
+                    flip = 180 * (1 - k / fall) if self.cursor.grab_of_release(aid, b) == "foot" else 0.0
+                    return {"head": (cx, head0 + 0.5 * DP.GRAVITY * self.h * k * k), "swing": 0.0, "falling": True, "flip": flip}
                 return None
         return None
+
+    def _drop_head(self, aid, b):
+        """Откуда падает герой, когда курсор его отпустил (точка «головы» для расчёта падения): держал за голову — голова
+        под курсором; за ногу — тело переворачивается в полёте вокруг таза, и падение считается от ноги у курсора."""
+        cy = self.cursor.pos(b)[1]
+        return cy + self.fig * (0.03 if self.cursor.grab_of_release(aid, b) == "foot" else 0.11)
 
     def where(self, aid, t):
         x0, f0, pts = self.path[aid]
@@ -954,6 +968,9 @@ class Scene:
                 power = 1.3 if s["do"] == "kick" else 1.0
                 out.append({"t": t, "who": victim, "by": aid, "dir": d, "big": last, "dist": 0.2 * power if last else 0.0,
                             "dur": KNOCK_TIME * (power if last else 0.0)})
+        for t, victim, d in self.cursor.hits():                           # удар курсором — сразу отлёт
+            if victim in self.actors:
+                out.append({"t": t, "who": victim, "by": "cursor", "dir": d, "big": True, "dist": 0.22, "dur": KNOCK_TIME * 1.1})
         return sorted(out, key=lambda k: k["t"])
 
     def knocked(self, aid, t):
@@ -1084,10 +1101,13 @@ class Scene:
                     ev.append({"t": round(tp, 4), "kind": "click", "who": first, "pan": (self.cursor.pos(tp)[0] / self.w - 0.5) * 2})
             for what, b in self.cursor.releases():
                 if what in self.actors and b <= self.secs:
-                    cx, cy = self.cursor.pos(b)
-                    land = b + DP.fall_time((self.ground - self.fig * 0.92) - (cy + self.fig * 0.11), self.h)
+                    land = b + DP.fall_time((self.ground - self.fig * 0.92) - self._drop_head(what, b), self.h)
                     add(b + 0.05, "whoosh", what, args={"dur": 0.4}, gain_db=-4)
                     add(land, "thud", what)
+        for ht, victim, _d in self.cursor.hits():                         # курсор врезался в героя
+            if victim in self.actors:
+                add(ht - 0.06, "swish", victim, gain_db=-3)
+                add(ht, "punch", victim, args={"size": 0.85})
         for k in self.knocks:                                             # отлёт: свист полёта, удар о пол, шорох юзом
             if k["big"]:
                 add(k["t"] + 0.12, "whoosh", k["who"], args={"dur": 0.35}, gain_db=-3)
@@ -1229,11 +1249,13 @@ class Scene:
             from . import desktop_play as DP
 
             pressed = [t - p for p in self.cursor.presses() if 0 <= t - p]
-            DP.draw_cursor(c, self.cursor.pos(t), self.h, min(pressed) if pressed else None, self.cursor.holding(t)[0] is not None)
+            DP.draw_cursor(c, self.cursor.pos(t), self.h, min(pressed) if pressed else None, self.cursor.holding(t)[0] is not None,
+                           self.cursor.mood(t), self.cursor.velocity(t), t)
         for tip in pens:                                                 # маркер — поверх всего, в координатах экрана
             draw_marker(c, tip, self.h, t)
         if self.look.get("flash"):                                       # вспышка на кадре сильного удара и разбитого стекла
-            hits = [ht for ht, _a, _s in self.hit_times()] + [tb for tb, _ in self.windows.broken.values()]
+            hits = [ht for ht, _a, _s in self.hit_times()] + [tb for tb, _ in self.windows.broken.values()] + \
+                [ht for ht, _v, _d in self.cursor.hits()]
             near = [t - ht for ht in hits if 0 <= t - ht < 0.08]
             if near:
                 c.save()
@@ -1248,8 +1270,7 @@ class Scene:
 
         for what, b in self.cursor.releases():
             if what == aid and b <= t:
-                cy = self.cursor.pos(b)[1]
-                fall = DP.fall_time((self.ground - self.fig * 0.92) - (cy + self.fig * 0.11), self.h)
+                fall = DP.fall_time((self.ground - self.fig * 0.92) - self._drop_head(aid, b), self.h)
                 if b + fall <= t < b + fall + 1.0:
                     return t - b - fall
         return None
@@ -1307,9 +1328,17 @@ class Scene:
             emo, front = ("surprised" if hang["falling"] else "angry"), True
             pose = self._smooth(aid, t, pose)
             pts, r = skeleton(pose, hang["head"][0], self.ground, size, facing, True)
-            dx, dy = hang["head"][0] - pts["head"][0], hang["head"][1] - pts["head"][1]
-            ang = math.radians(hang["swing"])
-            hx, hy = hang["head"]
+            if hang.get("by") == "foot":                                   # за ногу: чем выше поднял, тем больше вниз головой
+                anchor, (hx, hy) = pts["foot1"], hang["grip"]
+                lifted = max(0.0, min(1.0, (self.ground - hy) / (size * 0.95)))
+                ang = math.radians(180 * ease(lifted) + hang["swing"] * lifted)
+            elif hang.get("flip"):                                         # брошен вниз головой — переворачивается в полёте
+                anchor, (hx, hy) = pts["hip"], (hang["head"][0], hang["head"][1] + size * 0.4)
+                ang = math.radians(hang["flip"])
+            else:
+                anchor, (hx, hy) = pts["head"], hang["head"]
+                ang = math.radians(hang["swing"])
+            dx, dy = hx - anchor[0], hy - anchor[1]
             pts = {k: (hx + (px + dx - hx) * math.cos(ang) - (py + dy - hy) * math.sin(ang),
                        hy + (px + dx - hx) * math.sin(ang) + (py + dy - hy) * math.cos(ang)) for k, (px, py) in pts.items()}
         else:
@@ -1632,7 +1661,8 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "(сначала место, потом герои; действия — после того, как всё нарисовано, примерно с 0.6 сцены). "
          "Стиль neon_desktop (рабочий стол): \"windows\": [{{\"id\": \"w1\", \"x\", \"y\", \"w\", \"h\" (доли кадра), \"color\"}}]; "
          "курсор — персонаж: \"cursor\": [{{\"t\": доля сцены, \"x\", \"y\", \"grab\": id окна или героя | \"release\": true | \"click\": true}}] — "
-         "тащит окна, хватает героя за голову и роняет; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "
+         "тащит окна, хватает героя (\"by\": \"foot\" — за ногу, вниз головой; x, y можно не писать — сам найдёт героя) и роняет; "
+         "\"mood\": \"angry\" (краснеет, дрожит) | \"happy\" | \"calm\"; \"hit\": id героя — курсор с замахом врезается в героя, тот отлетает; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "
          "Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
          "в серии — отлетает дугой, едет по полу и встаёт (~1,5 с, не ставь цели движений на это время).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))

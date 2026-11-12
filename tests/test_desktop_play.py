@@ -63,6 +63,45 @@ class CursorAndWindows(unittest.TestCase):
         self.assertTrue(DP.fall_time(100, H) > DP.fall_time(10, H) > 0)
 
 
+class CursorCharacter(unittest.TestCase):
+    SPEC = {"actors": [{"id": "byte", "x": 0.4}],
+            "cursor": [{"t": 0.0, "x": 0.9, "y": 0.1}, {"t": 0.2, "x": 0.8, "y": 0.2, "mood": "angry"},
+                       {"t": 0.25, "hit": "byte"}, {"t": 0.4, "x": 0.5, "y": 0.2, "mood": "happy"},
+                       {"t": 0.6, "grab": "byte", "by": "foot"}, {"t": 0.75, "x": 0.5, "y": 0.15},
+                       {"t": 0.85, "x": 0.6, "y": 0.15, "release": True}]}
+
+    def scene(self):
+        return A.Scene(self.SPEC, "neon_desktop", (W, H), 10.0)
+
+    def test_moods(self):
+        cur = self.scene().cursor
+        self.assertEqual([cur.mood(t) for t in (1.0, 2.5, 4.5)], ["calm", "angry", "happy"])
+
+    def test_fast_dart_winds_up_first(self):
+        cur = self.scene().cursor
+        a, b = cur.keys[1], cur.keys[2]                                    # к герою — быстрый бросок
+        x_early = cur.pos(a["t"] + 0.15 * (b["t"] - a["t"]))[0]
+        self.assertGreater(x_early, a["x"])                                # сначала назад (герой левее)
+
+    def test_cursor_punches_the_hero(self):
+        sc = self.scene()
+        k = next(k for k in sc.knocks if k["by"] == "cursor")
+        self.assertEqual((k["t"], k["dir"], k["big"]), (2.5, -1, True))
+        self.assertAlmostEqual(sc.cursor.keys[2]["x"], 0.4 * W)             # прилетел туда, где стоял герой
+        self.assertTrue(any(e["kind"] == "punch" and e["t"] == 2.5 for e in sc.sound_events()))
+
+    def test_grab_by_foot_where_the_hero_is_now(self):
+        sc = self.scene()
+        after = sc.where("byte", 5.9)[0]
+        self.assertLess(after, 0.4 - 0.15)                                  # его отбросило влево
+        grab = sc.cursor.keys[4]
+        self.assertAlmostEqual(grab["x"], after * W, delta=1)               # курсор ищет его на новом месте
+        self.assertEqual(sc.carried("byte", 6.5)["by"], "foot")
+        fall = sc.carried("byte", 8.55)
+        self.assertTrue(fall["falling"])
+        self.assertGreater(fall["flip"], 0)                                 # в полёте переворачивается на ноги
+
+
 @unittest.skipUnless(A.available(), "нет pycairo")
 class Frames(unittest.TestCase):
     def brightness(self, sc, t):
@@ -81,6 +120,9 @@ class Frames(unittest.TestCase):
         self.assertGreater(self.brightness(sc, tb + 0.005), self.brightness(sc, tb + 0.3) + 5)
         for t in (0.0, 1.5, 3.2, 4.0, 6.0, 7.1, 9.9):                       # перенос, осколки, висит, падает
             self.brightness(sc, t)
+        cc = A.Scene(CursorCharacter.SPEC, "neon_desktop", (W, H), 10.0)
+        for t in (2.2, 2.5, 4.5, 6.2, 7.0, 8.55, 9.5):                     # злой, удар, весёлый, за ногу, бросок
+            self.brightness(cc, t)
 
 
 if __name__ == "__main__":
