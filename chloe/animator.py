@@ -109,7 +109,7 @@ SYNONYMS = {"block": "guard", "defend": "guard", "parry": "guard", "dive_roll": 
             "hop": "jump", "greet": "wave", "hello": "wave", "bye": "wave", "wonder": "think", "ponder": "think", "worry": "sad",
             "rage": "angry", "argue": "angry", "work": "type", "code": "type", "typing": "type", "carry": "hold", "show": "point",
             "present": "point", "celebration": "cheer", "kneel": "crouch", "sit_down": "sit"}
-HAND_PROPS = ("phone", "book", "sword", "ball", "cup", "flag")
+HAND_PROPS = ("phone", "book", "sword", "ball", "cup", "flag", "rifle", "pistol")
 SCENE_PROPS = ("table", "laptop", "box", "door", "tree", "chair", "screen", "rock", "ladder", "wall")
 EFFECTS = ("bulb", "heart", "sweat", "sparkle", "shock", "zzz", "question")
 SHOTS = {"wide": 1.0, "medium": 1.14, "close": 1.32}    # план сцены → приближение к главному герою
@@ -571,6 +571,56 @@ def draw_hand_prop(c, kind, hand, facing, size, color):
     c.restore()
 
 
+GUNS = ("rifle", "pistol")
+
+
+def draw_gun(c, kind, pts, facing, size):
+    """Оружие в двух руках (тренировочное, как на стрельбище): автомат лежит по линии от задней кисти к передней,
+    приклад — назад к плечу; пистолет — в передней кисти, по линии руки. Рисуется по настоящим точкам кистей."""
+    s = size
+    h1, h2 = pts["hand1"], pts["hand2"]
+    front, rear = (h1, h2) if (h1[0] - h2[0]) * facing >= 0 else (h2, h1)
+    dx, dy = front[0] - rear[0], front[1] - rear[1]
+    d = math.hypot(dx, dy)
+    if kind == "pistol" or d < s * 0.05:                         # кисти вместе — по линии руки от плеча
+        sh = pts["shoulder"]
+        dx, dy = front[0] - sh[0], front[1] - sh[1]
+        d = math.hypot(dx, dy)
+    ux, uy = (dx / d, dy / d) if d > 1e-6 else (facing, 0.0)
+    nx, ny = -uy, ux                                              # поперёк ствола — вниз
+    if ny < 0:
+        nx, ny = -nx, -ny
+    body, dark = (0.16, 0.17, 0.2), (0.07, 0.07, 0.08)
+    c.save()
+    c.set_line_cap(1)
+
+    parts = []
+
+    def bar(p0, p1, w, col):
+        parts.append((p0, p1, w, col))
+
+    def at(base, a, b=0.0):
+        return (base[0] + ux * a * s + nx * b * s, base[1] + uy * a * s + ny * b * s)
+    if kind == "rifle":
+        bar(at(rear, -0.13, 0.015), at(rear, 0.0), s * 0.05, dark)                 # приклад
+        bar(at(rear, -0.02), at(rear, 0.3), s * 0.045, body)                       # корпус
+        bar(at(rear, 0.3), at(rear, 0.46), s * 0.016, dark)                        # ствол
+        bar(at(rear, 0.1), at(rear, 0.12, 0.09), s * 0.03, dark)                   # магазин
+        bar(at(rear, 0.0), at(rear, -0.005, 0.05), s * 0.022, dark)                # рукоять
+        bar(at(rear, 0.08, -0.03), at(rear, 0.16, -0.03), s * 0.014, dark)         # прицел
+    else:
+        bar(at(front, -0.02), at(front, 0.1), s * 0.04, body)                      # затвор
+        bar(at(front, 0.0), at(front, -0.01, 0.06), s * 0.03, dark)                # рукоять
+    for outline in (True, False):                                 # светлая обводка — видно и на тёмном фоне
+        for p0, p1, w, col in parts:
+            c.set_source_rgb(*((0.82, 0.84, 0.88) if outline else col))
+            c.set_line_width(w + (s * 0.018 if outline else 0))
+            c.move_to(*p0)
+            c.line_to(*p1)
+            c.stroke()
+    c.restore()
+
+
 def _round_rect(c, x, y, w, h, r):
     c.new_sub_path()
     c.arc(x + w - r, y + r, r, -math.pi / 2, 0)
@@ -933,6 +983,9 @@ class Scene:
             kind = s.get("prop") if s.get("prop") in HAND_PROPS else None
             if kind and s["do"] not in ("give", "throw"):
                 self.holds[aid].append((t0, kind))
+            for ch in s.get("props") or []:                            # смена предмета посреди движения: [{at: доля, prop}]
+                if isinstance(ch, dict) and (ch.get("prop") in HAND_PROPS or ch.get("prop") is None):
+                    self.holds[aid].append((t0 + d * min(1.0, max(0.0, float(ch.get("at", 0)))), ch.get("prop")))
             if s.get("drop"):
                 self.holds[aid].append((t0, None))
             if s["do"] in ("give", "throw"):
@@ -2120,7 +2173,9 @@ class Scene:
                         draw_smear(c, a_, b_, size * 0.07, a["color"])
             self._prev[aid] = (t, dict(pts))
         draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
-        if prop:
+        if prop in GUNS:
+            draw_gun(c, prop, pts, facing, size)
+        elif prop:
             draw_hand_prop(self._pen(c), prop, pts["hand1"], facing, size, a["color"])
         if effect:
             draw_effect(c, effect, pts["head"], r, t, ink)

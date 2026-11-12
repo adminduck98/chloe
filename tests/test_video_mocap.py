@@ -70,6 +70,31 @@ class FromPoints(unittest.TestCase):
         move = VM.to_move(VM.smooth(out))
         self.assertTrue(all(np.isfinite(v) for p in move["poses"] for v in p.values()))
 
+    def test_stickman_hands_and_feet_land_where_the_persons_are(self):
+        pts = walker()
+        for i in range(len(pts)):                                        # широкая стойка, плечи и бёдра разнесены (вполоборота)
+            x0 = pts[i, 23, 0] + 5
+            pts[i, 11, 0], pts[i, 12, 0] = x0 - 25, x0 + 25
+            pts[i, 23, 0], pts[i, 24, 0] = x0 - 15, x0 + 15
+            pts[i, 27, :2], pts[i, 28, :2] = (x0 - 60, 400), (x0 + 60, 400)
+            pts[i, 25, :2], pts[i, 26, :2] = (x0 - 35, 350), (x0 + 35, 350)
+        move = VM.to_move(pts)
+        P = {k: (VM.LM[k], ) for k in VM.LM}
+        leg_px = np.hypot(35 - 15, 50) + np.hypot(25, 50)
+        size = (A.SEG["thigh"] + A.SEG["shin"]) / leg_px                 # пикселей видео → доли роста стикмена
+        i = 25
+        pose = move["poses"][i]
+        sk, _r = A.skeleton(pose, 0.0, 0.0, 1.0, 1)
+        hip = sk["hip"]
+        hx = (pts[i, 23, 0] + pts[i, 24, 0]) / 2
+        hy = (pts[i, 23, 1] + pts[i, 24, 1]) / 2
+        for key, j in (("foot1", 28), ("foot2", 27)):
+            want = ((pts[i, j, 0] - hx) * size, (pts[i, j, 1] - hy) * size)
+            got = (sk[key][0] - hip[0], sk[key][1] - hip[1])
+            self.assertLess(math.dist(want, got), 0.03, key)             # стопа стикмена — там же, где у человека
+        self.assertGreater(abs(sk["foot1"][0] - sk["foot2"][0]), 0.2)     # стойка широкая
+        del P
+
     def test_held_arm_is_not_a_strike(self):
         pts = walker(n=60, punch_at=200)                                 # без удара
         for i in range(20, 60):                                          # с 20-го кадра правая рука вытянута и держится

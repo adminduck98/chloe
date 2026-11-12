@@ -9,6 +9,7 @@
 Видео не уходит в интернет: всё считается на этом компьютере. Модель позы (~9 МБ) скачивается один раз в ~/.chloe/models.
 """
 import json
+import math
 import pathlib
 import subprocess
 
@@ -149,8 +150,71 @@ def to_move(pts, fps=25, mirror=None):
     sign = -1.0 if mirror else 1.0
     P = {k: (get(v)[:, 0] * sign, get(v)[:, 1]) for k, v in LM.items()}
     r = MC.angles_2d(P, fps)
+    fit_limbs(r["poses"], P)
     r.update(loop=False, hits=hits(P, pts[:, :, 2], fps), lands=[], src="video")
     return r
+
+
+def _two_bone(root, target, a, b, hint):
+    """Две кости длиной a и b от root к target (обратная кинематика): где сустав посередине. Из двух решений —
+    ближнее к hint (сустав на видео); не дотягивается — прямо к цели."""
+    dx, dy = target[0] - root[0], target[1] - root[1]
+    d = math.hypot(dx, dy) or 1e-6
+    ux, uy = dx / d, dy / d
+    dd = min(max(d, abs(a - b) + 1e-4), a + b - 1e-4)
+    cos_al = max(-1.0, min(1.0, (a * a + dd * dd - b * b) / (2 * a * dd)))
+    al = math.acos(cos_al)
+    best = None
+    for sgn in (1, -1):
+        ca, sa = math.cos(al * sgn), math.sin(al * sgn)
+        jx, jy = root[0] + a * (ux * ca - uy * sa), root[1] + a * (ux * sa + uy * ca)
+        dist = math.hypot(jx - hint[0], jy - hint[1])
+        if best is None or dist < best[0]:
+            best = (dist, (jx, jy))
+    return best[1]
+
+
+def _ang(v):
+    """Угол вектора (вперёд, вниз) от вертикали вниз, плюс — вперёд (градусы), как в mocap."""
+    return math.degrees(math.atan2(v[0], v[1]))
+
+
+def fit_limbs(poses, P):
+    """Углы рук и ног — так, чтобы кисти и стопы стикмена встали туда же, где у человека на видео (относительно таза,
+    в масштабе стикмена), а локти и колени согнулись в ту же сторону. Иначе у стикмена одна точка плеча на позвоночнике
+    и одна точка таза, а у человека два плеча и два бедра в стороны (особенно снято вполоборота): углы те же, а руки
+    мимо автомата и стойка уже."""
+    from . import animator as A
+    from . import mocap as MC
+
+    seg = A.SEG
+    leg_px = float(np.median(np.hypot(P["kn1"][0] - P["hip1"][0], P["kn1"][1] - P["hip1"][1])
+                             + np.hypot(P["foot1"][0] - P["kn1"][0], P["foot1"][1] - P["kn1"][1]))) or 1.0
+    s = (seg["thigh"] + seg["shin"]) / leg_px
+    n = len(poses)
+    out = {k: [] for k in ("sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2")}
+    for i in range(n):
+        hx, hy = P["hip"][0][i], P["hip"][1][i]
+
+        def rel(name):
+            return ((P[name][0][i] - hx) * s, (P[name][1][i] - hy) * s)
+        tor = math.radians(poses[i]["torso"])
+        sh = (math.sin(tor) * seg["torso"] * 0.84, -math.cos(tor) * seg["torso"] * 0.84)   # плечо стикмена
+        for side in ("1", "2"):
+            el = _two_bone(sh, rel("hand" + side), seg["upper"], seg["fore"], rel("el" + side))
+            hand = rel("hand" + side)
+            up_a = _ang((el[0] - sh[0], el[1] - sh[1]))
+            fore_a = _ang((hand[0] - el[0], hand[1] - el[1]))
+            out["sh" + side].append(up_a - poses[i]["torso"])
+            out["el" + side].append(fore_a - up_a)
+            kn = _two_bone((0.0, 0.0), rel("foot" + side), seg["thigh"], seg["shin"], rel("kn" + side))
+            foot = rel("foot" + side)
+            th_a = _ang(kn)
+            out["hip" + side].append(th_a)
+            out["kn" + side].append(_ang((foot[0] - kn[0], foot[1] - kn[1])) - th_a)
+    for k, vals in out.items():                                    # без скачков через ±180 (как в mocap)
+        for p, v in zip(poses, MC._rel(np.array(vals))):
+            p[k] = round(float(v), 2)
 
 
 def hits(P, vis, fps=25):

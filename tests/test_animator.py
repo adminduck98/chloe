@@ -141,6 +141,22 @@ class Moves(unittest.TestCase):
         self.assertEqual(s.holding("b", 2.5), "ball")                 # поймал
         self.assertEqual(len(s.flights), 1)
 
+    def test_rifle_then_pistol_in_both_hands(self):
+        import cairo
+
+        s = A.Scene({"actors": [{"id": "a", "x": 0.5}],
+                     "acting": [{"who": "a", "do": "stand", "from": 0, "to": 1, "prop": "rifle",
+                                 "props": [{"at": 0.5, "prop": "pistol"}]}]}, secs=4)
+        self.assertEqual(s.holding("a", 1.0), "rifle")
+        self.assertEqual(s.holding("a", 3.0), "pistol")               # сменил оружие посреди движения
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, 320, 180)
+        c = cairo.Context(surf)
+        for t in (1.0, 3.0):                                          # рисуется без ошибок
+            s.render(c, t, cairo)
+        pts = {"hand1": (100, 50), "hand2": (60, 55), "shoulder": (50, 40)}
+        for kind in A.GUNS:
+            A.draw_gun(c, kind, pts, 1, 100)
+
     def test_throw_without_target_falls_to_ground(self):
         s = A.Scene({"actors": [{"id": "a", "x": 0.2}],
                      "acting": [{"who": "a", "do": "throw", "from": 0, "to": 0.5, "prop": "cup", "at": 0.6}]}, secs=4)
