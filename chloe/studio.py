@@ -396,7 +396,7 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
         from . import motion_words as MW
 
         gen = min(15, int(secs + 0.99))
-        task = qm.video_start(MW.video_prompt(scene, gen), str(image), seconds=gen, resolution="720P")
+        task = qm.video_start(MW.video_prompt(scene, gen), str(fit_frame(image, size)), seconds=gen, resolution="720P")
         raw = qm.video_wait(task, "сцена-{}".format(i + 1))
         try:
             track = motion_sounds(raw, scene, secs, work / "clip{:02d}.sfx.wav".format(i), transition=bool(whoosh_file))
@@ -507,6 +507,28 @@ def prepare(work, video, mode, look, ratio):
         return None
 
 
+def fit_frame(image, size):
+    """Картинка не той формы (Qwen по образцу может нарисовать вертикальную) → кадр нужной формы: картинка целиком
+    по центру, по бокам — она же, размытая. Иначе видео обрежет голову и ноги. Та же форма — как есть."""
+    from PIL import Image, ImageFilter
+
+    image = pathlib.Path(image)
+    im = Image.open(image).convert("RGB")
+    w, h = size
+    if abs(im.width / im.height - w / h) < 0.1 * (w / h):
+        return image
+    W, H = (1280, 720) if w >= h else (720, 1280)
+    bg = im.resize((W, int(im.height * W / im.width))) if w >= h else im.resize((int(im.width * H / im.height), H))
+    bg = bg.crop(((bg.width - W) // 2, (bg.height - H) // 2, (bg.width - W) // 2 + W, (bg.height - H) // 2 + H))
+    bg = bg.filter(ImageFilter.GaussianBlur(28)).point(lambda v: int(v * 0.6))
+    k = min(W / im.width, H / im.height)
+    fg = im.resize((int(im.width * k), int(im.height * k)))
+    bg.paste(fg, ((W - fg.width) // 2, (H - fg.height) // 2))
+    out = image.with_name(image.stem + "-кадр.jpg")
+    bg.save(out, "JPEG", quality=92)
+    return out
+
+
 HERO_SHEET = ("Character reference sheet: the main character alone, full body, front view, neutral standing pose, "
               "arms relaxed, simple plain background in the style's colors, nothing else in the frame")
 HERO_SCENE = ("Draw a NEW scene: {} Use the character from the reference image exactly — same face, body, proportions, "
@@ -534,6 +556,29 @@ IMPACT_WORDS = ("hit", "punch", "kick", "strike", "smash", "crash", "slam", "kno
 LAND_WORDS = ("fall", "land", "drop", "jump", "trip", "tumble", "пада", "прыг", "призем")
 
 
+def video_flashes(path, fps=25, jump=0.05):
+    """Моменты вспышек (яркость кадра резко выросла) — так генератор рисует удар: [секунды]."""
+    import numpy as np
+
+    w, h = 64, 36
+    r = subprocess.run([ffmpeg(), "-v", "error", "-i", str(path), "-vf", "fps={},scale={}:{},format=gray".format(fps, w, h),
+                        "-f", "rawvideo", "-"], capture_output=True, timeout=120)
+    data = np.frombuffer(r.stdout, dtype=np.uint8)
+    n = len(data) // (w * h)
+    if n < 3:
+        return []
+    b = data[:n * w * h].reshape(n, h, w).astype(np.float32).mean(axis=(1, 2)) / 255
+    d = np.diff(b)
+    out = []
+    for i in np.argsort(-d):
+        if d[i] < jump:
+            break
+        t = (i + 1) / fps
+        if all(abs(t - o) > 0.5 for o in out):
+            out.append(round(float(t), 3))
+    return sorted(out)
+
+
 def video_motion(path, fps=25):
     """Сколько меняется картинка от кадра к кадру (0..1) — «пульс движения» клипа, по крошечным серым кадрам."""
     import numpy as np
@@ -549,7 +594,7 @@ def video_motion(path, fps=25):
     return np.concatenate([[0.0], np.mean(np.abs(np.diff(frames, axis=0)), axis=(1, 2))])
 
 
-def motion_events(energy, scene, fps=25, most=4):
+def motion_events(energy, scene, fps=25, most=4, flashes=()):
     """Резкие всплески движения в клипе → звуки: по словам сценария вокруг этого момента — удар, падение или свист.
     Склейку (вся картинка сменилась) не озвучиваем."""
     import numpy as np
@@ -575,8 +620,15 @@ def motion_events(energy, scene, fps=25, most=4):
             continue
         if not (i == 0 or energy[i - 1] <= e) or not (i + 1 >= len(energy) or energy[i + 1] <= e):
             continue
-        seg = next((sg for a, b, sg in spans if a - 0.3 <= t <= b + 0.3), text)
-        kind = "punch" if any(w in seg for w in IMPACT_WORDS) else "thud" if any(w in seg for w in LAND_WORDS) else "whoosh"
+        near = [sg for a, b, sg in spans if a - 0.3 <= t <= b + 0.3] or [text]
+        if any(abs(t - f) < 0.2 for f in flashes):                       # вспышка — генератор так рисует удар
+            kind = "punch"
+        elif any(any(w in sg for w in IMPACT_WORDS) for sg in near):     # на стыке отрезков удар важнее
+            kind = "punch"
+        elif any(any(w in sg for w in LAND_WORDS) for sg in near):
+            kind = "thud"
+        else:
+            kind = "whoosh"
         out.append({"t": round(t, 3), "kind": kind, "pan": 0.0, **({"args": {"dur": 0.35}, "gain_db": -3} if kind == "whoosh" else {})})
     return sorted(out, key=lambda e: e["t"])
 
@@ -587,7 +639,7 @@ def motion_sounds(raw, scene, secs, path, transition=False):
     from . import sfx as S
 
     try:
-        events = motion_events(video_motion(raw), scene)
+        events = motion_events(video_motion(raw), scene, flashes=video_flashes(raw))
         if transition:
             events.append({"t": 0.33, "kind": "whoosh", "pan": 0.0, "gain_db": 7, "args": {"dur": 0.55}})
         track, _placed = S.render([e for e in events if e["t"] < secs], secs)

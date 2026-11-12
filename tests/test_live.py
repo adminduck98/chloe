@@ -79,7 +79,61 @@ class Hero(unittest.TestCase):
         self.assertAlmostEqual(studio.estimate(scenes, "slides"), 3 * studio.SLIDE_COST)
 
 
+class Frame(unittest.TestCase):
+    def test_portrait_picture_fits_a_wide_frame_whole(self):
+        from PIL import Image
+
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        Image.new("RGB", (880, 1176), (0, 160, 220)).save(d / "p.png")
+        out = studio.fit_frame(d / "p.png", (1920, 1080))
+        im = Image.open(out)
+        self.assertEqual(im.size, (1280, 720))
+        self.assertEqual(im.getpixel((640, 10)), (0, 160, 220))          # картинка целиком по центру, без обрезки
+        Image.new("RGB", (1664, 928)).save(d / "w.png")
+        self.assertEqual(studio.fit_frame(d / "w.png", (1920, 1080)), d / "w.png")   # та же форма — как есть
+
+    def test_scene_pictures_ask_for_the_frame_shape(self):
+        sent = []
+
+        def http(method, path, body=None, headers=None, timeout=120):
+            sent.append(body)
+            return {"output": {"choices": [{"message": {"content": [{"image": "https://x/a.png"}]}}]}}
+
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "h.png").write_bytes(b"\x89PNG")
+        with mock.patch.object(qm, "_http", side_effect=http), mock.patch.object(qm, "_save", return_value=d / "a.png"):
+            qm.image("сцена", "16:9", source=str(d / "h.png"))
+            qm.image("сделай фон синим", source=str(d / "h.png"))
+        self.assertIn("size", sent[0]["parameters"])                     # сцена ролика — нужной формы
+        self.assertNotIn("size", sent[1]["parameters"])                  # правка картинки — её форма
+
+    def test_size_refused_then_without_it(self):
+        calls = []
+
+        def http(method, path, body=None, headers=None, timeout=120):
+            calls.append(dict(body["parameters"]))
+            if len(calls) == 1:
+                raise qm.MediaError("Alibaba: InvalidParameter size")
+            return {"output": {"choices": [{"message": {"content": [{"image": "https://x/a.png"}]}}]}}
+
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        (d / "h.png").write_bytes(b"\x89PNG")
+        with mock.patch.object(qm, "_http", side_effect=http), mock.patch.object(qm, "_save", return_value=d / "a.png"):
+            qm.image("сцена", "16:9", source=str(d / "h.png"))
+        self.assertEqual(["size" in c for c in calls], [True, False])
+
+
 class MotionSounds(unittest.TestCase):
+    def test_flash_means_impact_even_inside_a_jump(self):
+        e = np.full(250, 0.01)
+        e[130] = 0.09                                                      # 5,2 с — посреди прыжка
+        scene = {"video": "[0–3s] the cursor swoops [3–5s] he dodges with a jump [5–8s] he punches the cursor"}
+        self.assertEqual(studio.motion_events(e, scene)[0]["kind"], "thud")             # по словам — прыжок
+        self.assertEqual(studio.motion_events(e, scene, flashes=[5.2])[0]["kind"], "punch")    # но это вспышка удара
+
     def test_spikes_become_sounds_by_script_words(self):
         e = np.full(250, 0.01)
         e[50], e[150], e[200] = 0.12, 0.1, 0.6                              # удар, падение, склейка

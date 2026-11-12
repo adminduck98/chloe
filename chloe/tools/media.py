@@ -84,7 +84,7 @@ def tool_create_media(a):
 
     if action == "image":
         n = a.get("count") or 1
-        ratio = a.get("ratio") or "1:1"
+        ratio = a.get("ratio") or (None if source else "1:1")      # правка картинки — её форма, если форму не назвали
         if source:
             try:
                 qm._image_ref(source)            # нет файла — скажем сразу, а не через минуту

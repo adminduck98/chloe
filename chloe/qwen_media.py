@@ -107,7 +107,21 @@ def as_data_uri(path):
     if p.stat().st_size > 10 * 1024 * 1024:
         raise MediaError("картинка больше 10 МБ")
     kind = mimetypes.guess_type(p.name)[0] or "image/png"
-    return "data:{};base64,{}".format(kind, base64.b64encode(p.read_bytes()).decode())
+    data = p.read_bytes()
+    if len(data) > 600 * 1024:                       # большая картинка — сжать: 2 МБ PNG не успевали уйти в Alibaba
+        try:
+            import io
+
+            from PIL import Image
+
+            im = Image.open(io.BytesIO(data)).convert("RGB")
+            im.thumbnail((1280, 1280))
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=90)
+            data, kind = buf.getvalue(), "image/jpeg"
+        except Exception:                            # noqa: BLE001 — не вышло сжать — отправим как есть
+            pass
+    return "data:{};base64,{}".format(kind, base64.b64encode(data).decode())
 
 
 def _image_ref(src):
@@ -115,16 +129,27 @@ def _image_ref(src):
 
 
 # --- картинки ---
-def image(prompt, ratio="1:1", n=1, source=None, model=None):
-    """Нарисовать (или изменить картинку source по описанию). Возвращает список сохранённых файлов."""
+def image(prompt, ratio=None, n=1, source=None, model=None):
+    """Нарисовать (или изменить картинку source по описанию). Возвращает список сохранённых файлов.
+    ratio при правке картинки — только если форму кадра надо задать (сцены ролика); не задан — форма как у исходной."""
     if not prompt.strip():
         raise MediaError("нужно описание картинки")
     content = ([{"image": _image_ref(source)}] if source else []) + [{"text": prompt}]
     params = {"n": max(1, min(int(n or 1), 4)), "watermark": False}
-    if not source:
+    # по образцу без размера Alibaba выбирает форму сама (12.11.2026: вертикальная вместо 16:9) — для сцен ролика задаём
+    if ratio or not source:
+        ratio = ratio or "1:1"
         params["size"] = SIZES.get(ratio, ratio if re.match(r"^\d+\*\d+$", ratio or "") else SIZES["1:1"])
     body = {"model": model or IMAGE_MODEL, "input": {"messages": [{"role": "user", "content": content}]}, "parameters": params}
-    out = _http("POST", "/api/v1/services/aigc/multimodal-generation/generation", body, timeout=180)
+    path = "/api/v1/services/aigc/multimodal-generation/generation"
+    wait = 300 if source else 180                    # по образцу Alibaba рисует дольше 3 минут (замер 12.11.2026)
+    try:
+        out = _http("POST", path, body, timeout=wait)
+    except MediaError as e:
+        if not source or "size" not in params or "size" not in str(e).lower():
+            raise
+        del params["size"]                           # размер при рисовании по образцу не принят — без него
+        out = _http("POST", path, body, timeout=wait)
     urls = [c["image"] for ch in (out.get("output") or {}).get("choices", [])
             for c in (ch.get("message") or {}).get("content", []) if c.get("image")]
     if not urls:
