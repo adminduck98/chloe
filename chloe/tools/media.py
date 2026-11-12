@@ -364,10 +364,9 @@ def _human3d(a):
     if not H3.available():
         return "3D-человек недоступен: {}.".format(H3.why_not())
     name = str(a.get("name") or "")
-    move = MC.library().get(name)
+    move = MC.motion3d(name)
     if not move or not move.get("body3d"):
-        mine = [k for k, m in MC.library().items() if m.get("body3d")]
-        return "Нет движения с 3D-скелетом «{}». Есть: {}.".format(name, ", ".join(mine) or "пока ни одного — пришлите видео")
+        return "Нет движения с 3D-скелетом «{}». Есть: {}.".format(name, ", ".join(MC.names3d()) or "пока ни одного — пришлите видео")
     props = a.get("props") or ([{"at": 0, "prop": a["prop"]}] if a.get("prop") in H3.PROPS else [])
     view = a.get("view") if a.get("view") in H3.VIEWS else "34"
     out = qm.VIDEO_DIR / "{}-3d-{}.mp4".format(_time.strftime("%Y%m%d-%H%M%S"), name)

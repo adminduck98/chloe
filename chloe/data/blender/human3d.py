@@ -123,13 +123,19 @@ S = rig_leg / legs[len(legs) // 2]
 KEYS = ("hip", "neck", "head", "sh1", "sh2", "el1", "el2", "hand1", "hand2", "fi1", "fi2", "hip1", "hip2", "kn1", "kn2",
         "foot1", "foot2", "toe1", "toe2")
 ALL = [{k: raw(fr, k) * S for k in KEYS} for fr in body]
-# горизонт: телефон снимал с наклоном — средняя ось тела (от середины стоп к середине плеч) становится вертикалью
-axis = sum((((p["sh1"] + p["sh2"]) / 2 - (p["foot1"] + p["foot2"]) / 2) for p in ALL), Vector()).normalized()
-level = axis.rotation_difference(Vector((0, 0, 1))).to_matrix()
-ALL = [{k: level @ v for k, v in p.items()} for p in ALL]
-# пол — под нижней ступнёй каждого кадра (глубина MediaPipe шумит; плавно, чтобы не дрожало)
+ROOT = move.get("root3d")                                          # перемещение тела (записи CMU: прыжки, сальто, шаги)
+if ROOT:
+    ALL = [{k: v + Vector((r[0], r[2], -r[1])) * S for k, v in p.items()} for p, r in zip(ALL, ROOT)]
+if not move.get("upright"):
+    # горизонт: телефон снимал с наклоном — средняя ось тела (от середины стоп к середине плеч) становится вертикалью
+    axis = sum((((p["sh1"] + p["sh2"]) / 2 - (p["foot1"] + p["foot2"]) / 2) for p in ALL), Vector()).normalized()
+    level = axis.rotation_difference(Vector((0, 0, 1))).to_matrix()
+    ALL = [{k: level @ v for k, v in p.items()} for p in ALL]
 lows = [min(p[k].z for k in ("foot1", "foot2", "toe1", "toe2")) for p in ALL]
-lows = [sum(lows[max(0, i - 3):i + 4]) / len(lows[max(0, i - 3):i + 4]) for i in range(len(lows))]
+if ROOT:                                                           # пол один на всё движение — прыжок отрывается от земли
+    lows = [min(lows)] * len(lows)
+else:                                                              # с видео: пол под нижней ступнёй каждого кадра
+    lows = [sum(lows[max(0, i - 3):i + 4]) / len(lows[max(0, i - 3):i + 4]) for i in range(len(lows))]
 floor = 0.0
 ankle_h = rest_head("foot_l").z                                    # щиколотка над полом у этого тела
 face = math.radians(float(move.get("face3d", -90)))
@@ -273,6 +279,15 @@ cam.data.lens = 50
 aim = bpy.data.objects.new("Aim", None)
 sc.collection.objects.link(aim)
 aim.location = (0, 0, 0.95)
+if ROOT:                                                           # камера плавно идёт за героем (по полу, без рывков)
+    hips = [p["hip"] for p in ALL]
+    for f in range(1, n + 1):
+        win = hips[max(0, f - 13):f + 12]
+        c = sum(win, Vector()) / len(win)
+        aim.location = (c.x, c.y, 0.95)
+        aim.keyframe_insert("location", frame=f)
+        cam.location = Vector((c.x, c.y, 0)) + cam_dir * 4.8 + Vector((0, 0, 1.25))
+        cam.keyframe_insert("location", frame=f)
 tc = cam.constraints.new("TRACK_TO")
 tc.target = aim
 tc.track_axis, tc.up_axis = "TRACK_NEGATIVE_Z", "UP_Y"

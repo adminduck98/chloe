@@ -122,7 +122,9 @@ class Tool(unittest.TestCase):
             self.assertIn("недоступен", media.tool_learn_move({"action": "human3d", "name": "drill"}))
         with mock.patch.object(H3, "available", return_value=True), \
                 mock.patch.object(MC, "library", return_value={"x": {"poses": [], "body3d": [{}]}}):
-            self.assertIn("Есть: x", media.tool_learn_move({"action": "human3d", "name": "нет_такого"}))
+            reply = media.tool_learn_move({"action": "human3d", "name": "нет_такого"})
+            self.assertIn("x", reply)
+            self.assertIn("backflip", reply)                                  # и движения из записей CMU
             with mock.patch.object(media, "_start", return_value=7) as start:
                 reply = media.tool_learn_move({"action": "human3d", "name": "x", "prop": "rifle", "open": False})
         self.assertIn("#7", reply)

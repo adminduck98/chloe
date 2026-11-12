@@ -130,14 +130,14 @@ def render(move_name, out, view="34", size=(960, 540), outfit="male_casualsuit04
 
     if not available():
         raise Human3DError(why_not())
-    move = MC.library().get(move_name)
+    move = MC.motion3d(move_name)
     if not move or not move.get("body3d"):
         raise Human3DError("у движения «{}» нет 3D-скелета — выучите его заново по видео".format(move_name))
     out = pathlib.Path(out)
     with tempfile.TemporaryDirectory(prefix="chloe-3d-") as tmp:
         tmp = pathlib.Path(tmp)
         mj = tmp / "move.json"
-        mj.write_text(json.dumps({"body3d": move["body3d"], "face3d": move.get("face3d", -90), "fps": move.get("fps", 25)}),
+        mj.write_text(json.dumps({k: move[k] for k in ("body3d", "face3d", "fps", "root3d", "upright") if k in move}),
                       encoding="utf-8")
         frames_dir = tmp / "frames"
         frames_dir.mkdir()

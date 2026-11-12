@@ -1,6 +1,7 @@
 """Живые движения (захват движения CMU): чтение BVH, прямая кинематика, перенос на 2D-стикмена, библиотека и её
 подключение к мультипликатору (темп шага, повтор ударов, моменты ударов и приземлений, сдвиг тела)."""
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -186,3 +187,35 @@ class Cartoon(unittest.TestCase):
         sc = A.Scene({"actors": [{"id": "a", "x": 0.3}], "acting": [{"who": "a", "do": "duck", "from": 0, "to": 1}]},
                      "action", (640, 360), 2.0)
         self.assertAlmostEqual(sc.where("a", 1.9)[0], 0.3, places=3)
+
+
+class Library3D(unittest.TestCase):
+    """3D-скелеты движений CMU для 3D-человека (chloe/data/moves3d.json)."""
+
+    def test_every_move_has_3d_body_and_root(self):
+        names = set(M.SELECTION)
+        for n in names:
+            m = M.motion3d(n)
+            self.assertIsNotNone(m, n)
+            self.assertEqual(len(m["body3d"]), len(m["root3d"]), n)
+            self.assertTrue(m["upright"])
+            fr = m["body3d"][0]
+            for k in ("sh1", "sh2", "hand1", "hand2", "fi1", "kn1", "foot2", "toe1", "head"):
+                self.assertIn(k, fr, (n, k))
+        self.assertTrue(names <= set(M.names3d()))
+
+    def test_jump_goes_up_and_walk_goes_forward(self):
+        jump = [r[1] for r in M.motion3d("jump")["root3d"]]
+        self.assertLess(min(jump), -0.05)                                # таз поднялся (у MediaPipe y — вниз)
+        walk = M.motion3d("walk")["root3d"]
+        self.assertGreater(abs(walk[-1][2]) + abs(walk[-1][0]), 0.3)     # прошёл вперёд
+
+    def test_standing_body_is_upright(self):
+        fr = M.motion3d("punch")["body3d"][0]
+        self.assertLess(fr["head"][1], fr["sh1"][1])                     # голова выше плеч (y вниз)
+        self.assertGreater(fr["foot1"][1], fr["kn1"][1])                 # стопы ниже колен
+
+    def test_video_move_comes_from_user_library(self):
+        with mock.patch.object(M, "library", return_value={"mine": {"poses": [], "body3d": [{"x": 1}], "face3d": -80, "fps": 25}}):
+            self.assertEqual(M.motion3d("mine")["face3d"], -80)
+            self.assertIn("mine", M.names3d())

@@ -330,6 +330,29 @@ def _cycle(pos, fps, a, b):
     return a + peaks[mid - 1], a + peaks[mid]
 
 
+def _window(pos, fps, kind, t0, t1, nframes, fps_out=25):
+    """Какой отрезок записи берётся в движение (кадры [a, b)): цикл шага, удар с замахом и отдачей, всплеск активности
+    или выбранный вручную. Общий для стикменов (build) и для 3D-человека (build3d)."""
+    a, b = max(1, int(t0 * fps)), min(nframes, int(t1 * fps))
+    if kind.startswith("clip"):
+        return a, b                                              # отрезок выбран вручную
+    if kind == "loop":
+        return _cycle(pos, fps, a, b)
+    if kind.startswith("strike"):
+        limb = kind.split("_")[1]                                # strike_hand | strike_foot | strike_foot_front
+        peaks = strikes(_slice(pos, a, b), limb, fps, fps_out)
+        if peaks:                                                # первый явный удар: замах до него, отдача после
+            p = a + int(peaks[0] * fps)
+            return max(1, p - int(0.7 * fps)), min(nframes, p + int(0.6 * fps))
+        return a, b
+    act = _activity(pos, fps)[a:b]
+    calm = np.median(act)
+    hot = np.where(act > calm + (act.max() - calm) * 0.2)[0]           # начало — как только тело зашевелилось
+    if len(hot):
+        return a + max(0, hot[0] - int(0.5 * fps)), min(nframes, a + hot[-1] + int(0.45 * fps))
+    return a, b
+
+
 def build(raw_dir, out=DATA, fps_out=25):
     """Собрать библиотеку движений из скачанных BVH (SELECTION) → JSON. Возвращает отчёт {имя: секунды}."""
     raw_dir = pathlib.Path(raw_dir)
@@ -338,25 +361,8 @@ def build(raw_dir, out=DATA, fps_out=25):
         joints, frames, dt = parse_bvh((raw_dir / f).read_text())
         fps = round(1 / dt)
         pos = despike(positions(joints, frames), fps)
-        a, b = max(1, int(t0 * fps)), min(len(frames), int(t1 * fps))
+        a, b = _window(pos, fps, kind, t0, t1, len(frames), fps_out)
         hits = []
-        if kind.startswith("clip"):
-            pass                                                  # отрезок выбран вручную
-        elif kind == "loop":
-            a, b = _cycle(pos, fps, a, b)
-        elif kind.startswith("strike"):
-            limb = kind.split("_")[1]                        # strike_hand | strike_foot | strike_foot_front
-            w = _slice(pos, a, b)
-            peaks = strikes(w, limb, fps, fps_out)
-            if peaks:                                           # первый явный удар: замах до него, отдача после
-                p = a + int(peaks[0] * fps)
-                a, b = max(1, p - int(0.7 * fps)), min(len(frames), p + int(0.6 * fps))
-        else:
-            act = _activity(pos, fps)[a:b]
-            calm = np.median(act)
-            hot = np.where(act > calm + (act.max() - calm) * 0.2)[0]       # начало — как только тело зашевелилось
-            if len(hot):
-                a, b = a + max(0, hot[0] - int(0.5 * fps)), min(len(frames), a + hot[-1] + int(0.45 * fps))
         w = _slice(pos, a, b)
         view = "front" if kind.endswith("front") else "fixed" if kind.endswith("fixed") else "follow"
         r = retarget(w, fps_in=fps, fps_out=fps_out, skip=0, view=view)
@@ -538,3 +544,79 @@ def cartoon(name):
     out.append(dict(big[-1]))
     _toon[name] = dict(m, poses=out, keys=keys)
     return _toon[name]
+
+
+# --- 3D: те же движения для 3D-человека (chloe/human3d.py) ---
+DATA3D = pathlib.Path(__file__).parent / "data" / "moves3d.json"
+# сустав CMU → точка MediaPipe Pose (тот же формат, что 3D-скелет с видео: chloe/video_mocap.py)
+CMU_TO_MP = {11: "LeftArm", 12: "RightArm", 13: "LeftForeArm", 14: "RightForeArm", 15: "LeftHand", 16: "RightHand",
+             17: "LeftHandIndex1", 19: "LeftHandIndex1", 18: "RightHandIndex1", 20: "RightHandIndex1",
+             23: "LeftUpLeg", 24: "RightUpLeg", 25: "LeftLeg", 26: "RightLeg", 27: "LeftFoot", 28: "RightFoot",
+             31: "LeftToeBase", 32: "RightToeBase", 7: "Head", 8: "Head"}
+
+
+def to_mediapipe(pos, idx):
+    """Суставы записи (Y вверх) на кадрах idx → массив кадры × 33 × 3 как у MediaPipe (x вправо, y вниз, z от камеры).
+    Нос — чуть впереди головы (по направлению взгляда: перпендикуляр к линии бёдер)."""
+    n = len(idx)
+    w3 = np.zeros((n, 33, 3))
+    conv = np.array([1.0, -1.0, -1.0])
+    for j, name in CMU_TO_MP.items():
+        w3[:, j] = _get(pos, name)[idx] * conv
+    across = w3[:, 23] - w3[:, 24]                                     # справа налево у человека
+    fwd = np.cross(across, np.array([0.0, -1.0, 0.0]))                 # вперёд (вверх у MediaPipe — минус y)
+    fwd /= np.linalg.norm(fwd, axis=1, keepdims=True) + 1e-9
+    w3[:, 0] = w3[:, 7] + fwd * np.linalg.norm(w3[:, 11] - w3[:, 12], axis=1, keepdims=True) * 0.3
+    return w3
+
+
+def build3d(raw_dir, out=DATA3D, fps_out=25):
+    """3D-скелет каждого движения (те же отрезки, что у стикменов) и перемещение тела (прыжки, сальто, шаги) → JSON."""
+    from . import video_mocap as VM
+
+    raw_dir = pathlib.Path(raw_dir)
+    moves, report = {}, {}
+    for name, (f, kind, t0, t1) in SELECTION.items():
+        joints, frames, dt = parse_bvh((raw_dir / f).read_text())
+        fps = round(1 / dt)
+        pos = despike(positions(joints, frames), fps)
+        a, b = _window(pos, fps, kind, t0, t1, len(frames), fps_out)
+        idx = np.arange(a, b, max(1, int(round(fps / fps_out))))
+        w3 = to_mediapipe(pos, idx)
+        mirror_ = kind.endswith("mirror")
+        frames3d, face = VM.body3d(w3, mirror_)
+        sign = np.array([-1.0 if mirror_ else 1.0, 1.0, 1.0])
+        hip = (w3[:, 23] + w3[:, 24]) / 2 * sign
+        leg = float(np.median(np.linalg.norm(w3[:, 26] - w3[:, 24], axis=1) + np.linalg.norm(w3[:, 28] - w3[:, 26], axis=1)))
+        from . import animator as A
+
+        sc = (A.SEG["thigh"] + A.SEG["shin"]) / leg
+        root = [[round(float(v), 3) for v in (h - hip[0]) * sc] for h in hip]
+        moves[name] = {"body3d": [{k: [round(v, 3) for v in p] for k, p in fr.items()} for fr in frames3d],
+                       "face3d": face, "root3d": root, "fps": fps_out, "upright": True,
+                       "loop": kind.startswith("loop") or kind.startswith("clip_loop")}
+        report[name] = round(len(idx) / fps_out, 2)
+    pathlib.Path(out).write_text(json.dumps({"credit": CREDIT, "moves": moves}, separators=(",", ":")), encoding="utf-8")
+    global _lib3d
+    _lib3d = None
+    return report
+
+
+_lib3d = None
+
+
+def motion3d(name):
+    """3D-движение для 3D-человека: своё с видео (личная библиотека) или из записей CMU; None — нет."""
+    global _lib3d
+    mine = library().get(name)
+    if mine and mine.get("body3d"):
+        return {k: mine[k] for k in ("body3d", "face3d", "fps", "root3d", "upright", "loop") if k in mine}
+    if _lib3d is None:
+        _lib3d = json.loads(DATA3D.read_text(encoding="utf-8"))["moves"] if DATA3D.exists() else {}
+    return _lib3d.get(name)
+
+
+def names3d():
+    """Все движения, которые умеет 3D-человек."""
+    motion3d("walk")
+    return sorted(set(_lib3d or {}) | {k for k, m in library().items() if m.get("body3d")})
