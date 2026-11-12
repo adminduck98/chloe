@@ -102,6 +102,8 @@ def fill_gaps(pts, min_vis=0.4):
     n = len(pts)
     for j in range(pts.shape[1]):
         bad = np.isnan(pts[:, j, 0]) | (pts[:, j, 2] < min_vis)
+        if (~bad).sum() < max(2, n * 0.2):                  # точка почти всё время закрыта (дальняя рука сбоку) —
+            bad = np.isnan(pts[:, j, 0])                    # берём, что есть, хоть и неуверенно
         good = np.where(~bad)[0]
         if len(good) == 0:
             continue
@@ -124,9 +126,17 @@ def smooth(pts, k=3):
     return out
 
 
-def to_move(pts, fps=25, mirror=False):
+def faces_left(pts):
+    """Куда смотрит человек: нос левее середины ушей на большинстве кадров — влево."""
+    nose, ears = pts[:, 0, 0], (pts[:, 7, 0] + pts[:, 8, 0]) / 2
+    d = nose - ears
+    d = d[np.isfinite(d)]
+    return bool(len(d)) and float(np.median(d)) < 0
+
+
+def to_move(pts, fps=25, mirror=None):
     """Точки тела (пиксели, y вниз) → движение стикмена: {"poses", "fwd", "fps", "loop", "hits", "lands"}.
-    mirror — человек на видео смотрит влево (тогда отражаем, чтобы «вперёд» было вправо)."""
+    mirror — человек на видео смотрит влево (тогда отражаем, чтобы «вперёд» было вправо); None — понять самому."""
     from . import mocap as MC
 
     def get(spec):
@@ -134,18 +144,37 @@ def to_move(pts, fps=25, mirror=False):
             return (pts[:, spec[1], :2] + pts[:, spec[2], :2]) / 2
         return pts[:, spec, :2]
 
+    if mirror is None:
+        mirror = faces_left(pts)
     sign = -1.0 if mirror else 1.0
     P = {k: (get(v)[:, 0] * sign, get(v)[:, 1]) for k, v in LM.items()}
     r = MC.angles_2d(P, fps)
-    r.update(loop=False, hits=[], lands=[], src="video")
-    hand = [np.hypot(P["hand1"][0] - P["hip"][0], 0)]                       # удары: кисть дальше всего от корпуса
-    d = np.abs(P["hand1"][0] - P["hip"][0])
-    leg = float(np.median(np.hypot(P["kn1"][0] - P["hip1"][0], P["kn1"][1] - P["hip1"][1])) * 2) or 1.0
-    for i in range(1, len(d) - 1):
-        if d[i] > leg * 0.9 and d[i] >= d[i - 1] and d[i] >= d[i + 1] and all(abs(i / fps - h) > 0.3 for h in r["hits"]):
-            r["hits"].append(round(i / fps, 2))
-    del hand
+    r.update(loop=False, hits=hits(P, pts[:, :, 2], fps), lands=[], src="video")
     return r
+
+
+def hits(P, vis, fps=25):
+    """Моменты ударов (секунды), как для записей CMU: кисть дальше всего от таза по горизонтали (пик выше 85-го
+    процентиля и заметно дальше обычного) или стопа выше всего относительно таза (пинок). Почти невидимые руки
+    и ноги (дальняя сторона сбоку) не считаются — по ним одни догадки."""
+    leg = float(np.median(np.hypot(P["kn1"][0] - P["hip1"][0], P["kn1"][1] - P["hip1"][1])
+                          + np.hypot(P["foot1"][0] - P["kn1"][0], P["foot1"][1] - P["kn1"][1]))) or 1.0
+    seen = {"hand1": 16, "hand2": 15, "foot1": 28, "foot2": 27}
+    out = []
+    for limb, j in seen.items():
+        if np.median(vis[:, j]) < 0.5:
+            continue
+        if limb.startswith("hand"):
+            d = np.abs(P[limb][0] - P["hip"][0])
+            thr, ok = np.percentile(d, 85), max(d.mean() * 1.15, leg * 0.45)
+        else:
+            d = P["hip"][1] - P[limb][1]                              # y вниз: чем больше, тем выше стопа над тазом
+            thr, ok = d.min() + (d.max() - d.min()) * 0.7, -leg * 0.35   # пинок: стопа поднялась хотя бы к поясу
+        for i in range(1, len(d) - 1):
+            if d[i] >= thr and d[i] > ok and d[i] >= d[i - 1] and d[i] >= d[i + 1]:
+                if all(abs(i / fps - t) > 0.25 for t in out):
+                    out.append(round(i / fps, 2))
+    return sorted(out)
 
 
 USER = "moves_user.json"
@@ -176,7 +205,7 @@ def save(name, move):
     return key
 
 
-def learn(video, name, mirror=False, fps=25):
+def learn(video, name, mirror=None, fps=25):
     """Видео → движение в личной библиотеке. Возвращает (имя, секунд, найдено кадров с человеком из скольких)."""
     pts, _size = landmarks(video, fps)
     found = int((~np.isnan(pts[:, 23, 0])).sum())

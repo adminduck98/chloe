@@ -26,6 +26,7 @@ def walker(n=50, fps=25, punch_at=30):
             set_(j, x0, sh_y)
         for j in (7, 8):
             set_(j, x0 + 4, head_y)
+        set_(0, x0 + 14, head_y + 3)                                    # нос — смотрит вправо
         set_(26, x0 + 30 * ph, 350)
         set_(28, x0 + 45 * ph, 400)
         set_(25, x0 - 30 * ph, 350)
@@ -51,6 +52,23 @@ class FromPoints(unittest.TestCase):
     def test_mirror_for_people_facing_left(self):
         right, left = VM.to_move(walker()), VM.to_move(walker(), mirror=True)
         self.assertAlmostEqual(left["fwd"][-1], -right["fwd"][-1], places=3)
+
+    def test_facing_left_is_found_by_itself(self):
+        pts = walker()
+        pts[:, :, 0] = 1000 - pts[:, :, 0]                               # то же видео, отражённое: идёт и смотрит влево
+        self.assertTrue(VM.faces_left(pts))
+        self.assertFalse(VM.faces_left(walker()))
+        left = VM.to_move(pts)
+        self.assertGreater(left["fwd"][-1], 0.3)                         # всё равно «вперёд» — вправо
+
+    def test_hidden_far_arm_still_has_points(self):
+        pts = walker()
+        pts[:, 15, 2] = 0.1                                              # дальняя кисть всё время за телом
+        pts[3, 15] = np.nan
+        out = VM.fill_gaps(pts)
+        self.assertFalse(np.isnan(out[:, :, :2]).any())
+        move = VM.to_move(VM.smooth(out))
+        self.assertTrue(all(np.isfinite(v) for p in move["poses"] for v in p.values()))
 
     def test_gaps_are_filled(self):
         pts = walker()
