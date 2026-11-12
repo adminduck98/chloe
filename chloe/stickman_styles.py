@@ -70,6 +70,15 @@ STYLES = {
         "world": ("full-color painterly historical setting with clean cel shading, era-correct architecture, clothes and props"),
         "music": "оркестровая, эпоха",
     },
+    "action": {
+        "name": "Экшен: драка на рабочем столе",
+        "when": "драки, погони, трюки стикменов, «стикмен против интерфейса» — динамично, как в профессиональных стикмен-сериях",
+        "anchor": ("a bold 2D stick figure with thick solid-color limbs outlined in dark ink and a solid filled round head, "
+                   "simple dot eyes, each character keeps one bright color"),
+        "world": ("inside a computer screen: dark desktop wallpaper, app windows, icons, cursor and taskbar as an arena; "
+                  "dynamic fight choreography, smear frames, sparks, impact frames"),
+        "music": "драйвовая электроника",
+    },
     "whiteboard": {
         "name": "Белая доска (рисуется маркером)",
         "when": "обучение, объяснение по шагам, как это устроено, лекции — картинка появляется вслед за словами",
@@ -81,7 +90,7 @@ STYLES = {
     },
 }
 DEFAULT = "classic_light"
-ALIASES = {"доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
+ALIASES = {"экшен": "action", "драк": "action", "боевик": "action", "доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
            "тёмн": "classic_dark", "темн": "classic_dark", "чёрн": "classic_dark", "черн": "classic_dark",
            "светл": "classic_light", "бел": "classic_light", "классик": "classic_light", "неон": "neon_desktop",
            "компьютер": "neon_desktop", "экран": "neon_desktop", "шапк": "beanie", "студи": "beanie", "уют": "cozy",

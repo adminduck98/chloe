@@ -46,6 +46,10 @@ LOOKS = {
     "classic_light": {"bg": (1, 1, 1), "ink": "black", "glow": 0.0, "ground": (0.86, 0.86, 0.86), "filled_head": False},
     "classic_dark": {"bg": (0.04, 0.04, 0.05), "ink": "white", "glow": 0.35, "ground": (0.2, 0.2, 0.22), "filled_head": False},
     "neon_desktop": {"bg": "desktop", "ink": "cyan", "glow": 0.75, "ground": None, "filled_head": True, "trails": True, "flash": True},
+    # экшен: толстые линии с тёмной обводкой, залитая голова, растяжки на быстрых движениях, искры и обломки, кадр-негатив
+    # на сильном ударе, пауза на ударе, камера сама следит за дракой (свои герои; приёмы — как у профессиональных драк)
+    "action": {"bg": "desktop", "ink": "cyan", "glow": 0.0, "ground": None, "filled_head": True, "thick": True, "smear": True,
+               "impact": True, "flash": True, "camera": "follow", "hitstop": True},
     "beanie": {"bg": (0.97, 0.98, 1.0), "ink": "black", "glow": 0.0, "ground": (0.82, 0.86, 0.9), "filled_head": False, "beanie": True},
     "cozy": {"bg": (0.98, 0.95, 0.9), "ink": "black", "glow": 0.0, "ground": (0.8, 0.74, 0.66), "filled_head": True},
     "prehistoric": {"bg": (0.93, 0.86, 0.74), "ink": "black", "glow": 0.0, "ground": (0.62, 0.5, 0.36), "filled_head": True},
@@ -376,6 +380,8 @@ def draw_face(c, center, r, facing, emotion, talk, ink, filled):
 def draw_figure(c, pts, r, color, look, emotion, talk, facing, size):
     import cairo
 
+    if look.get("thick"):
+        return draw_thick(c, pts, r, color, emotion, talk, facing, size)
     lw = max(2.0, size * 0.022)
     c.set_line_cap(cairo.LINE_CAP_ROUND)
     c.set_line_join(cairo.LINE_JOIN_ROUND)
@@ -418,6 +424,100 @@ def draw_figure(c, pts, r, color, look, emotion, talk, facing, size):
         c.close_path()
         c.fill()
     draw_face(c, pts["head"], r, facing, emotion, talk, color, look["filled_head"])
+
+
+OUTLINE = (0.04, 0.04, 0.06)
+
+
+def _bones(c, pts):
+    for side in ("2", "1"):
+        c.move_to(*pts["hip"])
+        c.line_to(*pts["kn" + side])
+        c.line_to(*pts["foot" + side])
+        c.move_to(*pts["shoulder"])
+        c.line_to(*pts["el" + side])
+        c.line_to(*pts["hand" + side])
+    c.move_to(*pts["hip"])
+    c.line_to(*pts["neck"])
+
+
+def draw_thick(c, pts, r, color, emotion, talk, facing, size):
+    """Экшен-рисовка: толстые ровные конечности с тёмной обводкой, залитая голова с обводкой, дальние руки-ноги темнее —
+    читается объём и поза даже в быстрой драке."""
+    import cairo
+
+    lw = max(3.0, size * 0.058)
+    ol = lw * 0.28
+    c.set_line_cap(cairo.LINE_CAP_ROUND)
+    c.set_line_join(cairo.LINE_JOIN_ROUND)
+    far = tuple(v * 0.72 for v in color)
+    for side, col in (("2", far), ("1", color)):                      # дальние — темнее и под ближними
+        for chain in ((pts["hip"], pts["kn" + side], pts["foot" + side]), (pts["shoulder"], pts["el" + side], pts["hand" + side])):
+            for width, cc in ((lw + 2 * ol, OUTLINE), (lw, col)):
+                c.set_source_rgb(*cc)
+                c.set_line_width(width)
+                c.move_to(*chain[0])
+                c.line_to(*chain[1])
+                c.line_to(*chain[2])
+                c.stroke()
+        if side == "2":                                               # корпус — между дальними и ближними
+            for width, cc in ((lw * 1.15 + 2 * ol, OUTLINE), (lw * 1.15, color)):
+                c.set_source_rgb(*cc)
+                c.set_line_width(width)
+                _line(c, pts["hip"], pts["neck"])
+                c.stroke()
+    c.arc(*pts["head"], r * 1.05, 0, 2 * math.pi)                     # голова: залитая, с обводкой и бликом
+    c.set_source_rgb(*color)
+    c.fill_preserve()
+    c.set_source_rgb(*OUTLINE)
+    c.set_line_width(ol * 2)
+    c.stroke()
+    c.set_source_rgba(1, 1, 1, 0.28)
+    c.arc(pts["head"][0] - r * 0.35, pts["head"][1] - r * 0.4, r * 0.28, 0, 2 * math.pi)
+    c.fill()
+    draw_face(c, pts["head"], r, facing, emotion, talk, OUTLINE, True)
+
+
+def draw_smear(c, a, b, width, color):
+    """Растяжка быстрого движения: клин от прошлого положения кисти или стопы к нынешнему (как кадр-смаз в анимации)."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    d = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / d, dx / d
+    c.move_to(a[0], a[1])
+    c.line_to(b[0] + nx * width / 2, b[1] + ny * width / 2)
+    c.line_to(b[0] - nx * width / 2, b[1] - ny * width / 2)
+    c.close_path()
+    c.set_source_rgba(*color, 0.55)
+    c.fill()
+
+
+def draw_sparks(c, at, k, size, seed, color=(1.0, 0.9, 0.4), scale=1.0):
+    """Искры и обломки удара: лучи-вспышка (первые 0,15 с) и кусочки, разлетающиеся с гравитацией (до 0,6 с)."""
+    import random
+
+    if k < 0 or k > 0.6:
+        return
+    rnd = random.Random(seed)
+    x, y = at
+    if k < 0.15:
+        q = k / 0.15
+        c.set_line_width(max(2.0, size * 0.012) * scale)
+        for i in range(10):
+            a = rnd.uniform(0, 2 * math.pi)
+            r0, r1 = size * (0.05 + 0.25 * q) * scale, size * (0.12 + 0.4 * q) * rnd.uniform(0.6, 1.0) * scale
+            c.set_source_rgba(*color, 1 - q)
+            c.move_to(x + math.cos(a) * r0, y + math.sin(a) * r0)
+            c.line_to(x + math.cos(a) * r1, y + math.sin(a) * r1)
+            c.stroke()
+    for i in range(8):                                                  # обломки
+        a = rnd.uniform(-math.pi, 0)
+        v = size * rnd.uniform(1.2, 2.4) * scale
+        px = x + math.cos(a) * v * k
+        py = y + math.sin(a) * v * k + 0.5 * size * 5 * k * k
+        s_ = size * 0.025 * scale
+        c.set_source_rgba(*color, max(0.0, 1 - k / 0.6))
+        c.rectangle(px - s_, py - s_, s_ * 2, s_ * 2)
+        c.fill()
 
 
 def draw_hand_prop(c, kind, hand, facing, size, color):
@@ -1342,6 +1442,8 @@ class Scene:
         План сцены (shot) задаёт исходное приближение к главному герою; камера всегда чуть плывёт вперёд —
         движется уже на первом кадре и ещё движется на стыке (кроме тихих сцен и финала: там держится)."""
         zoom, fx, fy = 1.0, self.w / 2, self.h / 2
+        if self.look.get("camera") == "follow":
+            return self._follow(t)
         if self.shot and not self.look.get("still") and not getattr(self, "live_desktop", False):   # доска и живой стол стоят
             base = SHOTS[self.shot]
             drift = 0.0 if self.beat in ("quiet", "ending") else DRIFT * t / self.secs
@@ -1369,9 +1471,61 @@ class Scene:
                     shake = max(shake, 3.0)
         return zoom, fx, fy, shake
 
-    def render(self, c, t, cairo):
+    HITSTOP = 0.12                                                       # секунд «стоп-кадра» на сильном ударе
+
+    def stops(self):
+        """Моменты паузы на ударе (сильные удары, не больше четырёх за сцену)."""
+        if not self.look.get("hitstop"):
+            return []
+        return sorted(k["t"] for k in self.knocks if k["big"])[:4]
+
+    def scene_time(self, tv):
+        """Время ролика → время сцены: на сильном ударе сцена на миг замирает (пауза на ударе)."""
+        for s0 in self.stops():
+            if tv > s0 + self.HITSTOP:
+                tv -= self.HITSTOP
+            elif tv > s0:
+                tv = s0
+        return tv
+
+    def video_time(self, ts):
+        """Время сцены → время ролика (для звуков: после паузы они сдвигаются вместе с картинкой)."""
+        return ts + sum(self.HITSTOP for s0 in self.stops() if ts > s0)
+
+    def _follow(self, t):
+        """Камера сама следит за дракой: держит всех героев в кадре (плавно — среднее за 0,6 с), приближается, когда они
+        рядом; на сильном ударе — рывок вперёд и тряска. Кадр не выходит за края экрана."""
         w, h = self.w, self.h
-        c.identity_matrix()
+        xs, ys = [], []
+        for k in range(7):
+            tt = max(0.0, t - 0.6 + k * 0.1)
+            for aid, a in self.actors.items():
+                if self.is_hidden(aid, tt):
+                    continue
+                hang = self.carried(aid, tt)
+                x = hang["head"][0] if hang else self.where(aid, tt)[0] * w
+                size = self.fig * a["scale"]
+                xs += [x - size * 0.45, x + size * 0.45]
+                ys += [(hang["head"][1] if hang else self.ground - size * 1.1), self.ground]
+        if not xs:
+            return 1.0, w / 2, h / 2, 0.0
+        bw, bh = max(xs) - min(xs), max(ys) - min(ys)
+        zoom = max(1.0, min(1.5, min(0.62 * w / max(bw, 1.0), 0.75 * h / max(bh, 1.0))))
+        cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2 - h * 0.04
+        shake = 0.0
+        for k in self.knocks:                                            # сильный удар: рывок камеры и тряска
+            d = t - k["t"]
+            if 0 <= d < 0.45 and (k["big"] or k.get("blocked")):
+                q = 1 - d / 0.45
+                zoom *= 1 + (0.12 if k["big"] else 0.04) * q
+                shake = max(shake, h * (0.012 if k["big"] else 0.005) * q)
+        half_w, half_h = w / 2 / zoom, h / 2 / zoom
+        cx = max(half_w, min(w - half_w, cx))
+        cy = max(half_h, min(h - half_h, cy))
+        return zoom, cx, cy, shake
+
+    def _paint_bg(self, c, t):
+        w, h = self.w, self.h
         bg = self.look["bg"]
         if self.bg_image is not None:
             c.save()
@@ -1384,12 +1538,25 @@ class Scene:
         else:
             c.set_source_rgb(*bg)
             c.paint()
+
+    def render(self, c, t, cairo):
+        w, h = self.w, self.h
+        c.identity_matrix()
+        bg = self.look["bg"]
+        follow = self.look.get("camera") == "follow"
+        if not follow:
+            self._paint_bg(c, t)
         zoom, fx, fy, shake = self.cam(t)
         sx = math.sin(t * 61) * shake
         sy = math.cos(t * 47) * shake
+        if follow:                                                      # камера следит: фон приближается вместе со всеми
+            c.set_source_rgb(0, 0, 0)
+            c.paint()
         c.translate(w / 2 + sx, h / 2 + sy)
         c.scale(zoom, zoom)
         c.translate(-fx, -fy)
+        if follow:
+            self._paint_bg(c, t)
         ink = COLORS[self.look["ink"]]
         pens = []                                                        # где сейчас маркер (белая доска)
 
@@ -1466,6 +1633,15 @@ class Scene:
                            self.cursor.bumped(t)[2])
         for tip in pens:                                                 # маркер — поверх всего, в координатах экрана
             draw_marker(c, tip, self.h, t)
+        if self.look.get("impact"):                                      # искры и обломки на каждом ударе по герою
+            for k in self.knocks:
+                d = t - k["t"]
+                if 0 <= d <= 0.6 and k["who"] in self.actors:
+                    vx = self.where(k["who"], k["t"])[0] * w
+                    size = self.fig * self.actors[k["who"]]["scale"]
+                    at = (vx - k["dir"] * size * 0.12, self.ground - size * 0.72)
+                    draw_sparks(c, at, d, size, int(k["t"] * 1000), (0.6, 0.9, 1.0) if k.get("blocked") else (1.0, 0.85, 0.3),
+                                0.6 if k.get("blocked") else 1.0)
         if self.look.get("flash"):                                       # вспышка на кадре сильного удара и разбитого стекла
             hits = [ht for ht, _a, _s in self.hit_times()] + [tb for tb, _ in self.windows.broken.values()] + \
                 [ht for ht, _v, _d in self.cursor.hits()]
@@ -1476,6 +1652,13 @@ class Scene:
                 c.set_source_rgba(1, 1, 1, 0.22 * (1 - min(near) / 0.08))
                 c.paint()
                 c.restore()
+        if self.look.get("impact") and any(0 <= t - k["t"] < 1.5 / FPS for k in self.knocks if k["big"]):
+            c.save()                                                     # кадр-негатив на сильном ударе
+            c.identity_matrix()
+            c.set_operator(cairo.OPERATOR_DIFFERENCE)
+            c.set_source_rgb(1, 1, 1)
+            c.paint()
+            c.restore()
 
     def landed(self, aid, t):
         """Сколько секунд назад герой приземлился после того, как курсор его уронил (None — не падал или давно)."""
@@ -1641,6 +1824,14 @@ class Scene:
         speed = abs(x - self.where(aid, max(0.0, t - 0.06))[0]) * w / 0.06
         if speed > size * 1.2:                                           # бежит быстро — линии скорости позади
             draw_speed_lines(c, pts, size, -1 if x > self.where(aid, max(0.0, t - 0.06))[0] else 1, a["color"])
+        if self.look.get("smear") and not getattr(self, "_ghost", False):  # растяжки на быстрых кистях и стопах
+            prev = self.__dict__.setdefault("_prev", {}).get(aid)
+            if prev and 0 < t - prev[0] < 0.1:
+                for key in ("hand1", "hand2", "foot1", "foot2"):
+                    a_, b_ = prev[1][key], pts[key]
+                    if math.dist(a_, b_) > size * 0.12:
+                        draw_smear(c, a_, b_, size * 0.07, a["color"])
+            self._prev[aid] = (t, dict(pts))
         draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
         if prop:
             draw_hand_prop(self._pen(c), prop, pts["hand1"], facing, size, a["color"])
@@ -1827,7 +2018,7 @@ def render_frames(spec, style, size, secs, background=None, words=None):
     bg = load_background(background, size) if background else None
     scene = Scene(spec, style, size, secs, bg, words)
     for i in range(int(round(secs * FPS))):
-        scene.render(c, i / FPS, cairo)
+        scene.render(c, scene.scene_time(i / FPS), cairo)
         surface.flush()
         yield bytes(surface.get_data())
 
@@ -1850,6 +2041,8 @@ def scene_sounds(spec, style, size, secs, out, transition=False):
 
     scene = Scene(spec, style, size, secs)
     events = scene.sound_events()
+    if scene.stops():                          # пауза на ударе: звуки после неё — позже, вместе с картинкой
+        events = [dict(e, t=scene.video_time(e["t"])) for e in events]
     stop = None
     if scene.beat == "turn":                   # поворот: тишина перед самым сильным ударом, удар — громче всех
         big = [e for e in events if e["kind"] in ("punch", "thud", "stinger")]
