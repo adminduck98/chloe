@@ -223,10 +223,12 @@ TOOLS = [
                                          "ходят, бегут, прыгают, дерутся, машут, лица меняются (свой мультипликатор, бесплатно, любая длина; "
                                          "«мультик», «анимация», «чтобы двигались»); live — каждая картинка оживает (в разы дороже, только по "
                                          "прямой просьбе). Ролик длиннее ~20 с сначала делается пробным "
-                                         "куском; «делай весь ролик» — action=continue (project — папка, по умолчанию последний). "
+                                         "куском; «делай весь ролик» — action=continue (project — папка, по умолчанию последний). Shorts "
+                                         "(вертикальные 9:16 куски с крючком) собираются сами после каждого ролика 16:9; «сделай шортсы» — "
+                                         "action=shorts (project — папка, по умолчанию последний; count — сколько, 1–3). "
                                          "preview=false — сразу весь ролик (только если пользователь сам так сказал). scenes — только если "
                                          "пользователь продиктовал готовые сцены (picture, narration). Цену спрашивает сама, работает в фоне.",
-     "input_schema": schema({"action": {"type": "string", "enum": ["make", "continue"]}, "idea": S, "notes": S, "title": S, "style": S,
+     "input_schema": schema({"action": {"type": "string", "enum": ["make", "continue", "shorts"]}, "count": {"type": "integer"}, "idea": S, "notes": S, "title": S, "style": S,
                              "ratio": S, "duration": {"type": "integer"}, "mode": {"type": "string", "enum": ["director", "slides", "anim", "live"]},
                              "preview": {"type": "boolean"}, "project": S,
                              "scenes": {"type": "array", "items": schema({"picture": S, "narration": S}, ["picture"])},

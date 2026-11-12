@@ -1,4 +1,4 @@
-"""Готовый ролик → папка «к публикации» для YouTube: обложки, название, описание, теги, главы, субтитры.
+"""Готовый ролик → папка «к публикации» для YouTube: обложки, название, описание, теги, главы, субтитры, Shorts.
 
 Загружает пользователь сам в YouTube Studio: ролики, загруженные через API непроверенного приложения, YouTube
 оставляет закрытыми, пока Google не проверит приложение (задание #57).
@@ -393,4 +393,12 @@ def package(folder, video, script, mode="anim", look=None, ratio="16:9", ask=Non
     report.append("субтитры: ru{}".format(" + en" if meta["en"] else ""))
     if chap:
         report.append("главы: {}".format(len(chap)))
+    if ratio == "16:9":                                            # вертикальные куски с крючком (chloe/shorts.py)
+        try:
+            from . import shorts
+
+            made = shorts.make_shorts(folder, vid, script, mode, look, ask, out_dir=out / "shorts")
+            report.append("shorts: {}".format(len(made)))
+        except Exception as e:                                     # noqa: BLE001 — без Shorts пакет всё равно готов
+            report.append("shorts не вышли: {}".format(str(e)[:80]))
     return out, report

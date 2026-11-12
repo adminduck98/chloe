@@ -32,8 +32,15 @@ def _say(text):
 
 
 NAMES = {"image": ("Картинка", "готова", "не получилась"), "video": ("Видео", "готово", "не получилось"),
-         "film": ("Ролик", "готов (обложки, описание, теги и субтитры для YouTube — в папке проекта «к публикации»)", "не получился"), "audio": ("Озвучка", "готова", "не получилась"),
+         "film": ("Ролик", "готов (обложки, описание, теги, субтитры и Shorts для YouTube — в папке проекта «к публикации»)", "не получился"), "audio": ("Озвучка", "готова", "не получилась"),
+         "shorts": ("Shorts", "готовы (названия — в shorts.txt рядом)", "не получились"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
+
+
+def _shorts_error():
+    from ..shorts import ShortsError
+
+    return ShortsError
 
 
 def _run(job_id, kind, work, open_result=True):
@@ -46,7 +53,7 @@ def _run(job_id, kind, work, open_result=True):
         if open_result:
             show(paths[0])
         _say("{} {}: {}.".format(name, ok, ", ".join(job["result"])))
-    except (qm.MediaError, studio.StudioError, audiobook.AudioError) as e:
+    except (qm.MediaError, studio.StudioError, audiobook.AudioError, _shorts_error()) as e:
         job.update(state="ошибка", result=str(e))
         _say("{} {}: {}.".format(name, bad, str(e).rstrip(".")))
     except Exception as e:   # фоновая работа не должна молча умирать
@@ -159,6 +166,8 @@ def tool_make_film(a):
     ratio = a.get("ratio") if a.get("ratio") in studio.FRAMES else "16:9"
     if a.get("action") == "continue":
         return _continue_film(a)
+    if a.get("action") == "shorts":
+        return _film_shorts(a)
     if mode == "anim":
         from .. import animator
 
@@ -270,6 +279,29 @@ def _continue_film(a):
         return "Не доделываю."
     return _launch(p["folder"], p["title"], scenes, p.get("style", ""), p.get("ratio", "16:9"), mode, len(scenes),
                    a.get("open", True) is not False, look)
+
+
+def _film_shorts(a):
+    """«Сделай шортсы»: из готового ролика проекта (последнего или названного) — вертикальные куски с крючком."""
+    from .. import publish
+    from .. import shorts
+
+    try:
+        p = studio.load_project(a.get("project") or None)
+    except studio.StudioError as e:
+        return "Не могу: {}.".format(e)
+    films = sorted((p["folder"] / publish.FOLDER).glob("*.mp4"))
+    if not films:
+        return "Ролик «{}» ещё не доделан целиком — Shorts режутся из готового ролика.".format(p["title"])
+    script = dict(p.get("script") or {}, scenes=p["scenes"])
+    script.setdefault("title", p["title"])
+    count = max(1, min(3, int(a["count"]))) if a.get("count") else None
+
+    def work():
+        made = shorts.make_shorts(p["folder"], films[-1], script, p.get("mode", "slides"), p.get("look"), count=count)
+        return [m[0] for m in made]
+    job = _start("shorts", p["title"], work, a.get("open", True) is not False)
+    return "Режу Shorts из «{}» (#{}): вертикальные куски с крючком, около минуты. Скажу, когда будут готовы.".format(p["title"], job)
 
 
 LONG = 30        # минут звука: дольше — сначала спросить
