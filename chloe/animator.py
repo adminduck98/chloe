@@ -27,6 +27,7 @@ BLEND = 0.22             # секунд: плавный переход межд�
 STRIKE = {"punch": (1.6, 0.24), "fight": (3.0, 0.24), "kick": (1.4, 0.26)}
 # отлёт от удара: всего секунд; доли — полёт дугой, юзом по полу, подъём
 KNOCK_TIME, KNOCK_FLY, KNOCK_SLIDE = 1.5, 0.3, 0.55
+RAG_RISE = 0.7           # секунд: встаёт после падения по физике
 TRASH_IN, TRASH_OUT = 0.35, 0.6   # секунд: проваливается в корзину; выпрыгивает из неё
 REACH = 0.24             # длина удара в долях высоты кадра: на таком расстоянии от цели встаёт нападающий
 # суставы догоняют позу, как пружина: чуть запаздывают и чуть проскакивают — движение с инерцией, а не рывками
@@ -49,7 +50,7 @@ LOOKS = {
     # экшен: толстые линии с тёмной обводкой, залитая голова, растяжки на быстрых движениях, искры и обломки, кадр-негатив
     # на сильном ударе, пауза на ударе, камера сама следит за дракой (свои герои; приёмы — как у профессиональных драк)
     "action": {"bg": "desktop", "ink": "cyan", "glow": 0.0, "ground": None, "filled_head": True, "thick": True, "smear": True,
-               "impact": True, "flash": True, "camera": "follow", "hitstop": True},
+               "impact": True, "flash": True, "camera": "follow", "hitstop": True, "physics": True},
     "beanie": {"bg": (0.97, 0.98, 1.0), "ink": "black", "glow": 0.0, "ground": (0.82, 0.86, 0.9), "filled_head": False, "beanie": True},
     "cozy": {"bg": (0.98, 0.95, 0.9), "ink": "black", "glow": 0.0, "ground": (0.8, 0.74, 0.66), "filled_head": True},
     "prehistoric": {"bg": (0.93, 0.86, 0.74), "ink": "black", "glow": 0.0, "ground": (0.62, 0.5, 0.36), "filled_head": True},
@@ -890,6 +891,11 @@ class Scene:
         wids = [str(x.get("id") or "w{}".format(i + 1)) for i, x in enumerate((spec or {}).get("windows") or [])]
         breaks = [(s["target"], t, None) for t, aid, s in self.hit_times() if s.get("target") in wids]
         self.windows = DP.Windows((spec or {}).get("windows"), self.cursor, self.w, self.h, breaks)
+        self.physics = bool((spec or {}).get("physics", self.look.get("physics")))
+        if self.physics and any(k["big"] for k in self.knocks):          # сильный удар — падение по физике
+            self._ragdolls()
+            self._track()
+            self._items()
         self.plan = self._draw_plan((spec or {}).get("draw")) if self.look.get("draw") else {}
 
     def _items(self):
@@ -1007,9 +1013,13 @@ class Scene:
                     continue
                 if s.get("_knock"):                 # отлетел от удара: дугой и юзом, лицом к обидчику
                     k = s["_knock"]
-                    tx = max(0.05, min(0.95, x + k["dir"] * k["dist"]))
+                    tx = max(0.03, min(0.97, x + k["dir"] * k["dist"]))
                     facing = -k["dir"]
-                    pts.append((s["t0"], s["t1"], x, tx, facing, "knock"))
+                    if k.get("rag"):                # по физике: где таз — там и герой
+                        sim = self._rag[k["rag"]]
+                        pts.append((s["t0"], s["t0"] + sim["rest"], x, tx, facing, "rag", k["rag"]))
+                    else:
+                        pts.append((s["t0"], s["t1"], x, tx, facing, "knock"))
                     x = tx
                     continue
                 if s.get("_reach"):                 # подшаг к цели удара — быстро, в начале удара
@@ -1130,6 +1140,33 @@ class Scene:
                 k = max(k, ease(d / 0.18) if d < 1.6 else 1 - ease((d - 1.6) / 0.3))
         return k
 
+    def _raw_pts(self, aid, t):
+        """Суставы героя в момент t без инерции и украшений — откуда начинается падение по физике."""
+        pose, _e, _p, _f, _t = self.state(aid, t)
+        x, facing = self.where(aid, t)
+        return skeleton(pose, x * self.w, self.ground, self.fig * self.actors[aid]["scale"], facing, False)
+
+    def _ragdolls(self):
+        """Сильный удар — тело падает по физике (chloe/ragdoll.py): летит, бьётся о пол, стены и окна, затихает, встаёт."""
+        from . import ragdoll as RG
+
+        self._rag = {}
+        for k in self.knocks:
+            if not k["big"] or k["who"] not in self.actors:
+                continue
+            aid, t = k["who"], k["t"]
+            pts, _r = self._raw_pts(aid, t)
+            size = self.fig * self.actors[aid]["scale"]
+            walls = [self.windows.rect(wid, t) for wid in self.windows.ids()
+                     if not (wid in self.windows.broken and self.windows.broken[wid][0] <= t)]
+            sim = RG.simulate(pts, RG.push_for(size, k["dir"], self.h, 1.3 if k.get("by") == "cursor" else 1.0),
+                              self.ground, self.w, self.h, walls, size=size)
+            k["rag"] = id(k)
+            self._rag[id(k)] = sim
+            k["dur"] = sim["rest"] + RAG_RISE
+            end = RG.sample(sim, sim["rest"])["hip"][0]
+            k["dist"] = (end - pts["hip"][0]) / self.w * k["dir"]       # где тело легло — там и встанет
+
     def is_hidden(self, aid, t):
         tr = getattr(self, "trashed", {}).get(aid)
         return bool(tr and tr[0] + TRASH_IN <= t and (tr[1] is None or t < tr[1]))
@@ -1151,7 +1188,14 @@ class Scene:
                 x = b
             else:
                 k = (t - t0) / max(t1 - t0, 0.01)
-                if kind and kind[0] == "mocap":                         # сдвиг тела — как в живой записи
+                if kind and kind[0] == "rag":                           # падение по физике — по тазу
+                    from . import ragdoll as RG
+
+                    sim = self._rag[kind[1]]
+                    hx = RG.sample(sim, t - t0)["hip"][0] / self.w
+                    x0 = RG.sample(sim, 0)["hip"][0] / self.w
+                    x = a + (hx - x0)
+                elif kind and kind[0] == "mocap":                         # сдвиг тела — как в живой записи
                     from . import mocap as MC
 
                     m = MC.library()[kind[1]]
@@ -1251,6 +1295,11 @@ class Scene:
         dt = t - cur["t"]
         if cur.get("blocked"):
             return ("block", dt / 0.3, cur) if dt < 0.3 else None
+        if cur.get("rag"):
+            rest = self._rag[cur["rag"]]["rest"]
+            if dt < rest:
+                return ("ragdoll", dt, cur)
+            return ("rise_rag", (dt - rest) / RAG_RISE, cur) if dt < rest + RAG_RISE else None
         if not cur["big"]:
             return ("flinch", dt / 0.22, cur) if dt < 0.22 else None
         q = dt / cur["dur"]
@@ -1411,6 +1460,14 @@ class Scene:
             if k.get("blocked"):                                          # блок: глухой стук и звон
                 add(k["t"] + 0.005, "thud", k["who"], gain_db=-4, args={"size": 0.5})
                 add(k["t"] + 0.01, "tap", k["who"], args={"pitch": 240})
+            if k.get("rag"):                                              # физика: звук там, где тело правда ударилось
+                add(k["t"] + 0.1, "whoosh", k["who"], args={"dur": 0.35}, gain_db=-3)
+                for ht, what, hx, force in self._rag[k["rag"]]["hits"][:6]:
+                    gain = max(-12.0, min(0.0, (force - 1.5) * 5))
+                    ev.append({"t": round(k["t"] + ht, 4), "kind": "punch" if what == "window" else "thud", "who": k["who"],
+                               "pan": (hx / self.w - 0.5) * 2, "gain_db": gain - (3 if what == "window" else 0),
+                               **({"args": {"size": 0.7}} if what == "window" else {})})
+                continue
             if k["big"]:
                 add(k["t"] + 0.12, "whoosh", k["who"], args={"dur": 0.35}, gain_db=-3)
                 add(k["t"] + k["dur"] * KNOCK_FLY, "thud", k["who"])
@@ -1778,7 +1835,7 @@ class Scene:
                 elif phase == "slide":                                     # юзом по полу
                     pose = dict(pose_of("lie"), rot=90, sh1=170 - 25 * k, sh2=160 - 20 * k)
                     emo = "sad"
-                else:                                                      # встаёт: лёжа → на корточках → стоя
+                elif phase == "rise":                                      # встаёт: лёжа → на корточках → стоя
                     lie = pose_of("lie")
                     pose = mix(lie, pose_of("crouch"), ease(min(1.0, k / 0.5))) if k < 0.5 else \
                         mix(pose_of("crouch"), pose, ease((k - 0.5) / 0.5))
@@ -1787,8 +1844,23 @@ class Scene:
             land = self.landed(aid, t)
             if land is not None and land < 0.35:                          # приземлился: присел, пружинит, встаёт
                 pose = mix(pose, pose_of("crouch"), 0.85 * math.sin(math.pi * min(1.0, land / 0.35)) ** 0.7)
+            if kn and kn[0] == "rise_rag":                                  # встаёт: присел — выпрямился
+                pose = mix(pose_of("crouch"), pose, ease(kn[1]))
             pose = self._smooth(aid, t, pose)
             pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+            if kn and kn[0] in ("ragdoll", "rise_rag"):                    # тело — из расчёта физики
+                from . import ragdoll as RG
+
+                sim = self._rag[kn[2]["rag"]]
+                if kn[0] == "ragdoll":
+                    pts = dict(RG.sample(sim, kn[1]))
+                else:
+                    lay = RG.sample(sim, sim["rest"])
+                    q = ease(min(1.0, kn[1] * 1.4))
+                    pts = {k_: (lay[k_][0] + (pts[k_][0] - lay[k_][0]) * q, lay[k_][1] + (pts[k_][1] - lay[k_][1]) * q)
+                           for k_ in pts}
+                emo = "surprised" if kn[0] == "ragdoll" else "angry"
+                front = False
             low = max(py for k_, (px, py) in pts.items() if k_ != "head")
             low = max(low, pts["head"][1] + r)
             if low > self.ground + size * 0.01:                            # сальто и падения: никто не уходит под пол
