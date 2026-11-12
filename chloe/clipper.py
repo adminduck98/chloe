@@ -97,7 +97,12 @@ def transcribe(video, cache=None, lang=None, model="small", progress=None):
     from .config import DATA
 
     m = WhisperModel(model, device="cpu", compute_type="int8", download_root=str(DATA / MODEL_DIR))
-    segs, info = m.transcribe(str(video), language=lang, word_timestamps=True, vad_filter=True, beam_size=1)
+    from . import studio
+
+    r = subprocess.run([studio.ffmpeg(), "-v", "error", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+                       capture_output=True, timeout=3600)                 # звук — сами (без av: его новые версии ломаются)
+    pcm = np.frombuffer(r.stdout, dtype=np.int16).astype(np.float32) / 32768
+    segs, info = m.transcribe(pcm, language=lang, word_timestamps=True, vad_filter=True, beam_size=1)
     words = []
     for seg in segs:
         for w in seg.words or []:
@@ -334,12 +339,12 @@ def draw_caption(c, group, t, y):
     _s, _e, ws = group
     size = 82
     SH._font(c, size)
-    full = c.text_extents(" ".join(w["w"].upper() for w in ws)).x_advance
+    full = c.text_extents(" ".join(w["w"].upper() for w in ws)).x_advance * 1.1
     if full * 1.12 > SH.SIZE[0] * 0.86:                               # не влезает — шрифт меньше (с запасом на «прыжок»)
         size = size * SH.SIZE[0] * 0.86 / (full * 1.12)
         SH._font(c, size)
-    space = c.text_extents(" ").x_advance
     widths = [c.text_extents(w["w"].upper()).x_advance for w in ws]
+    space = c.text_extents(" ").x_advance * 1.4 + max(widths) * 0.07   # с запасом: текущее слово «подпрыгивает» на 12 %
     x = (SH.SIZE[0] - (sum(widths) + space * (len(ws) - 1))) / 2
     for w, wd in zip(ws, widths):
         now = w["s"] <= t < max(w["e"], w["s"] + 0.15)
