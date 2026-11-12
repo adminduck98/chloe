@@ -575,18 +575,35 @@ GUNS = ("rifle", "pistol")
 
 
 def draw_gun(c, kind, pts, facing, size):
-    """Оружие в двух руках (тренировочное, как на стрельбище): автомат лежит по линии от задней кисти к передней,
-    приклад — назад к плечу; пистолет — в передней кисти, по линии руки. Рисуется по настоящим точкам кистей."""
+    """Оружие в руках (тренировочное, как на стрельбище). Автомат — как держат на самом деле: приклад упирается в плечо,
+    ствол идёт от плеча через переднюю (поддерживающую) руку, задняя рука — на рукоятке; руки опущены — ствол вниз
+    («готовность»). Пистолет — в передней кисти, по линии руки от плеча."""
     s = size
     h1, h2 = pts["hand1"], pts["hand2"]
-    front, rear = (h1, h2) if (h1[0] - h2[0]) * facing >= 0 else (h2, h1)
-    dx, dy = front[0] - rear[0], front[1] - rear[1]
+    sh = pts["shoulder"]
+    if kind == "rifle":                                               # рукоятка — в кисти, что ближе к плечу (она и держит)
+        rear, front = (h1, h2) if math.dist(h1, sh) <= math.dist(h2, sh) else (h2, h1)
+    else:
+        front, rear = (h1, h2) if (h1[0] - h2[0]) * facing >= 0 else (h2, h1)
+    dx, dy = front[0] - rear[0], front[1] - rear[1]                   # автомат лежит в обеих руках: по линии кистей
     d = math.hypot(dx, dy)
-    if kind == "pistol" or d < s * 0.05:                         # кисти вместе — по линии руки от плеча
-        sh = pts["shoulder"]
+    if kind == "pistol" or d < s * 0.07:                              # одна рука (или кисти вместе) — по линии руки
         dx, dy = front[0] - sh[0], front[1] - sh[1]
         d = math.hypot(dx, dy)
-    ux, uy = (dx / d, dy / d) if d > 1e-6 else (facing, 0.0)
+    if d < s * 0.05:
+        dx, dy, d = facing, 0.0, 1.0
+    ux, uy = dx / d, dy / d
+    if kind == "rifle" and (ux * facing < 0.15 or abs(uy) > 0.6):     # передняя рука сзади или линия круче ~37° —
+        ux, uy = float(facing), 0.0                                   # отпустила: автомат в плече, ствол ровно вперёд
+    if ux * facing < 0:                                               # ствол всегда смотрит вперёд
+        ux, uy = -ux, -uy
+    if kind == "rifle":                                               # прицеливаясь, держат почти ровно: наклон вдвое меньше
+        uy *= 0.5
+        n_ = math.hypot(ux, uy)
+        ux, uy = ux / n_, uy / n_
+    # задняя рука — на рукоятке (0,17 от приклада): приклад сам приходится к плечу и щеке; одна рука — ствол от неё
+    base = (rear[0] - ux * 0.17 * s, rear[1] - uy * 0.17 * s) if (kind == "rifle" and d >= s * 0.07) else \
+        ((sh[0] + facing * s * 0.02, sh[1] - s * 0.01) if kind == "rifle" else front)
     nx, ny = -uy, ux                                              # поперёк ствола — вниз
     if ny < 0:
         nx, ny = -nx, -ny
@@ -602,12 +619,12 @@ def draw_gun(c, kind, pts, facing, size):
     def at(base, a, b=0.0):
         return (base[0] + ux * a * s + nx * b * s, base[1] + uy * a * s + ny * b * s)
     if kind == "rifle":
-        bar(at(rear, -0.13, 0.015), at(rear, 0.0), s * 0.05, dark)                 # приклад
-        bar(at(rear, -0.02), at(rear, 0.3), s * 0.045, body)                       # корпус
-        bar(at(rear, 0.3), at(rear, 0.46), s * 0.016, dark)                        # ствол
-        bar(at(rear, 0.1), at(rear, 0.12, 0.09), s * 0.03, dark)                   # магазин
-        bar(at(rear, 0.0), at(rear, -0.005, 0.05), s * 0.022, dark)                # рукоять
-        bar(at(rear, 0.08, -0.03), at(rear, 0.16, -0.03), s * 0.014, dark)         # прицел
+        bar(at(base, 0.0, 0.01), at(base, 0.13), s * 0.055, dark)                 # приклад — в плече
+        bar(at(base, 0.11), at(base, 0.42), s * 0.045, body)                      # корпус и цевьё (здесь передняя рука)
+        bar(at(base, 0.42), at(base, 0.58), s * 0.016, dark)                      # ствол
+        bar(at(base, 0.17), at(base, 0.155, 0.065), s * 0.024, dark)              # рукоятка (здесь задняя рука)
+        bar(at(base, 0.25), at(base, 0.27, 0.1), s * 0.03, dark)                  # магазин
+        bar(at(base, 0.16, -0.035), at(base, 0.26, -0.035), s * 0.014, dark)      # прицел
     else:
         bar(at(front, -0.02), at(front, 0.1), s * 0.04, body)                      # затвор
         bar(at(front, 0.0), at(front, -0.01, 0.06), s * 0.03, dark)                # рукоять
