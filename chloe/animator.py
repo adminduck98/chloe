@@ -52,6 +52,8 @@ LOOKS = {
     # на сильном ударе, пауза на ударе, камера сама следит за дракой (свои герои; приёмы — как у профессиональных драк)
     "action": {"bg": "desktop", "ink": "cyan", "glow": 0.0, "ground": None, "filled_head": True, "thick": True, "smear": True,
                "impact": True, "flash": True, "camera": "follow", "hitstop": True, "physics": True, "cartoon": True},
+    "action3d": {"bg": "desktop", "ink": "cyan", "glow": 0.0, "ground": None, "filled_head": True, "thick": True, "solid": True,
+                 "smear": True, "impact": True, "flash": True, "camera": "follow", "hitstop": True, "physics": True, "cartoon": True},
     "beanie": {"bg": (0.97, 0.98, 1.0), "ink": "black", "glow": 0.0, "ground": (0.82, 0.86, 0.9), "filled_head": False, "beanie": True},
     "cozy": {"bg": (0.98, 0.95, 0.9), "ink": "black", "glow": 0.0, "ground": (0.8, 0.74, 0.66), "filled_head": True},
     "prehistoric": {"bg": (0.93, 0.86, 0.74), "ink": "black", "glow": 0.0, "ground": (0.62, 0.5, 0.36), "filled_head": True},
@@ -64,7 +66,9 @@ LOOKS = {
 
 # --- позы: углы в градусах; 0 — вниз, плюс — вперёд (куда смотрит герой). Локоть и колено — сгиб относительно плеча/бедра.
 #     torso — наклон туловища, head — наклон головы, dy — подъём таза (доля роста), rot — поворот всего тела (лёжа, падение)
-BASE = {"torso": 0, "head": 0, "sh1": 8, "el1": 10, "sh2": -8, "el2": 10, "hip1": 4, "kn1": -4, "hip2": -4, "kn2": -4, "dy": 0, "rot": 0}
+BASE = {"torso": 0, "head": 0, "sh1": 8, "el1": 10, "sh2": -8, "el2": 10, "hip1": 4, "kn1": -4, "hip2": -4, "kn2": -4, "dy": 0, "rot": 0,
+        "wr1": 0, "wr2": 0}                                     # wr — кисть относительно предплечья (с видео; 0 — продолжает руку)
+HAND = 0.07                                                     # длина кисти (до костяшек) в долях роста
 POSES = {
     "stand": {},
     "point": {"sh1": 92, "el1": 4, "head": 6},
@@ -292,9 +296,10 @@ def skeleton(pose, x, ground, size, facing, front=False):
     for side in ("1", "2"):
         el = _pt(shoulder, pose["sh" + side] + pose["torso"], SEG["upper"], size, facing)
         hand = _pt(el, pose["sh" + side] + pose["torso"] + pose["el" + side], SEG["fore"], size, facing)
+        fing = _pt(hand, pose["sh" + side] + pose["torso"] + pose["el" + side] + pose.get("wr" + side, 0), HAND, size, facing)
         kn = _pt(hip, pose["hip" + side], SEG["thigh"], size, facing)
         foot = _pt(kn, pose["hip" + side] + pose["kn" + side], SEG["shin"], size, facing)
-        pts.update({"el" + side: el, "hand" + side: hand, "kn" + side: kn, "foot" + side: foot})
+        pts.update({"el" + side: el, "hand" + side: hand, "fing" + side: fing, "kn" + side: kn, "foot" + side: foot})
     if pose["rot"]:                                                     # поворот всего тела вокруг таза (лёжа, падение)
         a = math.radians(-pose["rot"] * facing)
         cx, cy = hip
@@ -308,6 +313,16 @@ def skeleton(pose, x, ground, size, facing, front=False):
     return pts, SEG["head"] * size
 
 
+def _with_fingers(pts, size):
+    """Точки тела без кистей (из физики) — кисть продолжает предплечье."""
+    for side in ("1", "2"):
+        if "fing" + side not in pts:
+            (ex, ey), (hx, hy) = pts["el" + side], pts["hand" + side]
+            d = math.hypot(hx - ex, hy - ey) or 1e-6
+            pts["fing" + side] = (hx + (hx - ex) / d * HAND * size, hy + (hy - ey) / d * HAND * size)
+    return pts
+
+
 def _skeleton_front(pose, x, ground, size):
     hip_y = ground - (SEG["thigh"] + SEG["shin"]) * size - pose["dy"] * size
     hip = (x, hip_y)
@@ -319,10 +334,11 @@ def _skeleton_front(pose, x, ground, size):
         sh = abs(pose["sh" + side])
         el = _pt(shoulder, sh, SEG["upper"], size, d)
         hand = _pt(el, sh + abs(pose["el" + side]) * 0.8, SEG["fore"], size, d)
+        fing = _pt(hand, sh + abs(pose["el" + side]) * 0.8, HAND, size, d)
         hp = 9 + abs(pose["hip" + side]) * 0.35
         kn = _pt(hip, hp, SEG["thigh"], size, d)
         foot = _pt(kn, hp - abs(pose["kn" + side]) * 0.15, SEG["shin"], size, d)
-        pts.update({"el" + side: el, "hand" + side: hand, "kn" + side: kn, "foot" + side: foot})
+        pts.update({"el" + side: el, "hand" + side: hand, "fing" + side: fing, "kn" + side: kn, "foot" + side: foot})
     return pts, SEG["head"] * size
 
 
@@ -382,6 +398,8 @@ def draw_face(c, center, r, facing, emotion, talk, ink, filled):
 def draw_figure(c, pts, r, color, look, emotion, talk, facing, size):
     import cairo
 
+    if look.get("solid"):
+        return draw_solid(c, pts, r, color, emotion, talk, facing, size, look)
     if look.get("thick"):
         return draw_thick(c, pts, r, color, emotion, talk, facing, size)
     lw = max(2.0, size * 0.022)
@@ -396,6 +414,8 @@ def draw_figure(c, pts, r, color, look, emotion, talk, facing, size):
             c.move_to(*pts["shoulder"])
             c.line_to(*pts["el" + side])
             c.line_to(*pts["hand" + side])
+            if "fing" + side in pts:                                    # кисть — по повороту руки
+                c.line_to(*pts["fing" + side])
         c.move_to(*pts["hip"])
         c.line_to(*pts["neck"])
 
@@ -443,6 +463,171 @@ def _bones(c, pts):
     c.line_to(*pts["neck"])
 
 
+LIGHT = (-0.55, -0.83)                                                  # свет сверху-слева (для объёма)
+
+
+def _shade(col, k):
+    """Цвет светлее (k > 0, к белому) или темнее (k < 0, к чёрному)."""
+    return tuple(min(1.0, v + (1 - v) * k) if k > 0 else v * (1 + k) for v in col)
+
+
+def _limb_path(c, a, b, wa, wb, start_cap=True):
+    """Контур сужающегося цилиндра от a до b (толщина wa → wb) со скруглёнными концами; возвращает нормаль к свету."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    d = math.hypot(dx, dy) or 1e-6
+    nx, ny = -dy / d, dx / d
+    if nx * LIGHT[0] + ny * LIGHT[1] < 0:                           # нормаль — к свету
+        nx, ny = -nx, -ny
+    c.new_sub_path()
+    c.move_to(a[0] + nx * wa / 2, a[1] + ny * wa / 2)
+    c.line_to(b[0] + nx * wb / 2, b[1] + ny * wb / 2)
+    c.line_to(b[0] - nx * wb / 2, b[1] - ny * wb / 2)
+    c.line_to(a[0] - nx * wa / 2, a[1] - ny * wa / 2)
+    c.close_path()
+    if start_cap:
+        c.new_sub_path()
+        c.arc(a[0], a[1], wa / 2, 0, 2 * math.pi)
+    c.new_sub_path()
+    c.arc(b[0], b[1], wb / 2, 0, 2 * math.pi)
+    return nx, ny
+
+
+def _solid_group(c, parts, outline):
+    """Группа частей тела (одна «глубина»): сначала общий тёмный контур всех частей, потом заливки со светом и тенью —
+    суставы сливаются в одно тело, контур — только по силуэту. parts: ("limb", a, b, wa, wb, цвет) | ("ball", центр, r, цвет)."""
+    import cairo
+
+    c.set_fill_rule(cairo.FILL_RULE_WINDING)
+    c.new_path()
+    for p in parts:                                                  # контур — та же форма, толще на outline
+        if p[0] == "limb" and len(p) > 6 and p[6]:                   # растёт из тела (бедро, плечо): у корня контура нет
+            a, b = p[1], p[2]
+            d = math.dist(a, b) or 1e-6
+            k = min(0.9, p[3] * 0.5 / d)
+            a2 = (a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k)
+            w2 = p[3] + (p[4] - p[3]) * k
+            _limb_path(c, a2, b, w2 + 2 * outline, p[4] + 2 * outline, start_cap=False)
+        elif p[0] == "limb":
+            _limb_path(c, p[1], p[2], p[3] + 2 * outline, p[4] + 2 * outline)
+        else:
+            c.new_sub_path()
+            c.arc(p[1][0], p[1][1], p[2] + outline, 0, 2 * math.pi)
+    c.set_source_rgb(*OUTLINE)
+    c.fill()
+    for p in parts:
+        c.new_path()
+        if p[0] == "limb":
+            _k, a, b, wa, wb, col = p[:6]
+            nx, ny = _limb_path(c, a, b, wa, wb)
+            m = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            w = max(wa, wb) / 2
+            g = cairo.LinearGradient(m[0] + nx * w, m[1] + ny * w, m[0] - nx * w, m[1] - ny * w)
+            g.add_color_stop_rgb(0.0, *_shade(col, 0.12))
+            g.add_color_stop_rgb(0.25, *_shade(col, 0.4))           # блик
+            g.add_color_stop_rgb(0.55, *col)
+            g.add_color_stop_rgb(1.0, *_shade(col, -0.5))           # тень
+        else:
+            _k, at, rad, col = p
+            c.arc(at[0], at[1], rad, 0, 2 * math.pi)
+            g = cairo.RadialGradient(at[0] + LIGHT[0] * rad * 0.4, at[1] + LIGHT[1] * rad * 0.4, rad * 0.1, at[0], at[1], rad)
+            g.add_color_stop_rgb(0.0, *_shade(col, 0.5))
+            g.add_color_stop_rgb(0.5, *col)
+            g.add_color_stop_rgb(1.0, *_shade(col, -0.5))
+        c.set_source(g)
+        c.fill()
+
+
+def draw_solid(c, pts, r, color, emotion, talk, facing, size, look=None):
+    """Объёмный (3D) стикмен — ближе к человеку: руки и ноги — сужающиеся цилиндры со светом и тенью (толще у плеча
+    и бедра), грудь и таз, шея, голова-шар с бликом (по пропорциям человека — меньше, чем у плоского стикмена), кисти,
+    ступни; дальние рука и нога темнее и за телом; контур только по силуэту; тень на полу."""
+    import cairo
+
+    s = size
+    ol = max(1.0, s * 0.008)
+    far = _shade(color, -0.35)
+    low = max(pts["foot1"][1], pts["foot2"][1])
+    c.save()                                                         # тень на полу
+    c.translate(pts["hip"][0], low + s * 0.012)
+    c.scale(1.0, 0.18)
+    sh = cairo.RadialGradient(0, 0, 0, 0, 0, s * 0.22)
+    sh.add_color_stop_rgba(0, 0, 0, 0, 0.35)
+    sh.add_color_stop_rgba(1, 0, 0, 0, 0.0)
+    c.set_source(sh)
+    c.arc(0, 0, s * 0.22, 0, 2 * math.pi)
+    c.fill()
+    c.restore()
+
+    near = str(look.get("_near", 1)) if look else "1"
+    back = "2" if near == "1" else "1"
+
+    def leg(side, col):
+        fx, fy = pts["foot" + side]
+        toe = pts.get("toe" + side, (fx + facing * s * 0.065, fy + s * 0.006))
+        return [("limb", pts.get("hp" + side, pts["hip"]), pts["kn" + side], s * 0.1, s * 0.066, col, side == near),
+                ("limb", pts["kn" + side], pts["foot" + side], s * 0.066, s * 0.046, col),
+                ("limb", (fx, fy), toe, s * 0.045, s * 0.032, _shade(col, -0.25))]   # ступня — от пятки к носку
+
+    def arm(side, col):
+        return [("limb", pts.get("sh" + side, pts["shoulder"]), pts["el" + side], s * 0.064, s * 0.05, col, side == near),
+                ("limb", pts["el" + side], pts["hand" + side], s * 0.05, s * 0.038, col),
+                ("limb", pts["hand" + side], pts.get("fing" + side, pts["hand" + side]), s * 0.042, s * 0.034, col)]   # кисть
+
+    hip, neck = pts["hip"], pts["neck"]                               # туловище: таз → талия → грудь → плечи
+    lerp = lambda k: (hip[0] + (neck[0] - hip[0]) * k, hip[1] + (neck[1] - hip[1]) * k)   # noqa: E731
+    head = pts["head"]
+    hr = r * 0.78
+    hc = (neck[0] + (head[0] - neck[0]) * 0.8, neck[1] + (head[1] - neck[1]) * 0.8)     # голова меньше — ближе к шее
+    dep = look.get("_depth") if look else None
+    if dep and "sh1" in pts and "hp1" in pts:                         # настоящая глубина (3D-скелет): от дальних к ближним
+        s1, s2, p1, p2 = pts["sh1"], pts["sh2"], pts["hp1"], pts["hp2"]
+        mid_s = ((s1[0] + s2[0]) / 2, (s1[1] + s2[1]) / 2)
+        mid_p = ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+        mid_b = ((mid_p[0] + mid_s[0]) / 2, (mid_p[1] + mid_s[1]) / 2)
+        zs = [v for v in dep.values()]
+        z0, z1 = min(zs), max(zs)
+
+        def tint(z):                                                 # дальше — темнее
+            return _shade(color, -0.4 * (z - z0) / max(z1 - z0, 1e-6))
+
+        def zof(*keys):
+            vals = [dep[k] for k in keys if k in dep]
+            return sum(vals) / len(vals) if vals else 0.0
+        groups = []
+        for side in ("1", "2"):
+            zl = zof("hp" + side, "kn" + side, "foot" + side)
+            groups.append((zl, leg(side, tint(zl))))
+            za = zof("sh" + side, "el" + side, "hand" + side)
+            groups.append((za, arm(side, tint(za))))
+        zt = zof("sh1", "sh2", "hp1", "hp2")
+        groups.append((zt, [("limb", p1, p2, s * 0.13, s * 0.13, color), ("limb", mid_p, mid_b, s * 0.12, s * 0.12, color),
+                            ("limb", mid_b, mid_s, s * 0.12, s * 0.14, color), ("limb", s1, s2, s * 0.11, s * 0.11, color),
+                            ("limb", neck, hc, s * 0.05, s * 0.045, _shade(color, -0.1))]))
+        zh = zof("sh1", "sh2") - 0.02
+        groups.append((zh, [("ball", hc, hr, color)]))
+        for _z, parts in sorted(groups, key=lambda g: -g[0]):
+            _solid_group(c, parts, ol)
+        draw_face(c, hc, hr, facing, emotion, talk, color, True)
+        return
+    _solid_group(c, leg(back, far) + arm(back, far), ol)
+    if "sh1" in pts and "hp1" in pts:                                 # тело с видео: грудь между плечами, таз между бёдрами
+        s1, s2, p1, p2 = pts["sh1"], pts["sh2"], pts["hp1"], pts["hp2"]
+        mid_s = ((s1[0] + s2[0]) / 2, (s1[1] + s2[1]) / 2)
+        mid_p = ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+        _solid_group(c, [("limb", p1, p2, s * 0.13, s * 0.13, color),
+                         ("limb", mid_p, ((mid_p[0] + mid_s[0]) / 2, (mid_p[1] + mid_s[1]) / 2), s * 0.12, s * 0.12, color),
+                         ("limb", ((mid_p[0] + mid_s[0]) / 2, (mid_p[1] + mid_s[1]) / 2), mid_s, s * 0.12, s * 0.14, color),
+                         ("limb", s1, s2, s * 0.11, s * 0.11, color),
+                         ("limb", neck, hc, s * 0.05, s * 0.045, _shade(color, -0.1))], ol)
+    else:
+        _solid_group(c, [("limb", hip, lerp(0.38), s * 0.13, s * 0.11, color), ("limb", lerp(0.38), lerp(0.74), s * 0.11, s * 0.15, color),
+                         ("limb", lerp(0.74), lerp(0.97), s * 0.15, s * 0.09, color),
+                         ("limb", neck, hc, s * 0.05, s * 0.045, _shade(color, -0.1))], ol)
+    _solid_group(c, leg(near, color) + arm(near, color), ol)
+    _solid_group(c, [("ball", hc, hr, color)], ol)
+    draw_face(c, hc, hr, facing, emotion, talk, color, True)
+
+
 def draw_thick(c, pts, r, color, emotion, talk, facing, size):
     """Экшен-рисовка: толстые ровные конечности с тёмной обводкой, залитая голова с обводкой, дальние руки-ноги темнее —
     читается объём и поза даже в быстрой драке."""
@@ -454,13 +639,14 @@ def draw_thick(c, pts, r, color, emotion, talk, facing, size):
     c.set_line_join(cairo.LINE_JOIN_ROUND)
     far = tuple(v * 0.72 for v in color)
     for side, col in (("2", far), ("1", color)):                      # дальние — темнее и под ближними
-        for chain in ((pts["hip"], pts["kn" + side], pts["foot" + side]), (pts["shoulder"], pts["el" + side], pts["hand" + side])):
+        arm_ = (pts["shoulder"], pts["el" + side], pts["hand" + side]) + ((pts["fing" + side],) if "fing" + side in pts else ())
+        for chain in ((pts["hip"], pts["kn" + side], pts["foot" + side]), arm_):
             for width, cc in ((lw + 2 * ol, OUTLINE), (lw, col)):
                 c.set_source_rgb(*cc)
                 c.set_line_width(width)
                 c.move_to(*chain[0])
-                c.line_to(*chain[1])
-                c.line_to(*chain[2])
+                for p_ in chain[1:]:
+                    c.line_to(*p_)
                 c.stroke()
         if side == "2":                                               # корпус — между дальними и ближними
             for width, cc in ((lw * 1.15 + 2 * ol, OUTLINE), (lw * 1.15, color)):
@@ -589,6 +775,9 @@ def draw_gun(c, kind, pts, facing, size):
     d = math.hypot(dx, dy)
     if kind == "pistol" or d < s * 0.07:                              # одна рука (или кисти вместе) — по линии руки
         dx, dy = front[0] - sh[0], front[1] - sh[1]
+        fk = "fing1" if front is h1 else "fing2"
+        if kind == "pistol" and fk in pts:                            # пистолет — по повороту кисти (вдоль пальца)
+            dx, dy = pts[fk][0] - front[0], pts[fk][1] - front[1]
         d = math.hypot(dx, dy)
     if d < s * 0.05:
         dx, dy, d = facing, 0.0, 1.0
@@ -901,7 +1090,8 @@ class Scene:
                 color = COLORS[("cyan", "red", "yellow", "green")[i % 4]]
             self.actors[aid] = {"id": aid, "color": color, "x": float(a.get("x", 0.3 + 0.4 * i)), "facing": 1 if a.get("facing", "right" if i == 0 else "left") != "left" else -1,
                                 "scale": max(0.4, min(1.6, float(a.get("scale", 1.0)))), "emotion": a.get("emotion", "neutral"),
-                                "front": a.get("view") == "front" or a.get("facing") == "front", "holds": a.get("holds")}
+                                "front": a.get("view") == "front" or a.get("facing") == "front", "holds": a.get("holds"),
+                                "angle": a.get("angle", "3/4")}   # движение с 3D-скелетом: с какой стороны камера
         if (spec or {}).get("fight"):                                    # хореография драки по тактам → движения
             from . import choreo
 
@@ -1363,6 +1553,87 @@ class Scene:
             if victim in self.actors and not self.dodging(victim, t):
                 out.append({"t": t, "who": victim, "by": "cursor", "dir": d, "big": True, "dist": 0.22, "dur": KNOCK_TIME * 1.1})
         return sorted(out, key=lambda k: k["t"])
+
+    BODY_KEYS = {"neck": "neck", "head": "head", "sh1": "sh1", "sh2": "sh2", "el1": "el1", "el2": "el2", "hand1": "hand1",
+                 "hand2": "hand2", "fi1": "fing1", "fi2": "fing2", "hip1": "hp1", "hip2": "hp2", "kn1": "kn1", "kn2": "kn2",
+                 "foot1": "foot1", "foot2": "foot2", "toe1": "toe1", "toe2": "toe2"}
+
+    def _as_filmed(self, aid, t, pts, size, facing):
+        """Пока играет движение, выученное с видео: точки тела — как у человека на видео (два плеча, два бедра, кисти,
+        носки), в масштабе героя от его таза; на краях отрезка (0,15 с) — плавно из обычной позы и обратно.
+        Заодно запоминает, какая сторона ближе к камере (для объёмного стикмена)."""
+        from . import mocap as MC
+
+        near = self.__dict__.setdefault("_near", {})
+        depth = self.__dict__.setdefault("_depth", {})
+        near[aid] = 1
+        depth.pop(aid, None)
+        seg = self._seg_at(aid, t)
+        move = MC.library().get(seg["do"]) if seg else None
+        if move and move.get("body3d"):
+            return self._as_filmed_3d(aid, t, pts, size, facing, seg, move)
+        body = move.get("body") if move else None
+        if not body:
+            return pts
+        dur = seg["t1"] - seg["t0"]
+        tm = (t - seg["t0"]) * MC.rate_for(seg["do"], dur)
+        i = min(len(body) - 1.0, max(0.0, tm * move["fps"]))
+        a, k = int(i), i - int(i)
+        fa, fb = body[a], body[min(a + 1, len(body) - 1)]
+        q = ease(max(0.0, min(1.0, (t - seg["t0"]) / 0.15, (seg["t1"] - t) / 0.15)))
+        hx, hy = pts["hip"]
+        out = dict(pts)
+        for src, dst in self.BODY_KEYS.items():
+            if src not in fa:
+                continue
+            px = hx + facing * (fa[src][0] + (fb[src][0] - fa[src][0]) * k) * size
+            py = hy + (fa[src][1] + (fb[src][1] - fa[src][1]) * k) * size
+            if dst in pts:
+                px, py = pts[dst][0] + (px - pts[dst][0]) * q, pts[dst][1] + (py - pts[dst][1]) * q
+            out[dst] = (px, py)
+        if "sh1" in out and "sh2" in out:                                # середина плеч — для рук плоского стикмена и оружия
+            m = ((out["sh1"][0] + out["sh2"][0]) / 2, (out["sh1"][1] + out["sh2"][1]) / 2)
+            out["shoulder"] = (pts["shoulder"][0] + (m[0] - pts["shoulder"][0]) * q, pts["shoulder"][1] + (m[1] - pts["shoulder"][1]) * q)
+        near[aid] = fa.get("n", 1)
+        return out
+
+    VIEWS = {"side": 0.0, "3/4": -35.0, "filmed": None, "front": -90.0}   # куда смотрит герой: 0 — вправо, −90 — на нас
+
+    def _as_filmed_3d(self, aid, t, pts, size, facing, seg, move):
+        """Движение с настоящим 3D-скелетом: тело поворачивается к камере сцены (angle у героя: "3/4" по умолчанию —
+        вполоборота лицом вправо, "side" — сбоку, "front" — на зрителя, "filmed" — как снято, или число градусов) и
+        проецируется; глубина каждой точки — для порядка рисования (дальние руки-ноги — за телом и темнее)."""
+        from . import mocap as MC
+
+        body = move["body3d"]
+        dur = seg["t1"] - seg["t0"]
+        tm = (t - seg["t0"]) * MC.rate_for(seg["do"], dur)
+        i = min(len(body) - 1.0, max(0.0, tm * move["fps"]))
+        a, k = int(i), i - int(i)
+        fa, fb = body[a], body[min(a + 1, len(body) - 1)]
+        view = self.actors[aid].get("angle", "3/4")
+        want = self.VIEWS.get(view, -35.0) if not isinstance(view, (int, float)) else float(view)
+        rot = 0.0 if want is None else math.radians(want - float(move.get("face3d", 0.0)))
+        cr, sr = math.cos(rot), math.sin(rot)
+        q = ease(max(0.0, min(1.0, (t - seg["t0"]) / 0.15, (seg["t1"] - t) / 0.15)))
+        hx, hy = pts["hip"]
+        out, dep = dict(pts), {}
+        for src, dst in self.BODY_KEYS.items():
+            if src not in fa:
+                continue
+            x, y, z = (fa[src][j] + (fb[src][j] - fa[src][j]) * k for j in range(3))
+            x, z = x * cr - z * sr, x * sr + z * cr                       # поворот вокруг вертикали
+            px, py = hx + facing * x * size, hy + y * size
+            if dst in pts:
+                px, py = pts[dst][0] + (px - pts[dst][0]) * q, pts[dst][1] + (py - pts[dst][1]) * q
+            out[dst] = (px, py)
+            dep[dst] = z
+        if "sh1" in out and "sh2" in out:
+            m = ((out["sh1"][0] + out["sh2"][0]) / 2, (out["sh1"][1] + out["sh2"][1]) / 2)
+            out["shoulder"] = (pts["shoulder"][0] + (m[0] - pts["shoulder"][0]) * q, pts["shoulder"][1] + (m[1] - pts["shoulder"][1]) * q)
+        self._depth[aid] = dep
+        self._near[aid] = 1 if dep.get("sh1", 0) + dep.get("hp1", 0) <= dep.get("sh2", 0) + dep.get("hp2", 0) else 2
+        return out
 
     def _seg_at(self, aid, t):
         return next((s for s in self.segs.get(aid, []) if s["t0"] <= t < s["t1"]), None)
@@ -2104,14 +2375,15 @@ class Scene:
                 pose = mix(pose_of("crouch"), pose, ease(kn[1]))
             pose = self._smooth(aid, t, pose)
             pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+            pts = self._as_filmed(aid, t, pts, size, facing)              # движение с видео — тело по точкам человека
             if kn and kn[0] in ("ragdoll", "rise_rag"):                    # тело — из расчёта физики
                 from . import ragdoll as RG
 
                 sim = self._rag[kn[2]["rag"]]
                 if kn[0] == "ragdoll":
-                    pts = dict(RG.sample(sim, kn[1]))
+                    pts = _with_fingers(dict(RG.sample(sim, kn[1])), size)
                 else:
-                    lay = RG.sample(sim, sim["rest"])
+                    lay = _with_fingers(dict(RG.sample(sim, sim["rest"])), size)
                     q = ease(min(1.0, kn[1] * 1.4))
                     pts = {k_: (lay[k_][0] + (pts[k_][0] - lay[k_][0]) * q, lay[k_][1] + (pts[k_][1] - lay[k_][1]) * q)
                            for k_ in pts}
@@ -2189,7 +2461,10 @@ class Scene:
                     if math.dist(a_, b_) > size * 0.12:
                         draw_smear(c, a_, b_, size * 0.07, a["color"])
             self._prev[aid] = (t, dict(pts))
-        draw_figure(c, pts, r, a["color"], self.look, emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
+        near = self.__dict__.get("_near", {}).get(aid, 1)
+        dep = self.__dict__.get("_depth", {}).get(aid)
+        draw_figure(c, pts, r, a["color"], dict(self.look, _near=near, _depth=dep) if (near != 1 or dep) else self.look,
+                    emo if emo in EMOTIONS else "neutral", talk, 0 if front else facing, size)
         if prop in GUNS:
             draw_gun(c, prop, pts, facing, size)
         elif prop:

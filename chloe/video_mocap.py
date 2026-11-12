@@ -20,7 +20,11 @@ MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/po
 # точки MediaPipe Pose → наши суставы (правая сторона — «1», левая — «2»; mid — середина двух точек)
 LM = {"hip": ("mid", 23, 24), "neck": ("mid", 11, 12), "head": ("mid", 7, 8),
       "sh1": 12, "el1": 14, "hand1": 16, "sh2": 11, "el2": 13, "hand2": 15,
-      "hip1": 24, "kn1": 26, "foot1": 28, "hip2": 23, "kn2": 25, "foot2": 27}
+      "hip1": 24, "kn1": 26, "foot1": 28, "hip2": 23, "kn2": 25, "foot2": 27,
+      "fi1": ("mid", 18, 20), "fi2": ("mid", 17, 19),               # кисть: середина мизинца и указательного
+      "toe1": 32, "toe2": 31}                                       # носки стоп
+BODY = ("neck", "head", "sh1", "sh2", "el1", "el2", "hand1", "hand2", "fi1", "fi2", "hip1", "hip2", "kn1", "kn2",
+        "foot1", "foot2", "toe1", "toe2")                           # точки тела «как снято» (для объёмного стикмена)
 
 
 class VideoMocapError(Exception):
@@ -75,8 +79,9 @@ def frames(video, fps=25, width=640):
     return data[:n * width * h * 3].reshape(n, h, width, 3), (width, h)
 
 
-def landmarks(video, fps=25):
-    """Точки тела на каждом кадре: массив (кадры × 33 × 3: x, y в пикселях кадра, видимость) и размер кадра."""
+def landmarks(video, fps=25, world=False):
+    """Точки тела на каждом кадре: массив (кадры × 33 × 4: x, y в пикселях кадра, видимость, глубина z — меньше значит
+    ближе к камере, в тех же пикселях) и размер кадра."""
     try:
         import mediapipe as mp
         from mediapipe.tasks import python as mpt
@@ -86,15 +91,69 @@ def landmarks(video, fps=25):
     imgs, (w, h) = frames(video, fps)
     opts = vision.PoseLandmarkerOptions(base_options=mpt.BaseOptions(model_asset_path=str(ensure_model())),
                                         running_mode=vision.RunningMode.VIDEO, num_poses=1)
-    out = np.full((len(imgs), 33, 3), np.nan)
+    out = np.full((len(imgs), 33, 4), np.nan)
+    w3 = np.full((len(imgs), 33, 3), np.nan)                  # 3D-скелет в метрах: x вправо, y вниз, z — от камеры
     with vision.PoseLandmarker.create_from_options(opts) as det:
         for i, img in enumerate(imgs):
             res = det.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(img)),
                                        int(i * 1000 / fps))
             if res.pose_landmarks:
                 for j, lm in enumerate(res.pose_landmarks[0]):
-                    out[i, j] = (lm.x * w, lm.y * h, getattr(lm, "visibility", 1.0) or 1.0)
-    return out, (w, h)
+                    out[i, j] = (lm.x * w, lm.y * h, getattr(lm, "visibility", 1.0) or 1.0, (lm.z or 0.0) * w)
+            if getattr(res, "pose_world_landmarks", None):
+                for j, lm in enumerate(res.pose_world_landmarks[0]):
+                    w3[i, j] = (lm.x, lm.y, lm.z)
+    return (out, (w, h), w3) if world else (out, (w, h))
+
+
+def smooth3d(w3, sigma=1.2):
+    """3D-скелет без пропусков и дрожания: пустые кадры — по соседним, потом медиана по 3 кадрам и мягкое сглаживание
+    (глубина у MediaPipe дрожит сильнее всего)."""
+    w3 = w3.copy()
+    n = len(w3)
+    idx = np.arange(n)
+    for j in range(w3.shape[1]):
+        good = ~np.isnan(w3[:, j, 0])
+        if not good.any():
+            w3[:, j] = 0.0
+            continue
+        for c in range(3):
+            w3[~good, j, c] = np.interp(idx[~good], idx[good], w3[good, j, c])
+    med = w3.copy()
+    for i in range(n):
+        med[i] = np.median(w3[max(0, i - 1):i + 2], axis=0)
+    k = int(sigma * 3)
+    if k and n > 2:
+        g = np.exp(-0.5 * (np.arange(-k, k + 1) / sigma) ** 2)
+        g /= g.sum()
+        pad = np.pad(med, ((k, k), (0, 0), (0, 0)), mode="edge")
+        med = np.stack([np.tensordot(g, pad[i:i + 2 * k + 1], axes=(0, 0)) for i in range(n)])
+    return med
+
+
+def body3d(w3, mirror=False):
+    """3D-тело для мультипликатора: точки относительно середины таза в долях роста стикмена (x вправо, y вниз, z — от
+    камеры) и куда смотрит человек (угол в плоскости пола, градусы: 0 — вправо, −90 — на камеру)."""
+    from . import animator as A
+
+    sign = -1.0 if mirror else 1.0
+
+    def get(spec):
+        if isinstance(spec, tuple):
+            return (w3[:, spec[1]] + w3[:, spec[2]]) / 2
+        return w3[:, spec]
+    P = {k: get(v) * np.array([sign, 1.0, 1.0]) for k, v in LM.items()}
+    hip = P["hip"]
+    leg = float(np.median(np.linalg.norm(P["kn1"] - P["hip1"], axis=1) + np.linalg.norm(P["foot1"] - P["kn1"], axis=1))) or 1.0
+    s = (A.SEG["thigh"] + A.SEG["shin"]) / leg
+    across = (P["hip2"] - P["hip1"]).mean(axis=0)                 # справа налево (у человека)
+    fwd = np.array([across[2], 0.0, -across[0]])                  # перпендикуляр в плоскости пола
+    nose = (w3[:, 0] * np.array([sign, 1.0, 1.0]) - hip).mean(axis=0)
+    if fwd @ nose < 0:
+        fwd = -fwd
+    face = float(np.degrees(np.arctan2(fwd[2], fwd[0])))
+    frames = [{k: [round(float(v), 4) for v in (P[k][i] - hip[i]) * s] for k in BODY if k in P} for i in range(len(w3))]
+    return frames, round(face, 1)
 
 
 def fill_gaps(pts, min_vis=0.4):
@@ -108,7 +167,7 @@ def fill_gaps(pts, min_vis=0.4):
         good = np.where(~bad)[0]
         if len(good) == 0:
             continue
-        for c in (0, 1):
+        for c in (0, 1, 3)[:pts.shape[2] - 1]:                  # x, y и глубина (если есть)
             pts[bad, j, c] = np.interp(np.where(bad)[0], good, pts[good, j, c])
         pts[bad, j, 2] = min_vis
     if np.isnan(pts[:, 23, 0]).all():
@@ -124,6 +183,8 @@ def smooth(pts, k=3):
     for i in range(n):
         a, b = max(0, i - h), min(n, i + h + 1)
         out[i, :, :2] = np.median(pts[a:b, :, :2], axis=0)
+        if pts.shape[2] > 3:
+            out[i, :, 3] = np.median(pts[a:b, :, 3], axis=0)
     return out
 
 
@@ -135,7 +196,7 @@ def faces_left(pts):
     return bool(len(d)) and float(np.median(d)) < 0
 
 
-def to_move(pts, fps=25, mirror=None):
+def to_move(pts, fps=25, mirror=None, world=None):
     """Точки тела (пиксели, y вниз) → движение стикмена: {"poses", "fwd", "fps", "loop", "hits", "lands"}.
     mirror — человек на видео смотрит влево (тогда отражаем, чтобы «вперёд» было вправо); None — понять самому."""
     from . import mocap as MC
@@ -151,8 +212,36 @@ def to_move(pts, fps=25, mirror=None):
     P = {k: (get(v)[:, 0] * sign, get(v)[:, 1]) for k, v in LM.items()}
     r = MC.angles_2d(P, fps)
     fit_limbs(r["poses"], P)
+    r["body"] = body_frames(P, pts)
+    if world is not None and len(world) == len(pts):             # настоящий 3D-скелет — героя можно поворачивать
+        r["body3d"], r["face3d"] = body3d(smooth3d(world), mirror)
     r.update(loop=False, hits=hits(P, pts[:, :, 2], fps), lands=[], src="video")
     return r
+
+
+def body_frames(P, pts):
+    """Тело «как снято»: на каждом кадре точки относительно середины таза в долях роста стикмена (x — вперёд, y — вниз)
+    и какая сторона ближе к камере ("n": 1 — правая, 2 — левая; по глубине плеч и бёдер). Объёмный стикмен рисуется
+    прямо по ним: два плеча, два бедра, кисти и стопы — как у человека, даже если снято вполоборота."""
+    from . import animator as A
+
+    seg = A.SEG
+    leg_px = float(np.median(np.hypot(P["kn1"][0] - P["hip1"][0], P["kn1"][1] - P["hip1"][1])
+                             + np.hypot(P["foot1"][0] - P["kn1"][0], P["foot1"][1] - P["kn1"][1]))) or 1.0
+    s = (seg["thigh"] + seg["shin"]) / leg_px
+    depth = pts.shape[2] > 3
+    out = []
+    for i in range(len(P["hip"][0])):
+        hx, hy = P["hip"][0][i], P["hip"][1][i]
+        fr = {k: [round(float((P[k][0][i] - hx) * s), 4), round(float((P[k][1][i] - hy) * s), 4)] for k in BODY if k in P}
+        if depth:
+            right = pts[i, 12, 3] + pts[i, 24, 3]
+            left = pts[i, 11, 3] + pts[i, 23, 3]
+            fr["n"] = 1 if right <= left else 2
+        else:
+            fr["n"] = 1
+        out.append(fr)
+    return out
 
 
 def _two_bone(root, target, a, b, hint):
@@ -180,7 +269,8 @@ def _ang(v):
 
 
 def fit_limbs(poses, P):
-    """Углы рук и ног — так, чтобы кисти и стопы стикмена встали туда же, где у человека на видео (относительно таза,
+    """Углы рук и ног — так, чтобы кисти и стопы стикмена встали туда же, где у человека на видео, и кисть повёрнута
+    так же (wr — по указательному пальцу и мизинцу) (относительно таза,
     в масштабе стикмена), а локти и колени согнулись в ту же сторону. Иначе у стикмена одна точка плеча на позвоночнике
     и одна точка таза, а у человека два плеча и два бедра в стороны (особенно снято вполоборота): углы те же, а руки
     мимо автомата и стойка уже."""
@@ -192,7 +282,7 @@ def fit_limbs(poses, P):
                              + np.hypot(P["foot1"][0] - P["kn1"][0], P["foot1"][1] - P["kn1"][1]))) or 1.0
     s = (seg["thigh"] + seg["shin"]) / leg_px
     n = len(poses)
-    out = {k: [] for k in ("sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2")}
+    out = {k: [] for k in ("sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2", "wr1", "wr2")}
     for i in range(n):
         hx, hy = P["hip"][0][i], P["hip"][1][i]
 
@@ -207,13 +297,21 @@ def fit_limbs(poses, P):
             fore_a = _ang((hand[0] - el[0], hand[1] - el[1]))
             out["sh" + side].append(up_a - poses[i]["torso"])
             out["el" + side].append(fore_a - up_a)
+            fi = rel("fi" + side)                                     # кисть: куда смотрят костяшки на видео
+            out["wr" + side].append(_ang((fi[0] - hand[0], fi[1] - hand[1])) - fore_a if "fi" + side in P else 0.0)
             kn = _two_bone((0.0, 0.0), rel("foot" + side), seg["thigh"], seg["shin"], rel("kn" + side))
             foot = rel("foot" + side)
             th_a = _ang(kn)
             out["hip" + side].append(th_a)
             out["kn" + side].append(_ang((foot[0] - kn[0], foot[1] - kn[1])) - th_a)
     for k, vals in out.items():                                    # без скачков через ±180 (как в mocap)
-        for p, v in zip(poses, MC._rel(np.array(vals))):
+        vals = np.array(vals)
+        if k.startswith("wr"):                                      # запястье гнётся не больше чем на ~85°
+            vals = np.clip((vals + 180) % 360 - 180, -85, 85)
+            for p, v in zip(poses, vals):
+                p[k] = round(float(v), 2)
+            continue
+        for p, v in zip(poses, MC._rel(vals)):
             p[k] = round(float(v), 2)
 
 
@@ -274,11 +372,13 @@ def save(name, move):
 
 def learn(video, name, mirror=None, fps=25, strikes=True):
     """Видео → движение в личной библиотеке. Возвращает (имя, секунд, найдено кадров с человеком из скольких)."""
-    pts, _size = landmarks(video, fps)
+    pts, _size, w3 = landmarks(video, fps, world=True)
     found = int((~np.isnan(pts[:, 23, 0])).sum())
     if found < len(pts) * 0.5:
         raise VideoMocapError("человек виден только на {} кадрах из {} — снимите во весь рост и посветлее".format(found, len(pts)))
-    move = to_move(smooth(fill_gaps(pts)), fps, mirror)
+    if mirror is None:
+        mirror = faces_left(pts)
+    move = to_move(smooth(fill_gaps(pts)), fps, mirror, w3)
     if not strikes:                                              # «это не удар» (танец, прицеливание) — без звёздочек и звуков
         move["hits"] = []
     key = save(name, move)

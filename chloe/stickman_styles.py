@@ -79,6 +79,15 @@ STYLES = {
                   "dynamic fight choreography, smear frames, sparks, impact frames"),
         "music": "драйвовая электроника",
     },
+    "action3d": {
+        "name": "Экшен 3D: объёмные человечки",
+        "when": "те же драки и трюки, но герои объёмные, ближе к человеку: свет и тень на руках и ногах, грудь, голова-шар",
+        "anchor": ("a 3D-looking stick figure mannequin: smooth tapered cylindrical limbs with soft shading and highlights, "
+                   "chest and pelvis, round shaded sphere head with simple dot eyes, one bright solid color per character"),
+        "world": ("inside a computer screen: dark desktop wallpaper, app windows, icons, cursor and taskbar as an arena; "
+                  "dynamic fight choreography, soft shadows on the floor, sparks, impact frames"),
+        "music": "драйвовая электроника",
+    },
     "whiteboard": {
         "name": "Белая доска (рисуется маркером)",
         "when": "обучение, объяснение по шагам, как это устроено, лекции — картинка появляется вслед за словами",
@@ -90,7 +99,7 @@ STYLES = {
     },
 }
 DEFAULT = "classic_light"
-ALIASES = {"экшен": "action", "драк": "action", "боевик": "action", "доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
+ALIASES = {"3d": "action3d", "3д": "action3d", "объём": "action3d", "объем": "action3d", "манекен": "action3d", "экшен": "action", "драк": "action", "боевик": "action", "доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
            "тёмн": "classic_dark", "темн": "classic_dark", "чёрн": "classic_dark", "черн": "classic_dark",
            "светл": "classic_light", "бел": "classic_light", "классик": "classic_light", "неон": "neon_desktop",
            "компьютер": "neon_desktop", "экран": "neon_desktop", "шапк": "beanie", "студи": "beanie", "уют": "cozy",

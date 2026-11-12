@@ -95,6 +95,45 @@ class FromPoints(unittest.TestCase):
         self.assertGreater(abs(sk["foot1"][0] - sk["foot2"][0]), 0.2)     # стойка широкая
         del P
 
+    def test_body_as_filmed_is_played_by_the_animator(self):
+        pts = walker()
+        pts[:, 12, 0] += 30                                              # плечи разнесены (снято вполоборота)
+        pts[:, 11, 0] -= 30
+        move = VM.to_move(pts)
+        self.assertEqual(len(move["body"]), len(move["poses"]))
+        fr = move["body"][25]
+        self.assertGreater(fr["sh1"][0] - fr["sh2"][0], 0.05)            # два плеча, правое — впереди
+        with mock.patch.object(MC, "library", return_value={"my_move": dict(move, fps=25, loop=False)}), \
+                mock.patch.object(MC, "rate_for", return_value=1.0):
+            sc = A.Scene({"actors": [{"id": "a", "x": 0.5}], "acting": [{"who": "a", "do": "my_move", "from": 0, "to": 1}]},
+                         "action3d", (640, 360), 2.0)
+            pts_ = sc._as_filmed("a", 1.0, A.skeleton(A.pose_of("stand"), 320, sc.ground, 100, 1)[0], 100, 1)
+        self.assertIn("sh1", pts_)
+        self.assertGreater(pts_["sh1"][0] - pts_["sh2"][0], 4)           # у героя тоже два плеча, как у человека
+
+    def test_3d_body_turns_with_the_camera(self):
+        n = 30
+        w3 = np.zeros((n, 33, 3))                                        # человек стоит лицом к камере, руки вперёд
+        for i in range(n):
+            for j, (x, y, z) in {23: (0.1, 0, 0), 24: (-0.1, 0, 0), 25: (0.1, 0.42, 0), 26: (-0.1, 0.42, 0),
+                                 27: (0.1, 0.85, 0), 28: (-0.1, 0.85, 0), 11: (0.18, -0.5, 0), 12: (-0.18, -0.5, 0),
+                                 13: (0.2, -0.45, -0.25), 14: (-0.2, -0.45, -0.25), 15: (0.12, -0.45, -0.5),
+                                 16: (-0.12, -0.45, -0.5), 0: (0, -0.62, -0.12), 7: (0.07, -0.62, 0), 8: (-0.07, -0.62, 0)}.items():
+                w3[i, j] = (x, y, z)
+        frames, face = VM.body3d(VM.smooth3d(w3))
+        self.assertAlmostEqual(face, -90, delta=5)                        # смотрит на камеру
+        move = dict(VM.to_move(walker(n)), body3d=frames, face3d=face, fps=25, loop=False)
+        got = {}
+        for ang in ("filmed", "side"):
+            with mock.patch.object(MC, "library", return_value={"m": move}), mock.patch.object(MC, "rate_for", return_value=1.0):
+                sc = A.Scene({"actors": [{"id": "a", "x": 0.5, "angle": ang}], "acting": [{"who": "a", "do": "m", "from": 0, "to": 1}]},
+                             "action3d", (640, 360), 1.2)
+                got[ang] = sc._as_filmed("a", 0.6, A.skeleton(A.pose_of("stand"), 320, sc.ground, 100, 1)[0], 100, 1)
+        f, s_ = got["filmed"], got["side"]
+        self.assertGreater(abs(f["sh1"][0] - f["sh2"][0]), 10)            # анфас — плечи широко
+        self.assertLess(abs(s_["sh1"][0] - s_["sh2"][0]), 3)              # сбоку — плечи друг за другом
+        self.assertGreater(s_["hand1"][0] - s_["hp1"][0], 20)             # а руки — вперёд, по направлению взгляда
+
     def test_held_arm_is_not_a_strike(self):
         pts = walker(n=60, punch_at=200)                                 # без удара
         for i in range(20, 60):                                          # с 20-го кадра правая рука вытянута и держится
