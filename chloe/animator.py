@@ -834,6 +834,10 @@ class Scene:
             self.actors[aid] = {"id": aid, "color": color, "x": float(a.get("x", 0.3 + 0.4 * i)), "facing": 1 if a.get("facing", "right" if i == 0 else "left") != "left" else -1,
                                 "scale": max(0.4, min(1.6, float(a.get("scale", 1.0)))), "emotion": a.get("emotion", "neutral"),
                                 "front": a.get("view") == "front" or a.get("facing") == "front", "holds": a.get("holds")}
+        if (spec or {}).get("fight"):                                    # хореография драки по тактам → движения
+            from . import choreo
+
+            spec = dict(spec, acting=list(spec.get("acting") or []) + choreo.expand(spec["fight"], list(self.actors), self.secs))
         self.segs = {k: [] for k in self.actors}
         for s in (spec or {}).get("acting") or []:
             who = s.get("who") if s.get("who") in self.actors else next(iter(self.actors))
@@ -876,6 +880,14 @@ class Scene:
         self.knocks = self._knocks()
         if self.knocks:
             self._track()                                                 # отлёт сдвигает героя — путь пересчитать
+            for segs in self.segs.values():                               # после отлёта нападающий подходит заново
+                for s_ in segs:
+                    if s_.get("_reach") and s_["t0"] > self.knocks[0]["t"]:
+                        s_.pop("_reach")
+            if self._reach():
+                self._track()
+                self.knocks = self._knocks()
+                self._track()
             self.cursor.resolve(self._point)                              # а курсор ищет его уже на новом месте
         kicks = [(t, s["target"], self.where(aid, t)[1]) for t, aid, s in self.hit_times() if s.get("target") in self.icons.ids()]
         self.icons.sim(self._boxes, kicks, self.secs)
@@ -1253,7 +1265,7 @@ class Scene:
                     out.append({"t": t, "who": victim, "by": aid, "dir": d, "big": False, "blocked": True, "dist": 0.025,
                                 "dur": 0.0})
                     continue
-                last = i == len(hits) - 1
+                last = i == len(hits) - 1 and s.get("power") != "light"   # лёгкий удар — только вздрогнул
                 power = 1.3 if s["do"] == "kick" else 1.0
                 out.append({"t": t, "who": victim, "by": aid, "dir": d, "big": last, "dist": 0.2 * power if last else 0.0,
                             "dur": KNOCK_TIME * (power if last else 0.0)})
@@ -1261,6 +1273,13 @@ class Scene:
             if victim in self.actors and not self.dodging(victim, t):
                 out.append({"t": t, "who": victim, "by": "cursor", "dir": d, "big": True, "dist": 0.22, "dur": KNOCK_TIME * 1.1})
         return sorted(out, key=lambda k: k["t"])
+
+    def _seg_at(self, aid, t):
+        return next((s for s in self.segs.get(aid, []) if s["t0"] <= t < s["t1"]), None)
+
+    def _missed(self, seg, t):
+        """Удар мимо: цель в этот момент увернулась."""
+        return bool(seg and seg.get("target") in self.actors and self.dodging(seg["target"], t))
 
     def _live_move(self, aid, t):
         from . import mocap as MC
@@ -1391,8 +1410,10 @@ class Scene:
                 elif do in ("punch", "fight", "kick", "jumpkick", "spinkick"):
                     for t, _a, sg in self.hit_times():
                         if sg is s:
-                            add(t - 0.05, "swish", aid, gain_db=-4 if "kick" in do else -6)
-                            add(t, "punch", aid, args={"size": {"fight": 0.9, "punch": 1.0}.get(do, 1.2)})
+                            miss = s.get("target") in self.actors and self.dodging(s["target"], t)
+                            add(t - 0.05, "swish", aid, gain_db=(0 if miss else -4 if "kick" in do else -6))
+                            if not miss:                                   # увернулся — только свист мимо
+                                add(t, "punch", aid, args={"size": {"fight": 0.9, "punch": 1.0}.get(do, 1.2)})
                     if do in ("jumpkick", "spinkick"):
                         add(t0 + 0.2, "whoosh", aid, args={"dur": 0.4}, gain_db=-3)
                         for x in MC.lands_in(do, d):
@@ -1700,7 +1721,8 @@ class Scene:
                     draw_sparks(c, at, d, size, int(k["t"] * 1000), (0.6, 0.9, 1.0) if k.get("blocked") else (1.0, 0.85, 0.3),
                                 0.6 if k.get("blocked") else 1.0)
         if self.look.get("flash"):                                       # вспышка на кадре сильного удара и разбитого стекла
-            hits = [ht for ht, _a, _s in self.hit_times()] + [tb for tb, _ in self.windows.broken.values()] + \
+            hits = [ht for ht, _a, s_ in self.hit_times() if not self._missed(s_, ht)] + \
+                [tb for tb, _ in self.windows.broken.values()] + \
                 [ht for ht, _v, _d in self.cursor.hits()]
             near = [t - ht for ht in hits if 0 <= t - ht < 0.08]
             if near:
@@ -1909,7 +1931,7 @@ class Scene:
             draw_hand_prop(self._pen(c), prop, pts["hand1"], facing, size, a["color"])
         if effect:
             draw_effect(c, effect, pts["head"], r, t, ink)
-        if pose.get("_hit", 0) > 0.72:
+        if pose.get("_hit", 0) > 0.72 and not self._missed(self._seg_at(aid, t), t):
             draw_impact(c, pts[pose.get("_hand", "hand1")], size, t)
         if pose.get("_land"):
             draw_dust(c, pts, self.ground, size, t)
@@ -2187,7 +2209,10 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "duck (уклон — пригнулся), slide (подкат), roll (кувырок), crawl, climb (по лестнице), танцы breakdance, kazachok, "
          "moonwalk, ballet, guard (стойка защиты — блок: удар спереди не отбрасывает), diveroll (нырок с кувырком на бегу); "
          "уклон, подкат, кувырок, сальто и прыжок в момент удара — удар мимо, летящая иконка пролетает над пригнувшимся; "
-         "walk, run, jump, punch, kick — тоже живые. В стиле action сильный удар роняет героя по физике (отлетает, бьётся о пол, "
+         "walk, run, jump, punch, kick — тоже живые. ДРАКУ лучше писать хореографией по тактам — \"fight\": {{\"from\", \"to\", "
+         "\"tempo\": fast|normal|slow, \"beats\": [{{\"who\": id, \"move\": punch|kick|jumpkick|spinkick|fight|taunt|guard|backflip…, "
+         "\"answer\": hit|guard|duck|slide|roll|diveroll|backflip|jump, \"power\": light|heavy}}]}} — движок сам расставит время, "
+         "подход, блоки, промахи и падения; не пиши для этих тактов acting. В стиле action сильный удар роняет героя по физике (отлетает, бьётся о пол, "
          "окна и края экрана, встаёт); в других стилях так же с \"physics\": true. Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
          "в серии — отлетает дугой, едет по полу и встаёт (~1,5 с, не ставь цели движений на это время).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))
