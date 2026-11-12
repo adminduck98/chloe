@@ -163,10 +163,15 @@ class Moves(unittest.TestCase):
         self.assertGreater(pts["hand1"][0], 500)                       # другая справа
 
     def test_crawl_stays_on_ground(self):
-        pose, _ = A.action_pose("crawl", 0.3, 2)
-        pts, _r = A.skeleton(pose, 300, 600, 200, 1)
-        self.assertAlmostEqual(max(p[1] for k, p in pts.items() if k != "head"), 600, delta=1)
-        self.assertGreater(pts["head"][0], pts["hip"][0])             # голова впереди, а не сзади
+        sc = A.Scene({"actors": [{"id": "a", "x": 0.3}], "acting": [{"who": "a", "do": "crawl", "from": 0, "to": 1, "x": 0.7}]},
+                     "classic_light", (1280, 720), 4.0)
+        for i in range(0, 76):                                          # кадры по порядку (суставы с инерцией)
+            t = i / 25
+            _h, pts, r = sc._actor(None, "a", t, None, measure=True)
+            if i % 25 or not i:
+                continue
+            self.assertAlmostEqual(max(max(p[1] for k, p in pts.items() if k != "head"), pts["head"][1] + r), sc.ground, delta=2)
+            self.assertGreater(pts["head"][0], pts["hip"][0])         # ползёт вправо — голова впереди
 
 
 class Studio(unittest.TestCase):

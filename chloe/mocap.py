@@ -171,7 +171,7 @@ def retarget(pos, leg_len=0.43, fps_in=120, fps_out=25, skip=1, view="follow"):
         th_a, sh_a = ang("hip" + s, "kn" + s), ang("kn" + s, "foot" + s)
         out["hip" + s] = _rel(th_a)                                     # бедро — от вертикали
         out["kn" + s] = _rel(sh_a - th_a)
-    floor = max(P["foot1"][1].max(), P["foot2"][1].max())              # пол — самая низкая точка стоп за фрагмент
+    floor = max(P[k][1].max() for k in ("foot1", "foot2", "kn1", "kn2", "hand1", "hand2"))   # пол — самая низкая точка тела
     hip_h = (floor - P["hip"][1]) * scale
     out["dy"] = hip_h - leg_len
     out["rot"] = np.zeros(len(idx))
@@ -251,7 +251,29 @@ SELECTION = {
     "sideflip": ("90/90_08.bvh", "burst_front", 0.0, 6.0), "cartwheel": ("87/87_05.bvh", "burst_front", 0.0, 6.0),
     "faceplant": ("90/90_16.bvh", "burst", 0.0, 6.0), "slip": ("90/90_17.bvh", "burst", 0.0, 6.0),
     "rugpull": ("90/90_18.bvh", "burst", 0.0, 6.0),
+    # уклоны, подкат, лазание, ползание, кувырок, танцы — отрезки выбраны по раскадровке записей
+    "duck": ("134/134_01.bvh", "clip", 1.1, 2.8), "slide": ("131/131_05.bvh", "clip", 4.3, 7.5),
+    "climb": ("13/13_33.bvh", "clip", 1.0, 6.0),
+    "roll": ("90/90_33.bvh", "clip", 2.4, 5.0), "breakdance": ("90/90_28.bvh", "clip", 1.8, 6.0),
+    "kazachok": ("90/90_30.bvh", "clip", 4.2, 9.0), "moonwalk": ("90/90_32.bvh", "clip", 2.0, 5.8),
+    "ballet": ("05/05_02.bvh", "clip", 3.0, 7.0),
 }
+FACE_FORWARD = ()               # низкие движения головой вперёд (подкат — ногами вперёд, его не трогаем); ползание из
+                                # записи 133_01 убрано — в ней суставы переворачиваются, ползание остаётся по формулам
+DODGE = ("duck", "slide", "roll", "crawl", "backflip", "sideflip", "cartwheel", "jump")   # в этих движениях удар проходит мимо
+
+
+def despike(pos, fps, win=0.08):
+    """Медианный фильтр по времени (окно win секунд) для каждого сустава: в CMU-записях суставы иногда на несколько
+    кадров «переворачиваются» — фильтр убирает такие одиночные выбросы, не сглаживая быстрые удары."""
+    k = max(3, int(fps * win) | 1)
+    h = k // 2
+    out = {}
+    for name, v in pos.items():
+        pad = np.concatenate([np.repeat(v[:1], h, axis=0), v, np.repeat(v[-1:], h, axis=0)])
+        win_ = np.lib.stride_tricks.sliding_window_view(pad, k, axis=0)       # (N, 3, k)
+        out[name] = np.median(win_, axis=-1)
+    return out
 
 
 def _slice(pos, a, b):
@@ -289,10 +311,12 @@ def build(raw_dir, out=DATA, fps_out=25):
     for name, (f, kind, t0, t1) in SELECTION.items():
         joints, frames, dt = parse_bvh((raw_dir / f).read_text())
         fps = round(1 / dt)
-        pos = positions(joints, frames)
+        pos = despike(positions(joints, frames), fps)
         a, b = max(1, int(t0 * fps)), min(len(frames), int(t1 * fps))
         hits = []
-        if kind == "loop":
+        if kind.startswith("clip"):
+            pass                                                  # отрезок выбран вручную
+        elif kind == "loop":
             a, b = _cycle(pos, fps, a, b)
         elif kind.startswith("strike"):
             limb = kind.split("_")[1]                        # strike_hand | strike_foot | strike_foot_front
@@ -308,13 +332,16 @@ def build(raw_dir, out=DATA, fps_out=25):
             if len(hot):
                 a, b = a + max(0, hot[0] - int(0.5 * fps)), min(len(frames), a + hot[-1] + int(0.45 * fps))
         w = _slice(pos, a, b)
-        r = retarget(w, fps_in=fps, fps_out=fps_out, skip=0, view="front" if kind.endswith("front") else "follow")
+        view = "front" if kind.endswith("front") else "fixed" if kind.endswith("fixed") else "follow"
+        r = retarget(w, fps_in=fps, fps_out=fps_out, skip=0, view=view)
         if kind.startswith("strike"):
             hits = strikes(w, kind.split("_")[1], fps, fps_out)[:1]
         elif "kick" in name:                                   # пинок в прыжке, с разворота — момент, где нога выше всего
             hits = strikes(w, "foot", fps, fps_out)[:1]
         lands = landings(w, fps, fps_out)
-        moves[name] = dict(r, loop=kind == "loop", hits=hits, lands=lands, src=f)
+        if name in FACE_FORWARD:
+            r = face_forward(r)
+        moves[name] = dict(r, loop=kind.startswith("loop") or kind.startswith("clip_loop"), hits=hits, lands=lands, src=f)
         report[name] = round(len(r["poses"]) / fps_out, 2)
     pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
     pathlib.Path(out).write_text(json.dumps({"credit": CREDIT, "moves": moves}, ensure_ascii=False, separators=(",", ":")),
@@ -322,6 +349,23 @@ def build(raw_dir, out=DATA, fps_out=25):
     global _lib
     _lib = None
     return report
+
+
+def face_forward(r):
+    """Низкое движение (ползёт, лежит) с головой позади таза — зеркалим: у лежачего тела «вперёд» по тазу выходит наоборот.
+    Зеркало: все углы и шаг меняют знак."""
+    tilt = [(p["torso"] + 180) % 360 - 180 for p in r["poses"]]        # наклон корпуса в −180..180
+    low = [a for a in tilt if abs(a) > 45]
+    if len(low) < len(r["poses"]) * 0.5:
+        return r
+    behind = sum(1 for a in low if a < 0) / len(low)                   # корпус наклонён назад — голова за тазом
+    if behind < 0.5:
+        return r
+    keys = ("torso", "head", "sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2")
+    r = dict(r)
+    r["poses"] = [{k: (-v if k in keys else v) for k, v in p.items()} for p in r["poses"]]
+    r["fwd"] = [-v for v in r["fwd"]]
+    return r
 
 
 def landings(pos, fps_in, fps_out=25):
@@ -360,7 +404,7 @@ def duration(name):
     return len(m["poses"]) / m["fps"] if m else 0.0
 
 
-REPEAT = ("punch", "kick")     # удары в длинном отрезке повторяются, а не замирают
+REPEAT = ("punch", "kick", "breakdance", "kazachok", "moonwalk", "ballet")   # в длинном отрезке повторяются, а не замирают
 
 
 def reps(name, dur):

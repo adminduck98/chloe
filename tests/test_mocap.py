@@ -113,5 +113,33 @@ class Animator(unittest.TestCase):
             self.assertLessEqual(max(y for _x, y in pts.values()), sc.ground + 360 * 0.01 + 1)
 
 
+class Dodges(unittest.TestCase):
+    def scene(self, acting, **extra):
+        spec = {"actors": [{"id": "a", "x": 0.3}, {"id": "b", "x": 0.5, "facing": "left"}], "acting": acting}
+        spec.update(extra)
+        return A.Scene(spec, "neon_desktop", (640, 360), 8.0)
+
+    def test_new_moves_exist(self):
+        for name in ("duck", "slide", "climb", "roll", "breakdance", "kazachok", "moonwalk", "ballet"):
+            self.assertIn(name, M.library())
+        self.assertEqual(self.scene([{"who": "a", "do": "dodge", "from": 0, "to": 0.3}]).segs["a"][0]["do"], "duck")
+
+    def test_duck_makes_the_punch_miss(self):
+        hit = [{"who": "b", "do": "punch", "from": 0.2, "to": 0.4, "target": "a"}]
+        self.assertTrue(self.scene(hit).knocks)                                   # стоит — получает
+        ducked = self.scene(hit + [{"who": "a", "do": "duck", "from": 0.15, "to": 0.45}])
+        self.assertEqual(ducked.knocks, [])                                       # пригнулся — мимо
+
+    def test_cursor_hit_misses_a_rolling_hero(self):
+        cur = [{"t": 0.0, "x": 0.9, "y": 0.1}, {"t": 0.3, "hit": "a"}]
+        self.assertTrue(self.scene([], cursor=cur).knocks)
+        self.assertEqual(self.scene([{"who": "a", "do": "roll", "from": 0.25, "to": 0.6}], cursor=cur).knocks, [])
+
+    def test_low_hero_has_a_low_target_box(self):
+        sc = self.scene([{"who": "a", "do": "duck", "from": 0.0, "to": 0.5}])
+        box = next(b for b in sc._boxes(2.0) if b[0] == "a")
+        self.assertGreater(box[3], sc.ground - sc.fig * 0.5)                      # пригнулся — иконка пролетит над ним
+
+
 if __name__ == "__main__":
     unittest.main()
