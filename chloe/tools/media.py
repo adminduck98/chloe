@@ -1,6 +1,8 @@
 """Инструменты create_media (картинка или видео через Qwen) и make_film (ролик из идеи: сцены, озвучка, склейка).
 Работают в фоне: Chloe не молчит минуты, а говорит, когда готово."""
 import itertools
+import os
+import pathlib
 import json
 import subprocess
 import threading
@@ -315,3 +317,26 @@ def tool_narrate(a):
     holder["id"] = job
     return ("Начала озвучку (#{}): «{}», {}. Когда будет готово — скажу. Файлы — в {}. "
             "Как идёт — create_media status.".format(job, title, what, qm.short(audiobook.AUDIO_DIR)))
+
+
+
+def tool_learn_move(a):
+    """Видео пользователя → своё движение стикмена (chloe/video_mocap.py)."""
+    import json as _json
+
+    from .. import video_mocap as VM
+
+    if a.get("action") == "list":
+        path = VM.user_path()
+        names = sorted(_json.loads(path.read_text(encoding="utf-8"))["moves"]) if path.exists() else []
+        return "Свои движения: {}.".format(", ".join(names)) if names else "Своих движений пока нет — пришлите видео."
+    path = pathlib.Path(os.path.expanduser(str(a.get("path") or ""))).resolve() if a.get("path") else None
+    if not path or not path.is_file():
+        return "Нужно видео: путь к файлу (лучше снято сбоку, во весь рост, 3–15 секунд)."
+    name = str(a.get("name") or path.stem)
+    try:
+        key, secs, (found, total) = VM.learn(path, name, bool(a.get("mirror")))
+    except VM.VideoMocapError as e:
+        return "Не получилось: {}.".format(e)
+    return ("Выучила движение «{}»: {} с, человек найден на {} кадрах из {}. В мультфильме — do: \"{}\" "
+            "(с мультяшным фильтром в стиле action).".format(key, secs, found, total, key))

@@ -154,9 +154,16 @@ def retarget(pos, leg_len=0.43, fps_in=120, fps_out=25, skip=1, view="follow"):
         return np.einsum("ni,ni->n", p - hips[idx], axes) + (hips[idx] @ fwd), -(p @ up)   # вперёд, вниз
 
     P = {k: p2(k) for k in MAP}
+    return angles_2d(P, fps_out, leg_len)
+
+
+def angles_2d(P, fps_out=25, leg_len=0.43):
+    """2D-точки суставов {имя: (вперёд, вниз) массивы по кадрам} → углы нашего скелета, высота таза и шаг вперёд.
+    Общая часть для записей CMU и для видео с телефона (chloe/video_mocap.py)."""
+    n = len(P["hip"][0])
     thigh = np.hypot(P["kn1"][0] - P["hip1"][0], P["kn1"][1] - P["hip1"][1]).mean()
     shin = np.hypot(P["foot1"][0] - P["kn1"][0], P["foot1"][1] - P["kn1"][1]).mean()
-    scale = leg_len / (thigh + shin)                                    # единицы записи → доли роста героя
+    scale = leg_len / max(thigh + shin, 1e-6)                           # единицы записи → доли роста героя
 
     def ang(a, b):
         return _unwrap(_ang(P[b][0] - P[a][0], P[b][1] - P[a][1]))
@@ -174,9 +181,9 @@ def retarget(pos, leg_len=0.43, fps_in=120, fps_out=25, skip=1, view="follow"):
     floor = max(P[k][1].max() for k in ("foot1", "foot2", "kn1", "kn2", "hand1", "hand2"))   # пол — самая низкая точка тела
     hip_h = (floor - P["hip"][1]) * scale
     out["dy"] = hip_h - leg_len
-    out["rot"] = np.zeros(len(idx))
+    out["rot"] = np.zeros(n)
     fwd_disp = (P["hip"][0] - P["hip"][0][0]) * scale
-    poses = [{k: round(float(v[i]), 2) for k, v in out.items()} for i in range(len(idx))]
+    poses = [{k: round(float(v[i]), 2) for k, v in out.items()} for i in range(n)]
     return {"poses": poses, "fwd": [round(float(v), 4) for v in fwd_disp], "fps": fps_out}
 
 
@@ -205,13 +212,29 @@ _lib = None
 
 
 def library():
+    """Все движения: из записей CMU (chloe/data/moves.json) и свои — с видео пользователя (~/.chloe/moves_user.json)."""
     global _lib
     if _lib is None:
         try:
             _lib = json.loads(DATA.read_text(encoding="utf-8"))["moves"]
         except (OSError, ValueError, KeyError):
             _lib = {}
+        try:
+            from .config import DATA as HOME_DATA
+
+            user = HOME_DATA / "moves_user.json"
+            if user.exists():
+                _lib = dict(_lib, **json.loads(user.read_text(encoding="utf-8"))["moves"])
+        except (OSError, ValueError, KeyError, ImportError):
+            pass
     return _lib
+
+
+def reload():
+    """Перечитать библиотеку (после того как добавилось своё движение)."""
+    global _lib
+    _lib = None
+    _toon.clear()
 
 
 def pose_at(name, t, dur, toon=False):

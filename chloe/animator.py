@@ -851,7 +851,9 @@ class Scene:
             if b <= a:
                 continue
             do = str(s.get("do") or "stand").lower().strip()
-            do = do if do in ACTIONS else SYNONYMS.get(do, "stand")
+            from . import mocap as MC
+
+            do = do if do in ACTIONS or do in MC.library() else SYNONYMS.get(do, "stand")   # и свои движения с видео
             if do == "climb" and not any(p_.get("kind") == "ladder" for p_ in (spec or {}).get("props") or []):
                 do = "jump"                                               # лезть не по чему — прыжок
             self.segs[who].append(dict(s, t0=a * self.secs, t1=b * self.secs, do=do))

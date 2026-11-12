@@ -32,3 +32,4 @@ miniaudio  # голос потоком: говорить с первого ку�
 imageio-ffmpeg  # ffmpeg без sudo: склейка роликов (make_film)
 httpx  # тесты: ошибки сети для запасных моделей (openai)
 pycairo  # свой мультипликатор стикменов (chloe/animator.py); в Linux Mint уже есть как python3-cairo
+mediapipe>=0.10    # своя хореография: движения с видео пользователя (chloe/video_mocap.py)
