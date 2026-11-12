@@ -241,10 +241,16 @@ TOOLS = [
                                           "с подсветкой, крючок в начале, зум на пике, громкость по норме YouTube; названия и хэштеги — в "
                                           "clips.txt, с пометкой клипов, где играет музыка (Content ID). path — запись, count — сколько "
                                           "клипов (до 10, по умолчанию 5), length — длина клипа в секундах (15–45), game — название игры "
-                                          "для хэштега (GTA 6), layout auto|streamer|game, lang — язык речи (ru, en; пусто — сама). "
-                                          "Работает в фоне, всё на этом компьютере.",
+                                          "для хэштега и стиля (GTA 6), layout auto|streamer|game, lang — язык речи (ru, en; пусто — сама). Моменты выбирает ИИ "
+                                          "по кадрам и речи: смешное, монстры, эффектные бои, история персонажа, яркие диалоги (не езду и "
+                                          "меню). Речь не на русском — субтитры переводятся (translate=false — без перевода). Стиль надписей "
+                                          "под атмосферу игры сам (Ведьмак — фэнтези, GTA — Vice, Cyberpunk — неон…) или style: classic, "
+                                          "fantasy, vice, cyber, military, horror, pixel. Работает в фоне.",
      "input_schema": schema({"path": S, "count": {"type": "integer"}, "length": {"type": "number"}, "game": S,
-                             "layout": {"type": "string", "enum": ["auto", "streamer", "game"]}, "lang": S}, ["path"])},
+                             "layout": {"type": "string", "enum": ["auto", "streamer", "game"]}, "lang": S,
+                             "translate": {"type": "boolean"},
+                             "style": {"type": "string", "enum": ["classic", "fantasy", "vice", "cyber", "military", "horror", "pixel"]}},
+                            ["path"])},
     {"name": "learn_move", "description": "Научиться новому движению для мультфильмов по видео пользователя: «вот видео, научись этому удару», "
                                           "«запомни мой танец как dance_mine». path — видео (лучше снято сбоку, во весь рост, 3–15 с), "
                                           "name — короткое имя латиницей (my_kick, dance_duck); куда смотрит человек, Хлоя понимает сама (mirror=true/false — "

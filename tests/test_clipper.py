@@ -118,7 +118,8 @@ class Render(unittest.TestCase):
     def test_whole_pipeline_without_speech_model(self):
         with mock.patch.object(C, "transcribe", return_value=[]), mock.patch.object(C, "find_facecam", return_value=None), \
                 mock.patch.object(C, "LENGTH", (1.0, 2.0)):
-            made = C.clip(self.video, self.dir / "out", count=1, length=2, game="GTA 6", ask=False, progress=lambda t: None)
+            made = C.clip(self.video, self.dir / "out", count=1, length=2, game="GTA 6", ask=False, progress=lambda t: None,
+                          vision=False)
         self.assertEqual(len(made), 1)
         notes = (self.dir / "out" / "clips.txt").read_text(encoding="utf-8")
         self.assertIn("#GTA6", notes)
@@ -134,3 +135,80 @@ class Tool(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Selection(unittest.TestCase):
+    """ИИ-отбор моментов (модель подменена), перевод, стили."""
+
+    def test_candidates_cover_the_whole_recording(self):
+        sc = np.zeros(int(600 / C.HOP))
+        sc[int(100 / C.HOP)] = 1.0
+        cands = C.candidates(sc, [], 600, n=12, length=30)
+        self.assertGreaterEqual(len(cands), 10)
+        self.assertLess(min(a for a, _b, _p, _s in cands), 60)          # и начало записи
+        self.assertGreater(max(b for _a, b, _p, _s in cands), 540)      # и конец — ИИ видит тихие сценки
+        spans = sorted((a, b) for a, b, _p, _s in cands)
+        self.assertTrue(all(x[1] <= y[0] for x, y in zip(spans, spans[1:])))
+
+    def test_ai_picks_fight_and_joke_not_riding(self):
+        cands = [(0, 30, 15, 0.9), (30, 60, 45, 0.8), (60, 90, 75, 0.1), (90, 120, 105, 0.1)]
+        reply = json.dumps({"style": "fantasy", "clips": [
+            {"i": 1, "score": 2, "kind": "пейзаж", "why": "езда", "hook": "Едем", "title": "Езда"},
+            {"i": 2, "score": 1, "kind": "скучно", "why": "карта", "hook": "Карта", "title": "Карта"},
+            {"i": 3, "score": 8, "kind": "бой", "why": "бой с утопцами", "hook": "Утопцы атакуют!", "title": "Бой"},
+            {"i": 4, "score": 7, "kind": "смешно", "why": "шутка", "hook": "Он так и сказал", "title": "Смешно"}]})
+        seen = {}
+
+        def vision(prompt, images):
+            seen["prompt"], seen["images"] = prompt, images
+            return reply
+        with mock.patch.object(C, "frames_jpeg", return_value=[b"jpg"] * 3), mock.patch.object(C, "candidates", return_value=cands):
+            moments, meta = C.choose_moments("v.mp4", np.zeros(1200), [], 120, 2, 30, "The Witcher 3", vision)
+        self.assertEqual([m[0] for m in moments], [60, 90])               # бой и смешное, не езда и не карта
+        self.assertEqual(meta[0]["hook"], "Утопцы атакуют!")
+        self.assertEqual(C.judge.style, "fantasy")
+        self.assertEqual(len(seen["images"]), 12)                          # по 3 кадра на кандидата
+        self.assertIn("смешное", seen["prompt"])
+
+    def test_without_ai_signals_decide(self):
+        def broken(prompt, images):
+            raise RuntimeError("нет ключа")
+        sc = np.zeros(1200)
+        sc[700] = 1.0
+        with mock.patch.object(C, "frames_jpeg", return_value=[b"jpg"]):
+            moments, meta = C.choose_moments("v.mp4", sc, [], 120, 1, 30, vision=broken)
+        self.assertIsNone(meta)
+        self.assertTrue(moments[0][0] < 70 < moments[0][1])
+
+    def test_foreign_speech_is_translated_by_sentences(self):
+        words = [{"s": 1.0, "e": 1.3, "w": "Don't"}, {"s": 1.3, "e": 1.6, "w": "laugh."},
+                 {"s": 3.0, "e": 3.4, "w": "Thanks,"}, {"s": 3.4, "e": 3.9, "w": "Dijkstra."}]
+        self.assertTrue(C.foreign(words * 6, 0, 10))
+        self.assertFalse(C.foreign([{"s": 1, "e": 2, "w": "Привет, как дела у тебя сегодня утром"}], 0, 10))
+        reply = json.dumps({"lines": ["Не смейся.", "Спасибо, Дийкстра."]})
+        out = C.translate_words(words, 0, 10, ask=lambda p, think=False: reply)
+        self.assertEqual(" ".join(w["w"] for w in out), "Не смейся. Спасибо, Дийкстра.")
+        self.assertTrue(all(1.0 <= w["s"] < 1.6 for w in out[:2]))          # перевод — во время своей фразы
+        bad = C.translate_words(words, 0, 10, ask=lambda p, think=False: json.dumps({"lines": ["одна строка"]}))
+        self.assertEqual(bad, words)                                       # не совпало число строк — как было
+
+    def test_styles_by_game(self):
+        self.assertEqual(C.style_for("The Witcher 3"), "fantasy")
+        self.assertEqual(C.style_for("Ведьмак 3"), "fantasy")
+        self.assertEqual(C.style_for("GTA 6"), "vice")
+        self.assertEqual(C.style_for("Cyberpunk 2077"), "cyber")
+        self.assertEqual(C.style_for("Call of Duty"), "military")
+        self.assertIsNone(C.style_for("Tetris"))
+        for st in C.STYLES.values():
+            for key in ("caption", "hook", "fill", "stroke", "accent", "hook_color", "size"):
+                self.assertIn(key, st)
+
+    def test_every_style_draws(self):
+        import cairo
+
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, 1080, 1920)
+        c = cairo.Context(surf)
+        group = (0, 1, [{"s": 0, "e": 0.5, "w": "Утопцы"}, {"s": 0.5, "e": 1, "w": "лезут!"}])
+        for st in C.STYLES:
+            C.draw_hook(c, "Он не ожидал взрыва", 200, st)
+            C.draw_caption(c, group, 0.6, 1300, st)

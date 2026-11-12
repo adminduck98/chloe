@@ -412,7 +412,8 @@ def tool_clip_video(a):
 
     def work():
         made = CL.clip(path, out_dir, count, length, str(a.get("game") or ""), layout, a.get("lang") or None,
-                       progress=progress)
+                       progress=progress, translate=a.get("translate") is not False,
+                       style=a.get("style") if a.get("style") in CL.STYLES else None)
         return [m[0] for m in made]
     job = _start("clips", path.name, work, a.get("open", True) is not False)
     holder["id"] = job
