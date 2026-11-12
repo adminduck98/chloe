@@ -236,9 +236,19 @@ TOOLS = [
     {"name": "learn_move", "description": "Научиться новому движению для мультфильмов по видео пользователя: «вот видео, научись этому удару», "
                                           "«запомни мой танец как dance_mine». path — видео (лучше снято сбоку, во весь рост, 3–15 с), "
                                           "name — короткое имя латиницей (my_kick, dance_duck); куда смотрит человек, Хлоя понимает сама (mirror=true/false — "
-                                          "указать вручную). strikes=false — в движении нет ударов (танец, прицеливание, жест): без вспышек и звуков удара. Всё считается на этом компьютере, видео никуда не уходит. После этого движение можно "
+                                          "указать вручную). strikes=false — в движении нет ударов (танец, прицеливание, жест): без вспышек и звуков удара. "
+                                          "action=human3d — снять выученное движение реалистичным 3D-человеком без лица в одежде "
+                                          "(Blender: физика ткани, свет, тени; долго — минут 15–25 на 10 секунд): name — движение, "
+                                          "view 34 (вполоборота) | filmed (как снято) | side | front, prop rifle|pistol или props "
+                                          "[{at: доля 0..1, prop}] — смена предмета посреди движения, outfit — male_casualsuit01..06, "
+                                          "male_worksuit01, male_elegantsuit01; cloth=false — без физики ткани. Всё считается на этом компьютере, видео никуда не уходит. После этого движение можно "
                                           "ставить в мультфильмах по имени (do: name), с мультяшным фильтром. action=list — свои движения.",
-     "input_schema": schema({"path": S, "name": S, "mirror": {"type": "boolean"}, "strikes": {"type": "boolean"}, "action": {"type": "string", "enum": ["learn", "list"]}})},
+     "input_schema": schema({"path": S, "name": S, "mirror": {"type": "boolean"}, "strikes": {"type": "boolean"},
+                             "action": {"type": "string", "enum": ["learn", "list", "human3d"]},
+                             "view": {"type": "string", "enum": ["34", "filmed", "side", "front"]},
+                             "prop": {"type": "string", "enum": ["rifle", "pistol"]},
+                             "props": {"type": "array", "items": schema({"at": {"type": "number"}, "prop": S})},
+                             "outfit": S, "cloth": {"type": "boolean"}})},
     {"name": "narrate", "description": "Озвучить текст в mp3 или сделать аудиокнигу: «озвучь этот документ», «сделай аудиокнигу из…», "
                                        "«прочитай эту статью в файл». path — документ или книга (PDF, Word, EPUB, FB2, TXT, Markdown, HTML) "
                                        "или text — сам текст (например, текст, который ты только что написала). title — название файла. "

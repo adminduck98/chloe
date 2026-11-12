@@ -491,3 +491,7 @@ Chloe понимает навыки Claude (Agent Skills) — с любой мо
   (mocap.cs.cmu.edu), BVH-конверсия B. Hahne (cgspeed.com); бесплатно для любых проектов с указанием источника.
 - Приёмы (код свой): earshot (звуки), cinecode (режиссура), srt-whiteboard-animation (белая доска),
   motion-prompt (словарь камеры), stickman-video-director (стили) — все MIT.
+- Своя хореография с видео — MediaPipe Pose (Google, Apache 2.0): точки тела и 3D-скелет считаются на этом компьютере.
+- 3D-человек (`chloe/human3d.py`, `chloe/data/blender/human3d.py`) рендерится в Blender (GPL) с дополнением MPFB
+  (MakeHuman, GPL); тело, одежда и обувь — ассеты MakeHuman (CC0, свободно для любых роликов). Всё это ставится
+  отдельно в `~/.local/share/blender` и `~/.config/blender` и в репозиторий не входит.

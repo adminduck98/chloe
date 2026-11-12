@@ -34,13 +34,15 @@ def _say(text):
 NAMES = {"image": ("Картинка", "готова", "не получилась"), "video": ("Видео", "готово", "не получилось"),
          "film": ("Ролик", "готов (обложки, описание, теги, субтитры и Shorts для YouTube — в папке проекта «к публикации»)", "не получился"), "audio": ("Озвучка", "готова", "не получилась"),
          "shorts": ("Shorts", "готовы (названия — в shorts.txt рядом)", "не получились"),
+         "human3d": ("3D-человек", "готов", "не получился"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
 
 
 def _shorts_error():
+    from ..human3d import Human3DError
     from ..shorts import ShortsError
 
-    return ShortsError
+    return (ShortsError, Human3DError)
 
 
 def _run(job_id, kind, work, open_result=True):
@@ -53,7 +55,7 @@ def _run(job_id, kind, work, open_result=True):
         if open_result:
             show(paths[0])
         _say("{} {}: {}.".format(name, ok, ", ".join(job["result"])))
-    except (qm.MediaError, studio.StudioError, audiobook.AudioError, _shorts_error()) as e:
+    except (qm.MediaError, studio.StudioError, audiobook.AudioError) + _shorts_error() as e:
         job.update(state="ошибка", result=str(e))
         _say("{} {}: {}.".format(name, bad, str(e).rstrip(".")))
     except Exception as e:   # фоновая работа не должна молча умирать
@@ -352,6 +354,39 @@ def tool_narrate(a):
 
 
 
+def _human3d(a):
+    """Выученное движение → видео с реалистичным 3D-человеком без лица (Blender, chloe/human3d.py), в фоне."""
+    import time as _time
+
+    from .. import human3d as H3
+    from .. import mocap as MC
+
+    if not H3.available():
+        return "3D-человек недоступен: {}.".format(H3.why_not())
+    name = str(a.get("name") or "")
+    move = MC.library().get(name)
+    if not move or not move.get("body3d"):
+        mine = [k for k, m in MC.library().items() if m.get("body3d")]
+        return "Нет движения с 3D-скелетом «{}». Есть: {}.".format(name, ", ".join(mine) or "пока ни одного — пришлите видео")
+    props = a.get("props") or ([{"at": 0, "prop": a["prop"]}] if a.get("prop") in H3.PROPS else [])
+    view = a.get("view") if a.get("view") in H3.VIEWS else "34"
+    out = qm.VIDEO_DIR / "{}-3d-{}.mp4".format(_time.strftime("%Y%m%d-%H%M%S"), name)
+    holder = {}
+
+    def progress(done, total):
+        job = jobs.get(holder.get("id"))
+        if job:
+            job["step"] = "кадров: {} из {}".format(done, total)
+
+    job = _start("human3d", name, lambda: H3.render(name, out, view=view, outfit=a.get("outfit") or "male_casualsuit04",
+                                                      props=props, cloth=a.get("cloth") is not False, progress=progress),
+                 a.get("open", True) is not False)
+    holder["id"] = job
+    return ("Снимаю «{}» 3D-человеком (#{}): тело и одежда MakeHuman, без лица, физика ткани{}. Это около {} мин — "
+            "скажу, когда будет готово.".format(name, job, ", в руках: " + ", ".join(p["prop"] or "ничего" for p in H3.norm_props(props))
+                                               if props else "", H3.estimate(len(move["body3d"]))))
+
+
 def tool_learn_move(a):
     """Видео пользователя → своё движение стикмена (chloe/video_mocap.py)."""
     import json as _json
@@ -362,6 +397,8 @@ def tool_learn_move(a):
         path = VM.user_path()
         names = sorted(_json.loads(path.read_text(encoding="utf-8"))["moves"]) if path.exists() else []
         return "Свои движения: {}.".format(", ".join(names)) if names else "Своих движений пока нет — пришлите видео."
+    if a.get("action") == "human3d":
+        return _human3d(a)
     path = pathlib.Path(os.path.expanduser(str(a.get("path") or ""))).resolve() if a.get("path") else None
     if not path or not path.is_file():
         return "Нужно видео: путь к файлу (лучше снято сбоку, во весь рост, 3–15 секунд)."
