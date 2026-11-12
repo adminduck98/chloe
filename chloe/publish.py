@@ -67,11 +67,17 @@ def anim_frames(scenes, look, size, durations, step=0.5):
             surf.flush()
             img = Image.frombuffer("RGBA", (w, h), bytes(surf.get_data()), "raw", "BGRA", 0, 1).convert("RGB")
             hero = next(iter(scene.actors))
-            hx = scene.where(hero, t)[0]
+            if scene.is_hidden(hero, t):
+                continue
+            _hand, pts, r = scene._actor(None, hero, t, None, measure=True)    # где герой нарисован на самом деле
+            xs, ys = [p[0] for p in pts.values()], [p[1] for p in pts.values()]
+            box = (min(xs) - r, min(ys) - r, max(xs) + r, max(ys) + r)
+            if box[0] < 0 or box[2] > w or box[1] < 0:                            # герой у края или вне кадра — не обложка
+                continue
             action = any(scene.knocked(a, t) or scene.carried(a, t) for a in scene.actors) or \
                 any(abs(ht - t) < 0.15 for ht, _a, _s in scene.hits)
-            out.append((interest(img) + (0.4 if action else 0.0), i, t,
-                        (img, (hx, (scene.ground - scene.fig * 0.6) / h))))   # где герой — для обложки; драка — в приоритете
+            subject = ((box[0] + box[2]) / 2 / w, (box[1] + box[3]) / 2 / h)
+            out.append((interest(img) + (0.4 if action else 0.0), i, t, (img, subject)))   # драка — в приоритете
     return out
 
 
