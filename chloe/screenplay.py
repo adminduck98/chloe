@@ -72,7 +72,7 @@ quiet (один, тихо) · connection (встреча с тем, ради ч�
 Ответь ТОЛЬКО JSON без пояснений:
 {{"title": "...", "logline": "...", "style_key": "...",
  "characters": "паспорт героев по-английски (только если героев больше одного или стиль требует особой внешности; иначе пусто)",
- "turn": "до: … / после: …",
+ "turn": "до: … / после: …", "cover": "2–4 слова для обложки YouTube: крючок, который хочется кликнуть", "cover_alt": "другой вариант",
  "scenes": [{{"stage": "hook|myth|secret|truth|finale", "beat": "start|build|change|travel|turn|quiet|connection|ending",
              "shot": "wide|medium|close", "picture": "...", "video": "...", "beats": ["...", "...", "..."], "narration": "..."}}]}}
 Сцен — ровно {n}."""
@@ -129,7 +129,7 @@ ANIM_FORMAT = """
 ВАЖНО: это мультфильм — в КАЖДОЙ из {n} сцен обязательны поля "place" и "anim" (без них человечки будут стоять).
 Ответь ТОЛЬКО JSON:
 {{"title": "...", "logline": "...", "style_key": "...", "characters": "",
- "turn": "до: … / после: …",
+ "turn": "до: … / после: …", "cover": "2–4 слова для обложки", "cover_alt": "другой вариант",
  "scenes": [{{"stage": "hook", "beat": "start", "shot": "wide", "picture": "...", "video": "...", "beats": ["...", "...", "..."],
              "narration": "...", "place": "...", "anim": {{"actors": [...], "props": [...], "acting": [...], "camera": [...]}}}}]}}"""
 
@@ -251,7 +251,8 @@ def parse(text):
     key = ST.find(str(data.get("style_key") or "")) or ST.DEFAULT
     return {"title": str(data.get("title") or "").strip(), "logline": str(data.get("logline") or "").strip(),
             "style_key": key, "style": str(data.get("style") or "").strip(),
-            "characters": str(data.get("characters") or "").strip(), "turn": str(data.get("turn") or "").strip(), "scenes": scenes}
+            "characters": str(data.get("characters") or "").strip(), "turn": str(data.get("turn") or "").strip(),
+            "cover": str(data.get("cover") or "").strip(), "cover_alt": str(data.get("cover_alt") or "").strip(), "scenes": scenes}
 
 
 def research(topic, search=None, count=5):
@@ -401,8 +402,8 @@ def write(idea, notes="", duration=None, ask=None, search=None, refine=True, sty
         print("[сценарий: редактор — {}]".format(str(e)[:80]))
         first = fit_length(first, duration, ask)
         return fill_anim(first) if anim else first
-    for k in ("title", "style", "characters", "turn"):
-        better[k] = better[k] or first[k]
+    for k in ("title", "style", "characters", "turn", "cover", "cover_alt"):
+        better[k] = better.get(k) or first.get(k, "")
     better = fit_length(better, duration, ask)
     if anim:
         fill_anim(better)

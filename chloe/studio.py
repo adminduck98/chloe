@@ -476,7 +476,26 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
         mixed.unlink(missing_ok=True)
         if project:
             hear(out, work, [duration(c) for c in clips])
+            if count == len(scenes) and (work / "project.json").exists():
+                prepare(work, out, mode, look, ratio)
     return out
+
+
+def prepare(work, video, mode, look, ratio):
+    """Весь ролик готов — папка «к публикации»: обложки, название, описание, теги, главы, субтитры (chloe/publish.py).
+    Ошибка здесь ролик не ломает."""
+    from . import publish
+
+    try:
+        data = json.loads((pathlib.Path(work) / "project.json").read_text(encoding="utf-8"))
+        script = dict(data.get("script") or {}, scenes=data.get("scenes") or [])
+        script.setdefault("title", data.get("title", ""))
+        folder, report = publish.package(work, video, script, mode, look, ratio)
+        log.info("к публикации: %s — %s", folder, "; ".join(report))
+        return folder
+    except Exception as e:                       # noqa: BLE001 — публикация не должна ронять готовый ролик
+        log.info("пакет к публикации не собрался: %s", e)
+        return None
 
 
 def transition_plan(scenes):
