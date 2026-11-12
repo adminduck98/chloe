@@ -25,6 +25,9 @@ FIG = 0.40               # рост человечка — доля высоты
 BLEND = 0.22             # секунд: плавный переход между движениями
 # удары: (раз в секунду, доля цикла, где рука/нога дальше всего — кадр удара). Перед ним замах, после — отдача
 STRIKE = {"punch": (1.6, 0.24), "fight": (3.0, 0.24), "kick": (1.4, 0.26)}
+# отлёт от удара: всего секунд; доли — полёт дугой, юзом по полу, подъём
+KNOCK_TIME, KNOCK_FLY, KNOCK_SLIDE = 1.5, 0.3, 0.55
+REACH = 0.24             # длина удара в долях высоты кадра: на таком расстоянии от цели встаёт нападающий
 # суставы догоняют позу, как пружина: чуть запаздывают и чуть проскакивают — движение с инерцией, а не рывками
 SPRING_W = 30.0          # рад/с: жёсткость (больше — быстрее догоняет)
 SPRING_Z = 0.62          # затухание: меньше 1 — лёгкий «довод» после остановки
@@ -730,7 +733,13 @@ class Scene:
         from . import desktop_play as DP
 
         self.cursor = DP.Cursor((spec or {}).get("cursor"), self.secs, self.w, self.h)
+        self.knocks = []
         self._track()
+        if self._reach():
+            self._track()                                                 # подшагнул к цели — путь пересчитать
+        self.knocks = self._knocks()
+        if self.knocks:
+            self._track()                                                 # отлёт сдвигает героя — путь пересчитать
         self._items()
         wids = [str(x.get("id") or "w{}".format(i + 1)) for i, x in enumerate((spec or {}).get("windows") or [])]
         breaks = [(s["target"], t, None) for t, aid, s in self.hit_times() if s.get("target") in wids]
@@ -832,10 +841,24 @@ class Scene:
             x, facing, pts = a["x"], a["facing"], []
             drops = [{"t0": b, "t1": b, "x": self.cursor.pos(b)[0] / self.w, "_drop": True}
                      for what, _a, b in self.cursor.grabs if what == aid and b <= self.secs]
-            for s in sorted(self.segs[aid] + drops, key=lambda s: s["t0"]):
+            knocks = [{"t0": k["t"], "t1": k["t"] + KNOCK_SLIDE * k["dur"], "_knock": k} for k in self.knocks if k["who"] == aid]
+            for s in sorted(self.segs[aid] + drops + knocks, key=lambda s: s["t0"]):
                 if s.get("_drop"):                  # курсор отпустил героя: дальше он там, где его бросили
                     pts.append((s["t0"], s["t0"], x, s["x"], facing))
                     x = s["x"]
+                    continue
+                if s.get("_knock"):                 # отлетел от удара: дугой и юзом, лицом к обидчику
+                    k = s["_knock"]
+                    tx = max(0.05, min(0.95, x + k["dir"] * k["dist"]))
+                    facing = -k["dir"]
+                    pts.append((s["t0"], s["t1"], x, tx, facing, "knock"))
+                    x = tx
+                    continue
+                if s.get("_reach"):                 # подшаг к цели удара — быстро, в начале удара
+                    tx, d = s["_reach"]
+                    facing = d
+                    pts.append((s["t0"], s["t0"] + min(0.3, (s["t1"] - s["t0"]) * 0.3), x, tx, facing))
+                    x = tx
                     continue
                 if s.get("x") is not None:          # куда сместиться: шаги и бег — походкой, рывок/толчок — скольжением
                     tx = max(0.05, min(0.95, float(s["x"])))
@@ -885,15 +908,73 @@ class Scene:
     def where(self, aid, t):
         x0, f0, pts = self.path[aid]
         x, facing = x0, f0
-        for t0, t1, a, b, f in pts:
+        for t0, t1, a, b, f, *kind in pts:
             if t < t0:
                 break
             facing = f
             if t >= t1:
                 x = b
             else:
-                x = a + (b - a) * ((t - t0) / max(t1 - t0, 0.01))
+                k = (t - t0) / max(t1 - t0, 0.01)
+                x = a + (b - a) * (1 - (1 - k) ** 2.2 if kind else k)    # отлёт: быстро в начале, юзом до остановки
         return x, facing
+
+    def _reach(self):
+        """Удар по герою издалека: нападающий сам подшагивает на длину удара в начале движения. True — что-то поменялось."""
+        changed = False
+        for aid, segs in self.segs.items():
+            for s in segs:
+                victim = s.get("target")
+                if s["do"] not in STRIKE or victim not in self.actors or victim == aid or s.get("x") is not None or s.get("_reach"):
+                    continue
+                ax, _ = self.where(aid, s["t0"])
+                vx, _ = self.where(victim, s["t0"])
+                reach = REACH * self.h / self.w * (1.25 if s["do"] == "kick" else 1.0)
+                d = 1 if vx >= ax else -1
+                tx = vx - d * reach
+                if abs(tx - ax) > 0.015:
+                    s["_reach"] = (tx, d)
+                    changed = True
+        return changed
+
+    def _knocks(self):
+        """Удары по героям (punch/kick/fight с "target": id героя): последний удар серии отбрасывает, остальные — вздрагивание."""
+        out = []
+        series = {}
+        for t, aid, s in self.hit_times():
+            victim = s.get("target")
+            if victim in self.actors and victim != aid:
+                series.setdefault(id(s), []).append((t, aid, s, victim))
+        for hits in series.values():
+            for i, (t, aid, s, victim) in enumerate(hits):
+                ax, af = self.where(aid, t)
+                vx, _ = self.where(victim, t)
+                d = 1 if (vx - ax) > 0.01 else -1 if (vx - ax) < -0.01 else af
+                last = i == len(hits) - 1
+                power = 1.3 if s["do"] == "kick" else 1.0
+                out.append({"t": t, "who": victim, "by": aid, "dir": d, "big": last, "dist": 0.2 * power if last else 0.0,
+                            "dur": KNOCK_TIME * (power if last else 0.0)})
+        return sorted(out, key=lambda k: k["t"])
+
+    def knocked(self, aid, t):
+        """Что сейчас с героем после удара: ("flinch", k) — вздрогнул, ("fly"|"slide"|"rise", k) — отлетел; иначе None."""
+        cur = None
+        for k in self.knocks:
+            if k["who"] == aid and k["t"] <= t:
+                cur = k
+        if not cur:
+            return None
+        dt = t - cur["t"]
+        if not cur["big"]:
+            return ("flinch", dt / 0.22, cur) if dt < 0.22 else None
+        q = dt / cur["dur"]
+        if q >= 1:
+            return None
+        if q < KNOCK_FLY:
+            return ("fly", q / KNOCK_FLY, cur)
+        if q < KNOCK_SLIDE:
+            return ("slide", (q - KNOCK_FLY) / (KNOCK_SLIDE - KNOCK_FLY), cur)
+        return ("rise", (q - KNOCK_SLIDE) / (1 - KNOCK_SLIDE), cur)
 
     def state(self, aid, t):
         """(поза, эмоция, предмет, значок, говорит) героя в момент t, с плавным переходом между движениями."""
@@ -1007,6 +1088,14 @@ class Scene:
                     land = b + DP.fall_time((self.ground - self.fig * 0.92) - (cy + self.fig * 0.11), self.h)
                     add(b + 0.05, "whoosh", what, args={"dur": 0.4}, gain_db=-4)
                     add(land, "thud", what)
+        for k in self.knocks:                                             # отлёт: свист полёта, удар о пол, шорох юзом
+            if k["big"]:
+                add(k["t"] + 0.12, "whoosh", k["who"], args={"dur": 0.35}, gain_db=-3)
+                add(k["t"] + k["dur"] * KNOCK_FLY, "thud", k["who"])
+                n = 0
+                while n < 4:
+                    add(k["t"] + k["dur"] * (KNOCK_FLY + 0.04 + n * 0.055), "flutter", k["who"], gain_db=6 - 3 * n)
+                    n += 1
         for wid, (tb, _) in self.windows.broken.items():
             x, _y, ww, _hh = self.windows.rect(wid, tb)
             ev.append({"t": round(tb, 4), "kind": "shatter", "who": next(iter(self.actors)), "pan": ((x + ww / 2) / self.w - 0.5) * 2})
@@ -1224,6 +1313,28 @@ class Scene:
             pts = {k: (hx + (px + dx - hx) * math.cos(ang) - (py + dy - hy) * math.sin(ang),
                        hy + (px + dx - hx) * math.sin(ang) + (py + dy - hy) * math.cos(ang)) for k, (px, py) in pts.items()}
         else:
+            kn = self.knocked(aid, t)
+            if kn:                                                         # получил удар: вздрогнул или отлетел
+                phase, k, info = kn
+                if phase == "flinch":
+                    jolt = math.sin(math.pi * min(1.0, k))
+                    pose = dict(pose, torso=pose["torso"] - 22 * jolt, head=pose["head"] - 18 * jolt, sh1=pose["sh1"] + 25 * jolt,
+                                sh2=pose["sh2"] + 25 * jolt)
+                    emo = "surprised"
+                elif phase == "fly":                                       # дугой назад, кувыркаясь
+                    pose = dict(mix(pose_of("surprised"), pose_of("lie"), ease(k)), rot=100 * ease(k),
+                                dy=0.28 * math.sin(math.pi * k) * (1.3 if info["dist"] > 0.21 else 1.0) - 0.48 * ease(k) ** 3,
+                                hip1=40 * math.sin(math.pi * k), kn1=-70 * math.sin(math.pi * k))
+                    emo = "surprised"
+                elif phase == "slide":                                     # юзом по полу
+                    pose = dict(pose_of("lie"), rot=90, sh1=170 - 25 * k, sh2=160 - 20 * k)
+                    emo = "sad"
+                else:                                                      # встаёт: лёжа → на корточках → стоя
+                    lie = pose_of("lie")
+                    pose = mix(lie, pose_of("crouch"), ease(min(1.0, k / 0.5))) if k < 0.5 else \
+                        mix(pose_of("crouch"), pose, ease((k - 0.5) / 0.5))
+                    emo = "angry"
+                front = False
             land = self.landed(aid, t)
             if land is not None and land < 0.35:                          # приземлился: присел, пружинит, встаёт
                 pose = mix(pose, pose_of("crouch"), 0.85 * math.sin(math.pi * min(1.0, land / 0.35)) ** 0.7)
@@ -1231,6 +1342,8 @@ class Scene:
             pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
             if land is not None and land < 0.25 and not measure:
                 draw_dust(c, pts, self.ground, size, land * 2)
+            if kn and kn[0] in ("slide",) and not measure and not getattr(self, "_ghost", False):
+                draw_dust(c, {"foot1": pts["head"], "foot2": pts["hip"]}, self.ground, size, t)
         if measure:
             return pts["hand1"], pts, r
         if self.look.get("trails") and not getattr(self, "_ghost", False):
@@ -1519,5 +1632,7 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "(сначала место, потом герои; действия — после того, как всё нарисовано, примерно с 0.6 сцены). "
          "Стиль neon_desktop (рабочий стол): \"windows\": [{{\"id\": \"w1\", \"x\", \"y\", \"w\", \"h\" (доли кадра), \"color\"}}]; "
          "курсор — персонаж: \"cursor\": [{{\"t\": доля сцены, \"x\", \"y\", \"grab\": id окна или героя | \"release\": true | \"click\": true}}] — "
-         "тащит окна, хватает героя за голову и роняет; удар (punch/kick/fight) с \"target\": id окна разбивает окно.").format(
+         "тащит окна, хватает героя за голову и роняет; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "
+         "Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
+         "в серии — отлетает дугой, едет по полу и встаёт (~1,5 с, не ставь цели движений на это время).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))
