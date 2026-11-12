@@ -23,6 +23,11 @@ FPS = 25
 GROUND = 0.84            # линия земли — доля высоты кадра
 FIG = 0.40               # рост человечка — доля высоты кадра
 BLEND = 0.22             # секунд: плавный переход между движениями
+# удары: (раз в секунду, доля цикла, где рука/нога дальше всего — кадр удара). Перед ним замах, после — отдача
+STRIKE = {"punch": (1.6, 0.24), "fight": (3.0, 0.24), "kick": (1.4, 0.26)}
+# суставы догоняют позу, как пружина: чуть запаздывают и чуть проскакивают — движение с инерцией, а не рывками
+SPRING_W = 30.0          # рад/с: жёсткость (больше — быстрее догоняет)
+SPRING_Z = 0.62          # затухание: меньше 1 — лёгкий «довод» после остановки
 
 # длины частей тела в долях роста
 SEG = {"head": 0.095, "neck": 0.035, "torso": 0.30, "upper": 0.165, "fore": 0.155, "thigh": 0.215, "shin": 0.215}
@@ -103,6 +108,31 @@ def ease(x):
     return x * x * (3 - 2 * x)
 
 
+def ramp(k, a=0.2):
+    """Путь при разгоне и торможении: скорость растёт первые a доли, потом ровная, последние a — тормозит."""
+    k = max(0.0, min(1.0, k))
+    v = 1 / (1 - a)
+    if k < a:
+        return v * k * k / (2 * a)
+    if k > 1 - a:
+        return 1 - v * (1 - k) ** 2 / (2 * a)
+    return v * (k - a / 2)
+
+
+def _strike(f, peak, rest, wind, out):
+    """Удар по фазе f (0..1 цикла): стойка → замах (до peak - 0.08) → бросок к peak (резко, у цели тормозит) →
+    отдача обратно в стойку (до 0.55). rest, wind, out — позы (словари углов). Возвращает (поза, сила удара 0..1)."""
+    w0 = peak - 0.08
+    if f < w0:
+        return mix(rest, wind, ease(f / w0)), 0.0
+    if f < peak:
+        q = 1 - (1 - (f - w0) / 0.08) ** 3
+        return mix(wind, out, q), max(0.0, 1 - (peak - f) / 0.03)
+    if f < 0.55:
+        return mix(out, rest, ease((f - peak) / (0.55 - peak))), max(0.0, 1 - (f - peak) / 0.04)
+    return dict(rest), 0.0
+
+
 def mix(a, b, k):
     return {key: a.get(key, BASE[key]) + (b.get(key, BASE[key]) - a.get(key, BASE[key])) * k for key in BASE}
 
@@ -131,19 +161,19 @@ def action_pose(do, t, dur):
                  kn2=-(8 + 34 * max(0, s) * (1.6 if run else 1)),
                  sh1=-amp * 0.9 * s, el1=25 if not run else 85, sh2=amp * 0.9 * s, el2=25 if not run else 85,
                  torso=4 if not run else 16, dy=0.012 * abs(math.cos(f)) - (0.02 if run else 0))
-        return p, ease(k) if not run else k
+        return p, ease(k) if not run else ramp(k, 0.18)
     if do == "sneak":                                                   # крадётся: присел, маленькие шаги
         f = t * 1.6 * 2 * math.pi
         s = math.sin(f)
         p.update(hip1=40 + 20 * s, hip2=40 - 20 * s, kn1=-(70 + 20 * max(0, -s)), kn2=-(70 + 20 * max(0, s)), torso=28, dy=-0.1,
                  sh1=60, el1=70, sh2=40, el2=80, head=-10)
-        return p, k
+        return p, ramp(k, 0.15)
     if do == "crawl":                                                   # ползёт: тело почти горизонтально
         s = math.sin(t * 2.2 * 2 * math.pi)
         # тело наклонено вперёд на 75°: руки и бёдра «вперёд» до наклона — после него смотрят в землю
         p.update(rot=-75, dy=-0.2, sh1=78 + 22 * s, el1=-6, sh2=78 - 22 * s, el2=-6,
                  hip1=72 + 16 * s, kn1=-88, hip2=72 - 16 * s, kn2=-88, head=-35)
-        return p, k
+        return p, ramp(k, 0.15)
     if do == "climb":                                                   # лезет: руки и ноги по очереди вверх
         s = math.sin(t * 1.8 * 2 * math.pi)
         p.update(sh1=165 - 35 * s, el1=-10, sh2=-(165 + 35 * s), el2=10, hip1=45 + 25 * s, kn1=-80, hip2=45 - 25 * s, kn2=-80,
@@ -151,7 +181,7 @@ def action_pose(do, t, dur):
         return p, None
     if do == "fly":                                                     # летит, как супергерой
         p.update(rot=-80, dy=0.25 + 0.03 * math.sin(t * 3), sh1=172, el1=0, sh2=166, el2=0, hip1=-10, kn1=-6, hip2=-16, kn2=-10, head=-25)
-        return p, k
+        return p, ramp(k, 0.25)
     if do == "throw":                                                   # замах — бросок — проводка руки
         if k < 0.42:
             q = ease(k / 0.42)
@@ -181,20 +211,25 @@ def action_pose(do, t, dur):
                  kn2=-30 + 20 * g, torso=8 * g, dy=0.02 * abs(g), head=-6 * g)
         return p, None
     if do in ("punch", "fight"):
-        f = (t * (3.0 if do == "fight" else 1.6)) % 1.0
-        hit = math.sin(math.pi * min(1.0, f / 0.35)) if f < 0.35 else 0.0
-        other = do == "fight" and int(t * 3.0) % 2 == 1
-        p["_hit"], p["_hand"] = hit, "hand2" if other else "hand1"
-        p.update(torso=10 + 10 * hit, hip1=26, kn1=-20, hip2=-20, kn2=-10, head=4)
-        if other:
-            p.update(sh2=92 * hit + 40 * (1 - hit), el2=-(100 * (1 - hit)), sh1=40, el1=110)
-        else:
-            p.update(sh1=92 * hit + 40 * (1 - hit), el1=110 * (1 - hit), sh2=40, el2=110)
+        rate, peak = STRIKE[do]
+        f = (t * rate) % 1.0
+        other = do == "fight" and int(t * rate) % 2 == 1
+        a_, b_ = ("2", "1") if other else ("1", "2")
+        sign = -1 if other else 1
+        rest = dict(p, torso=10, hip1=26, kn1=-20, hip2=-20, kn2=-10, head=4, **{"sh" + a_: 40, "el" + a_: 110 * sign,
+                                                                               "sh" + b_: 40, "el" + b_: 110 * -sign if other else 110})
+        wind = dict(rest, torso=-2, head=7, **{"sh" + a_: -30, "el" + a_: 130 * sign})      # рука назад, корпус отклонён
+        out = dict(rest, torso=24, head=2, **{"sh" + a_: 94, "el" + a_: 0})                  # прямой удар, корпус в удар
+        p, hit = _strike(f, peak, rest, wind, out)
+        p["_hit"], p["_hand"] = hit, "hand" + a_
         return p, None
     if do == "kick":
-        f = (t * 1.4) % 1.0
-        hit = math.sin(math.pi * min(1.0, f / 0.4)) if f < 0.4 else 0.0
-        p.update(hip1=95 * hit, kn1=-60 * (1 - hit), torso=-18 * hit, sh1=-40, el1=30, sh2=60, el2=40, hip2=-6)
+        rate, peak = STRIKE["kick"]
+        f = (t * rate) % 1.0
+        rest = dict(p, sh1=-40, el1=30, sh2=60, el2=40, hip2=-6)
+        wind = dict(rest, hip1=60, kn1=-115, torso=-8)                    # колено к груди
+        out = dict(rest, hip1=96, kn1=0, torso=-20)                       # нога прямая
+        p, hit = _strike(f, peak, rest, wind, out)
         p["_hit"], p["_hand"] = hit, "foot1"
         return p, None
     if do == "fall":
@@ -819,7 +854,7 @@ class Scene:
         for aid, segs in self.segs.items():
             for s in segs:
                 if s["do"] in ("punch", "fight", "kick"):
-                    rate, peak = {"punch": (1.6, 0.175), "fight": (3.0, 0.175), "kick": (1.4, 0.2)}[s["do"]]
+                    rate, peak = STRIKE[s["do"]]
                     n = 0
                     while s["t0"] + (n + peak) / rate < s["t1"]:
                         out.append((s["t0"] + (n + peak) / rate, aid, s))
@@ -933,19 +968,13 @@ class Scene:
                     while t0 + n / (2 * rate) < t1:
                         add(t0 + n / (2 * rate), "flutter" if do == "crawl" else "tap", aid, args={} if do == "crawl" else {"pitch": 420})
                         n += 1
-                elif do in ("punch", "fight"):
-                    rate = 3.0 if do == "fight" else 1.6
+                elif do in ("punch", "fight", "kick"):
+                    rate, peak = STRIKE[do]
                     n = 0
-                    while t0 + (n + 0.175) / rate < t1:
-                        t = t0 + (n + 0.175) / rate
-                        add(t - 0.07, "swish", aid, gain_db=-6)
-                        add(t, "punch", aid, args={"size": 0.9 if do == "fight" else 1.0})
-                        n += 1
-                elif do == "kick":
-                    n = 0
-                    while t0 + (n + 0.2) / 1.4 < t1:
-                        add(t0 + (n + 0.2) / 1.4 - 0.08, "swish", aid, gain_db=-4)
-                        add(t0 + (n + 0.2) / 1.4, "punch", aid, args={"size": 1.2})
+                    while t0 + (n + peak) / rate < t1:
+                        t = t0 + (n + peak) / rate
+                        add(t - 0.05, "swish", aid, gain_db=-4 if do == "kick" else -6)
+                        add(t, "punch", aid, args={"size": {"fight": 0.9, "punch": 1.0, "kick": 1.2}[do]})
                         n += 1
                 elif do == "fall":
                     add(t0 + d * 0.35, "whoosh", aid, args={"dur": min(0.5, d * 0.6), "heavy": True})
@@ -1124,6 +1153,52 @@ class Scene:
                 c.paint()
                 c.restore()
 
+    def landed(self, aid, t):
+        """Сколько секунд назад герой приземлился после того, как курсор его уронил (None — не падал или давно)."""
+        from . import desktop_play as DP
+
+        for what, b in self.cursor.releases():
+            if what == aid and b <= t:
+                cy = self.cursor.pos(b)[1]
+                fall = DP.fall_time((self.ground - self.fig * 0.92) - (cy + self.fig * 0.11), self.h)
+                if b + fall <= t < b + fall + 1.0:
+                    return t - b - fall
+        return None
+
+    def _smooth(self, aid, t, target):
+        """Суставы догоняют позу пружиной (инерция, запаздывание, лёгкий довод). Кадры идут по порядку — состояние
+        копится; запрос назад во времени (след движения) берёт уже посчитанный кадр."""
+        sim = self.__dict__.setdefault("_springs", {})
+        key = round(t, 4)
+        st = sim.get(aid)
+        if st and key in st["seen"]:
+            out = dict(target)
+            out.update(st["seen"][key])
+            return out
+        if not st or t < st["t"]:
+            if st and t < st["t"]:
+                return target                                            # старый кадр, которого не видели — как есть
+            st = sim[aid] = {"t": t, "x": {k: float(target.get(k, 0)) for k in BASE}, "v": {k: 0.0 for k in BASE}, "seen": {}}
+        dt_all = t - st["t"]
+        steps = max(1, int(dt_all / 0.005))
+        dt = dt_all / steps if dt_all > 0 else 0.0
+        w, z = SPRING_W, SPRING_Z
+        for _ in range(steps if dt > 0 else 0):
+            for k in BASE:
+                goal = float(target.get(k, 0))
+                acc = w * w * (goal - st["x"][k]) - 2 * z * w * st["v"][k]
+                st["v"][k] += acc * dt
+                st["x"][k] += st["v"][k] * dt
+        st["t"] = t
+        snap = dict(st["x"])
+        st["seen"][key] = snap
+        if len(st["seen"]) > 64:                                          # помним последние кадры — для следа движения
+            for old in sorted(st["seen"])[:-48]:
+                del st["seen"][old]
+        out = dict(target)
+        out.update(snap)
+        return out
+
     def _pen(self, c):
         return Sketch(c, COLORS[self.look["ink"]]) if self.look.get("draw") else c
 
@@ -1141,6 +1216,7 @@ class Scene:
             pose = dict(BASE, sh1=150 + 20 * g, el1=30, sh2=-150 + 20 * g, el2=-30, hip1=12 + 18 * g, kn1=-25, hip2=-12 - 18 * g,
                         kn2=-35, head=-10) if not hang["falling"] else dict(pose_of("surprised"), hip1=30 * g, kn1=-50, hip2=-30 * g, kn2=-40)
             emo, front = ("surprised" if hang["falling"] else "angry"), True
+            pose = self._smooth(aid, t, pose)
             pts, r = skeleton(pose, hang["head"][0], self.ground, size, facing, True)
             dx, dy = hang["head"][0] - pts["head"][0], hang["head"][1] - pts["head"][1]
             ang = math.radians(hang["swing"])
@@ -1148,7 +1224,13 @@ class Scene:
             pts = {k: (hx + (px + dx - hx) * math.cos(ang) - (py + dy - hy) * math.sin(ang),
                        hy + (px + dx - hx) * math.sin(ang) + (py + dy - hy) * math.cos(ang)) for k, (px, py) in pts.items()}
         else:
+            land = self.landed(aid, t)
+            if land is not None and land < 0.35:                          # приземлился: присел, пружинит, встаёт
+                pose = mix(pose, pose_of("crouch"), 0.85 * math.sin(math.pi * min(1.0, land / 0.35)) ** 0.7)
+            pose = self._smooth(aid, t, pose)
             pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+            if land is not None and land < 0.25 and not measure:
+                draw_dust(c, pts, self.ground, size, land * 2)
         if measure:
             return pts["hand1"], pts, r
         if self.look.get("trails") and not getattr(self, "_ghost", False):

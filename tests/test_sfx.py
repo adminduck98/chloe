@@ -81,7 +81,7 @@ class Events(unittest.TestCase):
     def test_punch_sounds_when_the_arm_is_out(self):
         ev = scene([{"who": "a", "do": "punch", "from": 0.5, "to": 0.7}]).sound_events()
         hit = next(e for e in ev if e["kind"] == "punch")
-        self.assertAlmostEqual(hit["t"], 3.0 + 0.175 / 1.6, places=3)
+        self.assertAlmostEqual(hit["t"], 3.0 + A.STRIKE['punch'][1] / 1.6, places=3)
         pose, _ = A.action_pose("punch", hit["t"] - 3.0, 1.2)
         self.assertGreater(pose["_hit"], 0.99)                             # рука в этот момент дальше всего
         self.assertLess(next(e for e in ev if e["kind"] == "swish")["t"], hit["t"])
