@@ -28,6 +28,7 @@ STRIKE = {"punch": (1.6, 0.24), "fight": (3.0, 0.24), "kick": (1.4, 0.26)}
 # отлёт от удара: всего секунд; доли — полёт дугой, юзом по полу, подъём
 KNOCK_TIME, KNOCK_FLY, KNOCK_SLIDE = 1.5, 0.3, 0.55
 RAG_RISE = 0.7           # секунд: встаёт после падения по физике
+IN_PLACE = ("duck", "guard")   # эти движения из записей — без шага вперёд
 TRASH_IN, TRASH_OUT = 0.35, 0.6   # секунд: проваливается в корзину; выпрыгивает из неё
 REACH = 0.24             # длина удара в долях высоты кадра: на таком расстоянии от цели встаёт нападающий
 # суставы догоняют позу, как пружина: чуть запаздывают и чуть проскакивают — движение с инерцией, а не рывками
@@ -50,7 +51,7 @@ LOOKS = {
     # экшен: толстые линии с тёмной обводкой, залитая голова, растяжки на быстрых движениях, искры и обломки, кадр-негатив
     # на сильном ударе, пауза на ударе, камера сама следит за дракой (свои герои; приёмы — как у профессиональных драк)
     "action": {"bg": "desktop", "ink": "cyan", "glow": 0.0, "ground": None, "filled_head": True, "thick": True, "smear": True,
-               "impact": True, "flash": True, "camera": "follow", "hitstop": True, "physics": True},
+               "impact": True, "flash": True, "camera": "follow", "hitstop": True, "physics": True, "cartoon": True},
     "beanie": {"bg": (0.97, 0.98, 1.0), "ink": "black", "glow": 0.0, "ground": (0.82, 0.86, 0.9), "filled_head": False, "beanie": True},
     "cozy": {"bg": (0.98, 0.95, 0.9), "ink": "black", "glow": 0.0, "ground": (0.8, 0.74, 0.66), "filled_head": True},
     "prehistoric": {"bg": (0.93, 0.86, 0.74), "ink": "black", "glow": 0.0, "ground": (0.62, 0.5, 0.36), "filled_head": True},
@@ -155,14 +156,14 @@ def pose_of(name):
     return dict(BASE, **POSES.get(name, {}))
 
 
-def action_pose(do, t, dur, speed=None):
+def action_pose(do, t, dur, speed=None, toon=False):
     """Поза движения do через t секунд от его начала (dur — длительность). Возвращает (поза, смещение x за шаг 0..1).
     Есть живая запись движения (chloe/mocap.py) — поза из неё; speed — нужная скорость шага (долей роста в секунду)."""
     from . import mocap as MC
 
     if do in MC.library() and do != "leap":
         r = MC.rate_for(do, dur, speed)
-        got = MC.pose_at(do, t * r, dur)
+        got = MC.pose_at(do, t * r, dur, toon)
         p = dict(BASE)
         p.update(got[0])
         hits, lands = MC.hits_in(do, dur), MC.lands_in(do, dur)
@@ -838,6 +839,7 @@ class Scene:
             from . import choreo
 
             spec = dict(spec, acting=list(spec.get("acting") or []) + choreo.expand(spec["fight"], list(self.actors), self.secs))
+        self.toon = bool((spec or {}).get("cartoon", self.look.get("cartoon")))   # мультяшная игра поверх живых записей
         self.game = dict((spec or {}).get("game") or {})                  # игровой мир (chloe/game_world.py)
         if self.game:
             self.look["camera"] = None                                     # в игре камера стоит: уровень едет сам
@@ -1055,6 +1057,10 @@ class Scene:
                     m = MC.library()[s["do"]]                # сальто, прыжок, падение из записи — тело само сдвигается
                     r = MC.rate_for(s["do"], s["t1"] - s["t0"])
                     end = m["fwd"][-1] * self.fig * a["scale"] / self.w
+                    if s["do"] in IN_PLACE:
+                        end = 0.0                            # уклон и блок — на месте (в записи человек проходил вперёд)
+                    elif s.get("_answer"):
+                        end = -abs(end)                      # ответ в драке — от противника, а не к нему
                     if abs(end) > 0.005:
                         tx = max(0.05, min(0.95, x + facing * end))
                         pts.append((s["t0"], s["t0"] + MC.duration(s["do"]) / r, x, tx, facing, "mocap", s["do"], r))
@@ -1357,7 +1363,7 @@ class Scene:
             if not seg:
                 p, _ = action_pose("stand", tt, 1.0)
                 return p
-            p, _ = action_pose(seg["do"], tt - seg["t0"], seg["t1"] - seg["t0"], seg.get("_speed"))
+            p, _ = action_pose(seg["do"], tt - seg["t0"], seg["t1"] - seg["t0"], seg.get("_speed"), self.toon)
             return p
 
         self._front = a["front"]
@@ -1923,7 +1929,7 @@ class Scene:
         dt_all = t - st["t"]
         steps = max(1, int(dt_all / 0.005))
         dt = dt_all / steps if dt_all > 0 else 0.0
-        w, z = SPRING_W, SPRING_Z
+        w, z = (SPRING_W * 1.6, 0.5) if getattr(self, "toon", False) else (SPRING_W, SPRING_Z)   # мультяшно — резче и с доводом
         for _ in range(steps if dt > 0 else 0):
             for k in BASE:
                 goal = float(target.get(k, 0))

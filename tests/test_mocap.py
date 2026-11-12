@@ -156,3 +156,33 @@ class Dodges(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Cartoon(unittest.TestCase):
+    def test_key_poses_and_bigger_swing(self):
+        raw, toon = M.library()["kick"], M.cartoon("kick")
+        self.assertEqual(len(toon["poses"]), len(raw["poses"]))          # то же время — звук и удар не съезжают
+        self.assertGreaterEqual(len(toon["keys"]), 3)
+        rng = lambda ps, j: max(p[j] for p in ps) - min(p[j] for p in ps)   # noqa: E731
+        self.assertGreater(rng(toon["poses"], "hip1"), rng(raw["poses"], "hip1") * 1.2)   # размах сильнее
+        k = toon["keys"]
+        mid = (k[1] + k[2]) // 2
+        near = k[1] + 1
+        moved = lambda i: abs(toon["poses"][i]["hip1"] - toon["poses"][k[1]]["hip1"])   # noqa: E731
+        self.assertLessEqual(moved(near), moved(mid))                    # у ключевой позы — задержка, рывок — в середине
+
+    def test_gaits_stay_natural(self):
+        self.assertIsNone(M.cartoon("walk"))
+        self.assertIsNone(M.cartoon("run"))
+
+    def test_scene_switch(self):
+        spec = {"actors": [{"id": "a"}], "acting": [{"who": "a", "do": "kick", "from": 0, "to": 1}]}
+        on, off = A.Scene(spec, "action", (640, 360), 2.0), A.Scene(dict(spec, cartoon=False), "action", (640, 360), 2.0)
+        self.assertTrue(on.toon)
+        self.assertFalse(off.toon)
+        self.assertNotEqual(on.state("a", 0.7)[0]["hip1"], off.state("a", 0.7)[0]["hip1"])
+
+    def test_dodges_stay_in_place(self):
+        sc = A.Scene({"actors": [{"id": "a", "x": 0.3}], "acting": [{"who": "a", "do": "duck", "from": 0, "to": 1}]},
+                     "action", (640, 360), 2.0)
+        self.assertAlmostEqual(sc.where("a", 1.9)[0], 0.3, places=3)

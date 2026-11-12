@@ -214,10 +214,11 @@ def library():
     return _lib
 
 
-def pose_at(name, t, dur):
+def pose_at(name, t, dur, toon=False):
     """Поза движения name из записи через t секунд (длительность в сцене dur): (поза, шаг вперёд в долях роста).
-    Короткую запись в длинном отрезке повторяем (если она «петлёй»), иначе держим последний кадр."""
-    m = library().get(name)
+    Короткую запись в длинном отрезке повторяем (если она «петлёй»), иначе держим последний кадр.
+    toon — мультяшная версия (ключевые позы, резкие переходы, размах сильнее)."""
+    m = (cartoon(name) if toon else None) or library().get(name)
     if not m:
         return None
     n = len(m["poses"])
@@ -459,3 +460,58 @@ def fwd_at(name, t_move):
         return 0.0
     i = min(len(m["fwd"]) - 1, int(t_move * m["fps"]))
     return m["fwd"][i]
+
+
+# --- мультяшная игра поверх живых записей ---
+JOINTS = ("torso", "head", "sh1", "el1", "sh2", "el2", "hip1", "kn1", "hip2", "kn2")
+EXAGGERATE = 1.4        # размах движения: насколько сильнее отклонение от средней позы
+_toon = {}
+
+
+def _snap(u, k=4.0):
+    """Резкий переход между ключевыми позами: долго держит у ключей, быстро проскакивает середину."""
+    a, b = u ** k, (1 - u) ** k
+    return a / (a + b) if a + b else u
+
+
+def key_frames(poses, fps, min_gap=0.12):
+    """Ключевые позы движения — где тело на миг «останавливается» (крайние точки: замах, удар, приземление).
+    Возвращает номера кадров: первый, последний и минимумы скорости между ними."""
+    n = len(poses)
+    if n < 4:
+        return list(range(n))
+    speed = [0.0] + [sum(abs(poses[i][j] - poses[i - 1][j]) for j in JOINTS) for i in range(1, n)]
+    sm = [sum(speed[max(0, i - 1):i + 2]) / len(speed[max(0, i - 1):i + 2]) for i in range(n)]
+    keys = [0]
+    gap = max(1, int(min_gap * fps))
+    for i in range(1, n - 1):
+        if sm[i] <= sm[i - 1] and sm[i] <= sm[i + 1] and i - keys[-1] >= gap:
+            keys.append(i)
+    if n - 1 - keys[-1] < gap and len(keys) > 1:
+        keys.pop()
+    keys.append(n - 1)
+    return keys
+
+
+def cartoon(name):
+    """Мультяшная версия записи: ключевые позы те же и в то же время, размах сильнее (×1,3 от средней позы),
+    а между ключами — резкий переход с задержкой у позы (так работают аниматоры: поза — щелчок — поза).
+    Корпус и голову не усиливаем больше, чем на 1,15 — иначе тело «ломается»."""
+    if name in _toon:
+        return _toon[name]
+    m = library().get(name)
+    if not m or m.get("loop"):                         # походка (ходьба, бег) — живая: «щёлкающий» шаг выглядит странно
+        return None
+    poses, fps = m["poses"], m["fps"]
+    mean = {j: sum(p[j] for p in poses) / len(poses) for j in JOINTS}
+    big = [{**p, **{j: mean[j] + (p[j] - mean[j]) * (EXAGGERATE if j not in ("torso", "head") else 1.15) for j in JOINTS}}
+           for p in poses]
+    keys = key_frames(big, fps)
+    out = []
+    for a, b in zip(keys, keys[1:]):
+        for i in range(a, b):
+            u = _snap((i - a) / (b - a))
+            out.append({k: big[a][k] + (big[b][k] - big[a][k]) * u for k in big[a]})
+    out.append(dict(big[-1]))
+    _toon[name] = dict(m, poses=out, keys=keys)
+    return _toon[name]
