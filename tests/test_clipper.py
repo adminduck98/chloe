@@ -190,7 +190,9 @@ class Selection(unittest.TestCase):
         self.assertEqual(" ".join(w["w"] for w in out), "Не смейся. Спасибо, Дийкстра.")
         self.assertTrue(all(1.0 <= w["s"] < 1.6 for w in out[:2]))          # перевод — во время своей фразы
         bad = C.translate_words(words, 0, 10, ask=lambda p, think=False: json.dumps({"lines": ["одна строка"]}))
-        self.assertEqual(bad, words)                                       # не совпало число строк — как было
+        self.assertEqual(bad, words)                                       # список не той длины — как было
+        part = C.translate_words(words, 0, 10, ask=lambda p, think=False: json.dumps({"lines": {"2": "Спасибо, Дийкстра."}}))
+        self.assertEqual(" ".join(w["w"] for w in part), "Don't laugh. Спасибо, Дийкстра.")   # нет одной — только она как была
 
     def test_styles_by_game(self):
         self.assertEqual(C.style_for("The Witcher 3"), "fantasy")

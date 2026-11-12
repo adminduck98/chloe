@@ -773,7 +773,8 @@ def foreign(words, a, b, target="ru"):
 
 TRANSLATE = """Переведи субтитры игрового ролика на {lang}. Живо и коротко, как говорят игроки, без лишних слов; имена
 персонажей — как в русской локализации игры{game}. Каждая строка — отдельная фраза: переводи её отдельно, НЕ склеивай
-строки и не дели их, порядок и число строк не меняй (даже если строка — обрывок предложения). Ответь ТОЛЬКО JSON: {{"lines": ["…", …]}} — ровно {n} строк.
+строки и не дели их (даже если строка — обрывок предложения). Ответь ТОЛЬКО JSON — перевод под номером каждой
+строки: {{"lines": {{"1": "…", "2": "…", …}}}} — все {n} номеров.
 
 СТРОКИ:
 {lines}"""
@@ -819,8 +820,11 @@ def translate_words(words, a, b, game="", ask=None, target="ru"):
     except Exception as e:                                             # noqa: BLE001 — без перевода — как есть
         print("[нарезчик: перевод — {}]".format(str(e)[:80]))
         return words
-    if not isinstance(lines, list) or len(lines) != len(groups):
+    if isinstance(lines, list) and len(lines) == len(groups):          # старый формат — списком
+        lines = {str(i + 1): t for i, t in enumerate(lines)}
+    if not isinstance(lines, dict) or not lines:
         return words
+    lines = [lines.get(str(i + 1)) or " ".join(w["w"] for w in g[2]) for i, g in enumerate(groups)]   # нет перевода — как было
     out = [w for w in words if not (a <= w["s"] < b)]
     for (s0, e0, _ws), line in zip(groups, lines):
         tw = str(line).split()
