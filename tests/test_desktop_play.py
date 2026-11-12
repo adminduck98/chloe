@@ -102,6 +102,55 @@ class CursorCharacter(unittest.TestCase):
         self.assertGreater(fall["flip"], 0)                                 # в полёте переворачивается на ноги
 
 
+class LiveDesktop(unittest.TestCase):
+    SPEC = {"actors": [{"id": "byte", "x": 0.55}],
+            "acting": [{"who": "byte", "do": "cheer", "from": 0.85, "to": 1.0}],
+            "cursor": [{"t": 0.0, "x": 0.8, "y": 0.1}, {"t": 0.1, "click": "start"},
+                       {"t": 0.25, "grab": "music"}, {"t": 0.3, "x": 0.1, "y": 0.3},
+                       {"t": 0.36, "x": 0.4, "y": 0.42, "release": True},
+                       {"t": 0.6, "grab": "byte"}, {"t": 0.72, "x": 0.965, "y": 0.6, "release": True}]}
+
+    def scene(self):
+        return A.Scene(self.SPEC, "neon_desktop", (W, H), 12.0)
+
+    def test_default_icons_and_no_fake_windows(self):
+        sc = self.scene()
+        self.assertEqual(sc.icons.ids(), ["folder", "file", "music", "trash"])
+        self.assertTrue(sc.live_desktop)
+        self.assertFalse(A.Scene({"actors": [{"id": "a"}]}, "neon_desktop", (W, H), 4.0).live_desktop)
+
+    def test_cursor_finds_start_and_menu_opens(self):
+        sc = self.scene()
+        click = sc.cursor.keys[1]
+        self.assertLess(click["x"], W * 0.1)
+        self.assertGreater(click["y"], sc.ground)                          # на панели задач
+        self.assertEqual(sc.menu_open(1.0), 0.0)
+        self.assertEqual(sc.menu_open(2.0), 1.0)
+        self.assertEqual(sc.menu_open(3.2), 0.0)
+
+    def test_thrown_icon_flies_hits_and_bounces(self):
+        sc = self.scene()
+        t, victim, d = sc.icons.hits_on[0]
+        self.assertEqual((victim, d), ("byte", 1))
+        self.assertTrue(4.32 < t < 6.0)
+        self.assertTrue(any(k["by"] == "icon" for k in sc.knocks))
+        x, y, _ = sc.icons.at("music", 11.9)
+        self.assertAlmostEqual(y + sc.icons.size, sc.ground, delta=1)       # легла на панель задач
+        self.assertTrue(sc.icons.bounces)
+        kinds = [e["kind"] for e in sc.sound_events()]
+        self.assertIn("tap", kinds)
+        self.assertIn("pop", kinds)                                        # меню «Пуск»
+
+    def test_trash_swallows_and_pops_out(self):
+        sc = self.scene()
+        tin, tout = sc.trashed["byte"]
+        self.assertEqual((tin, tout), (8.64, 10.2))
+        self.assertTrue(sc.is_hidden("byte", 9.5))
+        self.assertFalse(sc.is_hidden("byte", 10.3))
+        self.assertIsNone(sc.carried("byte", 8.8))                         # не падает — проваливается
+        self.assertLess(sc.where("byte", 11.5)[0], sc.where("byte", 9.0)[0])   # выпрыгнул влево
+
+
 @unittest.skipUnless(A.available(), "нет pycairo")
 class Frames(unittest.TestCase):
     def brightness(self, sc, t):
@@ -120,6 +169,9 @@ class Frames(unittest.TestCase):
         self.assertGreater(self.brightness(sc, tb + 0.005), self.brightness(sc, tb + 0.3) + 5)
         for t in (0.0, 1.5, 3.2, 4.0, 6.0, 7.1, 9.9):                       # перенос, осколки, висит, падает
             self.brightness(sc, t)
+        live = A.Scene(LiveDesktop.SPEC, "neon_desktop", (W, H), 12.0)
+        for t in (1.5, 4.0, 5.0, 8.0, 8.8, 9.5, 10.4):                     # меню, полёт иконки, корзина
+            self.brightness(live, t)
         cc = A.Scene(CursorCharacter.SPEC, "neon_desktop", (W, H), 10.0)
         for t in (2.2, 2.5, 4.5, 6.2, 7.0, 8.55, 9.5):                     # злой, удар, весёлый, за ногу, бросок
             self.brightness(cc, t)

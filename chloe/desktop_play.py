@@ -29,7 +29,7 @@ class Cursor:
         self.keys = sorted(({"t": float(k.get("t", 0)) * secs,
                              "x": float(k["x"]) * w if k.get("x") is not None else None,
                              "y": float(k["y"]) * h if k.get("y") is not None else None,
-                             "grab": k.get("grab"), "by": k.get("by"), "release": bool(k.get("release")), "click": bool(k.get("click")),
+                             "grab": k.get("grab"), "by": k.get("by"), "release": bool(k.get("release")), "click": k.get("click") or None,
                              "mood": k.get("mood"), "hit": k.get("hit")}
                             for k in keys or []), key=lambda k: k["t"])
         last = (w * 0.9, h * 0.1)
@@ -61,7 +61,8 @@ class Cursor:
         for k in self.keys:
             if not k["_auto"]:
                 continue
-            who, part = (k["hit"], "head") if k["hit"] else (k["grab"], k["by"] or "head") if k["grab"] else (None, None)
+            who, part = (k["hit"], "head") if k["hit"] else (k["grab"], k["by"] or "head") if k["grab"] else \
+                (k["click"], "center") if isinstance(k["click"], str) else (None, None)
             p = point_at(str(who), k["t"], part) if who else None
             if p:
                 k["x"], k["y"] = p
@@ -122,6 +123,18 @@ class Cursor:
             if w_ == what and b_ == b:
                 return self.held_by(w_, a)
         return "head"
+
+    def throw_velocity(self, t):
+        """Скорость броска: средняя за последний перелёт курсора до точки, где он отпустил (в самой точке он уже тормозит)."""
+        for a, b in zip(self.keys, self.keys[1:]):
+            if abs(b["t"] - t) < 1e-6:
+                span = max(b["t"] - a["t"], 1e-3)
+                return (b["x"] - a["x"]) / span * 1.5, (b["y"] - a["y"]) / span * 1.5
+        return self.velocity(t)
+
+    def clicks_on(self, what):
+        """Моменты кликов по названной цели («start» — кнопка «Пуск»)."""
+        return [k["t"] for k in self.keys if k["click"] == what]
 
     def hits(self):
         """Удары курсором: [(время, кого, направление ±1)] — направление по тому, откуда прилетел."""
@@ -322,3 +335,256 @@ def _rr(c, x, y, w, h, r):
 def fall_time(height_px, h):
     """Сколько секунд падает с высоты (пиксели) при мультяшной гравитации."""
     return math.sqrt(2 * max(0.0, height_px) / (GRAVITY * h)) if height_px > 0 else 0.0
+
+
+# --- иконки, панель задач, «Пуск», корзина ---
+ICON = 0.09             # размер иконки — доля высоты кадра
+DEFAULT_ICONS = [{"id": "folder", "kind": "folder", "x": 0.03, "y": 0.1}, {"id": "file", "kind": "file", "x": 0.03, "y": 0.25},
+                 {"id": "music", "kind": "music", "x": 0.03, "y": 0.4}, {"id": "trash", "kind": "trash", "x": 0.93, "y": 0.64}]
+ICON_KINDS = ("folder", "file", "music", "game", "trash")
+THROW = 0.9             # брошенная иконка летит со скоростью курсора × THROW
+
+
+class Icons:
+    """Иконки рабочего стола: лежат, их тащат, бросают (летят с гравитацией, отскакивают от пола, сбивают героя),
+    пинают. Полёт считается заранее, при создании сцены (sim), — дальше это просто таблица положений."""
+
+    def __init__(self, specs, cursor, w, h, ground):
+        self.w, self.h, self.ground = w, h, ground
+        self.cursor = cursor
+        self.items = []
+        for i, sp in enumerate(specs or []):
+            kind = sp.get("kind") if sp.get("kind") in ICON_KINDS else "file"
+            self.items.append({"id": str(sp.get("id") or "{}{}".format(kind, i)), "kind": kind,
+                               "x": float(sp.get("x", 0.03)) * w, "y": float(sp.get("y", 0.1)) * h})
+        self.size = ICON * h
+        self.flights = {}                                  # id → [(t, x, y, угол)] полёта
+        self.hits_on = []                                  # (t, герой, направление) — иконка сбила героя
+        self.bounces = []                                  # (t, id) — стук об пол
+
+    def ids(self):
+        return [it["id"] for it in self.items]
+
+    def get(self, iid):
+        return next((it for it in self.items if it["id"] == iid), None)
+
+    def trash(self):
+        return next((it for it in self.items if it["kind"] == "trash"), None)
+
+    def trash_rect(self, t=0.0):
+        tr = self.trash()
+        if not tr:
+            return None
+        x, y, _a = self.at(tr["id"], t)
+        return x - self.size * 0.4, y - self.size * 0.6, self.size * 1.8, self.size * 2.0
+
+    def _dragged(self, iid, t):
+        """Где иконка, пока её тащат и после (без полёта): (x, y) левый верх."""
+        it = self.get(iid)
+        x, y = it["x"], it["y"]
+        for what, a, b in self.cursor.grabs if self.cursor else []:
+            if what != iid or t < a:
+                continue
+            p0, p1 = self.cursor.pos(a), self.cursor.pos(min(t, b))
+            x, y = x + p1[0] - p0[0], y + p1[1] - p0[1]
+        return x, y
+
+    def sim(self, hero_boxes, kicks, secs):
+        """Полёты: брошенные курсором быстро (скорость больше 0,6 высоты кадра в секунду) и пнутые героем.
+        hero_boxes(t) → [(id, x0, x1, y0, y1)]; kicks — [(t, id иконки, направление)]."""
+        starts = []
+        for what, a, b in self.cursor.grabs if self.cursor else []:
+            if what in self.ids() and b <= secs:
+                vx, vy = self.cursor.throw_velocity(b)
+                if math.hypot(vx, vy) > 0.6 * self.h:
+                    starts.append((b, what, vx * THROW, vy * THROW))
+        for t, iid, d in kicks:
+            if iid in self.ids():
+                starts.append((t, iid, d * 1.3 * self.h, -1.1 * self.h))
+        for t0, iid, vx, vy in sorted(starts):
+            x, y = self._dragged(iid, t0)
+            path, t, ang, spin, hit = [(t0, x, y, 0.0)], t0, 0.0, vx / self.h * 6, set()
+            dt = 1 / 200
+            rest = 0
+            while t < secs + 0.5 and rest < 2:
+                vy += GRAVITY * self.h * dt
+                x += vx * dt
+                y += vy * dt
+                ang += spin * dt
+                t += dt
+                if x < 0 or x > self.w - self.size:                         # стенка экрана — отскок
+                    x = max(0.0, min(self.w - self.size, x))
+                    vx = -vx * 0.6
+                if y + self.size >= self.ground:                            # пол (панель задач) — отскок с потерей
+                    y = self.ground - self.size
+                    if abs(vy) > 0.25 * self.h:
+                        self.bounces.append((t, iid))
+                        vy, vx, spin = -vy * 0.45, vx * 0.7, spin * 0.6
+                    else:
+                        vy, vx, spin, rest = 0.0, vx * 0.5, 0.0, rest + 1
+                cx, cy = x + self.size / 2, y + self.size / 2
+                for aid, x0, x1, y0, y1 in hero_boxes(t):
+                    if aid not in hit and x0 <= cx <= x1 and y0 <= cy <= y1 and math.hypot(vx, vy) > 0.5 * self.h:
+                        hit.add(aid)
+                        self.hits_on.append((t, aid, 1 if vx > 0 else -1))
+                        vx, vy = -vx * 0.3, -abs(vy) * 0.3 - 0.3 * self.h
+                if len(path) == 0 or t - path[-1][0] >= 0.02:
+                    path.append((t, x, y, ang))
+            path.append((t, x, y, 0.0 if rest else ang))
+            self.flights.setdefault(iid, []).append(path)
+
+    def at(self, iid, t):
+        """(x, y, угол) иконки в момент t: полёт, перетаскивание или место."""
+        for path in reversed(self.flights.get(iid, [])):
+            if path[0][0] <= t:
+                if t >= path[-1][0]:
+                    return path[-1][1], path[-1][2], path[-1][3]
+                for a, b in zip(path, path[1:]):
+                    if a[0] <= t <= b[0]:
+                        k = (t - a[0]) / max(b[0] - a[0], 1e-6)
+                        return a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k
+        x, y = self._dragged(iid, t)
+        return x, y, 0.0
+
+    def draw(self, c, t, colors, wobble=0.0):
+        held = self.cursor.holding(t)[0] if self.cursor else None
+        for it in self.items:
+            x, y, ang = self.at(it["id"], t)
+            draw_icon(c, it["kind"], x, y, self.size, ang + (wobble * math.sin(t * 40) if it["kind"] == "trash" else 0.0),
+                      lifted=held == it["id"])
+
+
+def draw_icon(c, kind, x, y, s, angle=0.0, lifted=False):
+    """Иконка: папка, файл, музыка, игра, корзина — простые формы со свечением, без надписей."""
+    c.save()
+    c.translate(x + s / 2, y + s / 2)
+    c.rotate(angle)
+    if lifted:                                                          # поднятая — с тенью
+        c.set_source_rgba(0, 0, 0, 0.45)
+        _rr(c, -s / 2 + s * 0.12, -s / 2 + s * 0.16, s, s, s * 0.15)
+        c.fill()
+    c.set_source_rgba(1, 1, 1, 0.06)
+    _rr(c, -s / 2, -s / 2, s, s, s * 0.15)
+    c.fill()
+    lw = max(1.2, s * 0.035)
+    c.set_line_width(lw)
+    if kind == "folder":
+        c.set_source_rgb(0.98, 0.78, 0.25)
+        _rr(c, -s * 0.38, -s * 0.22, s * 0.32, s * 0.14, s * 0.04)
+        c.fill()
+        _rr(c, -s * 0.38, -s * 0.14, s * 0.76, s * 0.5, s * 0.06)
+        c.fill()
+    elif kind == "file":
+        c.set_source_rgb(0.92, 0.94, 0.98)
+        c.move_to(-s * 0.26, -s * 0.36)
+        c.line_to(s * 0.1, -s * 0.36)
+        c.line_to(s * 0.26, -s * 0.2)
+        c.line_to(s * 0.26, s * 0.36)
+        c.line_to(-s * 0.26, s * 0.36)
+        c.close_path()
+        c.fill()
+        c.set_source_rgb(0.45, 0.55, 0.85)
+        for i in range(3):
+            c.rectangle(-s * 0.16, -s * 0.08 + i * s * 0.12, s * 0.3, s * 0.04)
+            c.fill()
+    elif kind == "music":
+        c.set_source_rgb(0.3, 0.6, 1.0)
+        _rr(c, -s * 0.36, -s * 0.36, s * 0.72, s * 0.72, s * 0.12)
+        c.fill()
+        c.set_source_rgb(1, 1, 1)
+        c.arc(-s * 0.08, s * 0.14, s * 0.1, 0, 2 * math.pi)
+        c.fill()
+        c.rectangle(-s * 0.0, -s * 0.22, s * 0.05, s * 0.38)
+        c.fill()
+        c.rectangle(-s * 0.0, -s * 0.22, s * 0.18, s * 0.06)
+        c.fill()
+    elif kind == "game":
+        c.set_source_rgb(0.7, 0.4, 1.0)
+        _rr(c, -s * 0.36, -s * 0.16, s * 0.72, s * 0.36, s * 0.16)
+        c.fill()
+        c.set_source_rgb(1, 1, 1)
+        c.rectangle(-s * 0.24, -s * 0.0, s * 0.14, s * 0.04)
+        c.rectangle(-s * 0.19, -s * 0.05, s * 0.04, s * 0.14)
+        c.fill()
+        for dx in (0.14, 0.24):
+            c.arc(s * dx, s * 0.02, s * 0.035, 0, 2 * math.pi)
+            c.fill()
+    elif kind == "trash":
+        c.set_source_rgb(0.75, 0.8, 0.88)
+        c.move_to(-s * 0.26, -s * 0.18)
+        c.line_to(s * 0.26, -s * 0.18)
+        c.line_to(s * 0.2, s * 0.38)
+        c.line_to(-s * 0.2, s * 0.38)
+        c.close_path()
+        c.fill()
+        c.set_source_rgb(0.55, 0.6, 0.7)
+        for dx in (-0.1, 0.0, 0.1):
+            c.rectangle(s * dx - s * 0.015, -s * 0.1, s * 0.03, s * 0.4)
+            c.fill()
+        c.set_source_rgb(0.75, 0.8, 0.88)
+        c.rectangle(-s * 0.32, -s * 0.28, s * 0.64, s * 0.07)
+        c.fill()
+    c.restore()
+
+
+def draw_taskbar(c, w, h, top, t, menu=0.0, active=False, only_menu=False):
+    """Панель задач у пола: кнопка «Пуск» слева, значки открытых программ, «часы» точками справа.
+    menu — насколько выдвинуто меню «Пуск» (0..1); only_menu — нарисовать одно меню (оно поверх иконок и окон)."""
+    bh = h - top
+    s = min(bh * 0.62, h * 0.06)
+    cy = top + bh * 0.42
+    x0 = w * 0.02
+    if only_menu:
+        _menu(c, w, h, top, x0, menu)
+        return
+    c.set_source_rgba(0.08, 0.1, 0.18, 0.97)
+    c.rectangle(0, top, w, h - top)
+    c.fill()
+    c.set_source_rgba(0.2, 0.9, 0.95, 0.5)
+    c.set_line_width(2)
+    c.move_to(0, top)
+    c.line_to(w, top)
+    c.stroke()
+    bh = h - top
+    s = min(bh * 0.62, h * 0.06)
+    cy = top + bh * 0.42
+    x0 = w * 0.02
+    c.set_source_rgba(0.2, 0.9, 0.95, 0.9 if active else 0.65)          # «Пуск»: четыре квадратика
+    for i in range(4):
+        c.rectangle(x0 + (i % 2) * s * 0.52, cy - s / 2 + (i // 2) * s * 0.52, s * 0.46, s * 0.46)
+    c.fill()
+    for i, col in enumerate(((0.98, 0.78, 0.25), (0.3, 0.6, 1.0), (0.7, 0.4, 1.0))):
+        c.set_source_rgba(*col, 0.85)
+        _rr(c, x0 + s * (1.8 + i * 1.4), cy - s / 2, s, s, s * 0.2)
+        c.fill()
+        c.rectangle(x0 + s * (1.95 + i * 1.4), cy + s * 0.62, s * 0.7, s * 0.08)
+        c.fill()
+    c.set_source_rgba(1, 1, 1, 0.7)                                     # «часы»: точки, мигает разделитель
+    for i in range(4):
+        c.rectangle(w * 0.93 + i * s * 0.32 + (s * 0.2 if i > 1 else 0), cy - s * 0.12, s * 0.2, s * 0.24)
+    c.fill()
+    if int(t * 2) % 2:
+        c.rectangle(w * 0.93 + s * 0.66, cy - s * 0.04, s * 0.06, s * 0.08)
+        c.fill()
+
+
+
+def _menu(c, w, h, top, x0, menu):
+    if menu > 0:                                                        # меню «Пуск» выезжает вверх
+        mh, mw = h * 0.42 * menu, w * 0.2
+        c.set_source_rgba(0.1, 0.12, 0.22, 0.97)
+        _rr(c, x0, top - mh - h * 0.01, mw, mh, h * 0.012)
+        c.fill()
+        c.set_source_rgba(0.2, 0.9, 0.95, 0.8)
+        c.set_line_width(1.5)
+        _rr(c, x0, top - mh - h * 0.01, mw, mh, h * 0.012)
+        c.stroke()
+        for i in range(int(6 * menu)):
+            col = ((0.98, 0.78, 0.25), (0.3, 0.6, 1.0), (0.7, 0.4, 1.0), (0.35, 0.85, 0.45), (0.95, 0.35, 0.35), (0.9, 0.9, 0.9))[i]
+            c.set_source_rgba(*col, 0.9)
+            yy = top - mh + h * 0.012 + i * h * 0.065
+            _rr(c, x0 + mw * 0.08, yy, h * 0.04, h * 0.04, h * 0.008)
+            c.fill()
+            c.set_source_rgba(1, 1, 1, 0.35)
+            c.rectangle(x0 + mw * 0.08 + h * 0.06, yy + h * 0.015, mw * (0.55 - 0.05 * (i % 3)), h * 0.012)
+            c.fill()

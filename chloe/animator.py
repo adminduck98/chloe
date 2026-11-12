@@ -27,6 +27,7 @@ BLEND = 0.22             # секунд: плавный переход межд�
 STRIKE = {"punch": (1.6, 0.24), "fight": (3.0, 0.24), "kick": (1.4, 0.26)}
 # отлёт от удара: всего секунд; доли — полёт дугой, юзом по полу, подъём
 KNOCK_TIME, KNOCK_FLY, KNOCK_SLIDE = 1.5, 0.3, 0.55
+TRASH_IN, TRASH_OUT = 0.35, 0.6   # секунд: проваливается в корзину; выпрыгивает из неё
 REACH = 0.24             # длина удара в долях высоты кадра: на таком расстоянии от цели встаёт нападающий
 # суставы догоняют позу, как пружина: чуть запаздывают и чуть проскакивают — движение с инерцией, а не рывками
 SPRING_W = 30.0          # рад/с: жёсткость (больше — быстрее догоняет)
@@ -648,8 +649,8 @@ def draw_dust(c, pts, ground, size, t):
             c.fill()
 
 
-def desktop(c, w, h, t):
-    """Фон «неон на экране»: тёмный рабочий стол, окна, иконки, панель задач."""
+def desktop(c, w, h, t, fake=True):
+    """Фон «неон на экране»: тёмный рабочий стол; fake — нарисованные (неживые) окна и иконки для сцен без интерфейса."""
     import cairo
 
     g = cairo.LinearGradient(0, 0, 0, h)
@@ -664,7 +665,7 @@ def desktop(c, w, h, t):
     for gy in range(0, h, 48):
         _line(c, (0, gy), (w, gy))
     c.stroke()
-    for (x, y, ww, hh, col) in ((0.06, 0.1, 0.32, 0.36, "blue"), (0.62, 0.14, 0.3, 0.3, "purple")):
+    for (x, y, ww, hh, col) in ((0.06, 0.1, 0.32, 0.36, "blue"), (0.62, 0.14, 0.3, 0.3, "purple")) if fake else ():
         c.set_source_rgba(*COLORS[col], 0.16)
         _round_rect(c, x * w, y * h, ww * w, hh * h, 10)
         c.fill()
@@ -674,7 +675,7 @@ def desktop(c, w, h, t):
         c.stroke()
         c.rectangle(x * w, y * h, ww * w, 0.04 * h)
         c.fill()
-    for i in range(4):
+    for i in range(4 if fake else 0):
         c.set_source_rgba(*COLORS[("cyan", "yellow", "green", "pink")[i]], 0.7)
         _round_rect(c, 0.015 * w, (0.55 + i * 0.07) * h, 0.03 * w, 0.05 * h, 6)
         c.fill()
@@ -737,13 +738,27 @@ class Scene:
         self._track()
         if self._reach():
             self._track()                                                 # подшагнул к цели — путь пересчитать
-        point = lambda aid, t, part: (self.where(aid, t)[0] * self.w,  # noqa: E731
-                                      self.ground - (self.fig * 0.92 if part == "head" else self.fig * 0.02)) if aid in self.actors else None
-        self.cursor.resolve(point)                                        # курсор летит к герою: в голову или за ногу
+        icon_specs = (spec or {}).get("icons")
+        if icon_specs is None and self.look["bg"] == "desktop" and (self.cursor or (spec or {}).get("windows")):
+            icon_specs = DP.DEFAULT_ICONS                                  # живой рабочий стол — со своими иконками
+        self.icons = DP.Icons(icon_specs, self.cursor, self.w, self.h, self.ground)
+        self.live_desktop = bool(self.cursor or self.icons.items or (spec or {}).get("windows"))
+        self.cursor.resolve(self._point)                                  # курсор летит к герою, иконке, «Пуску»
+        self.trashed = {}
         self.knocks = self._knocks()
         if self.knocks:
             self._track()                                                 # отлёт сдвигает героя — путь пересчитать
-            self.cursor.resolve(point)                                    # а курсор ищет его уже на новом месте
+            self.cursor.resolve(self._point)                              # а курсор ищет его уже на новом месте
+        kicks = [(t, s["target"], self.where(aid, t)[1]) for t, aid, s in self.hit_times() if s.get("target") in self.icons.ids()]
+        self.icons.sim(self._boxes, kicks, self.secs)
+        if self.icons.hits_on:                                            # иконкой в героя — он отлетает
+            for t, victim, d in self.icons.hits_on:
+                self.knocks.append({"t": t, "who": victim, "by": "icon", "dir": d, "big": True, "dist": 0.16, "dur": KNOCK_TIME})
+            self.knocks.sort(key=lambda k: k["t"])
+            self._track()
+        self.trashed = self._trash()
+        if self.trashed:
+            self._track()
         self._items()
         wids = [str(x.get("id") or "w{}".format(i + 1)) for i, x in enumerate((spec or {}).get("windows") or [])]
         breaks = [(s["target"], t, None) for t, aid, s in self.hit_times() if s.get("target") in wids]
@@ -846,9 +861,18 @@ class Scene:
             drops = [{"t0": b, "t1": b, "x": self.cursor.pos(b)[0] / self.w, "_drop": True}
                      for what, _a, b in self.cursor.grabs if what == aid and b <= self.secs]
             knocks = [{"t0": k["t"], "t1": k["t"] + KNOCK_SLIDE * k["dur"], "_knock": k} for k in self.knocks if k["who"] == aid]
+            tr = getattr(self, "trashed", {}).get(aid)
+            if tr and tr[1] is not None:                                  # выпрыгивает из корзины влево
+                bx = self.cursor.pos(tr[0])[0] / self.w
+                drops.append({"t0": tr[1], "t1": tr[1] + TRASH_OUT, "x": max(0.05, bx - 0.1), "_pop": True})
             for s in sorted(self.segs[aid] + drops + knocks, key=lambda s: s["t0"]):
                 if s.get("_drop"):                  # курсор отпустил героя: дальше он там, где его бросили
                     pts.append((s["t0"], s["t0"], x, s["x"], facing))
+                    x = s["x"]
+                    continue
+                if s.get("_pop"):
+                    facing = -1
+                    pts.append((s["t0"], s["t1"], x, s["x"], facing))
                     x = s["x"]
                     continue
                 if s.get("_knock"):                 # отлетел от удара: дугой и юзом, лицом к обидчику
@@ -901,6 +925,8 @@ class Scene:
             if what == aid and b <= t:
                 from . import desktop_play as DP
 
+                if aid in getattr(self, "trashed", {}):
+                    return None                                           # не падает — проваливается в корзину
                 cx, cy = self.cursor.pos(b)
                 head0 = self._drop_head(what, b)
                 stand_head = self.ground - self.fig * 0.92
@@ -912,6 +938,55 @@ class Scene:
                     return {"head": (cx, head0 + 0.5 * DP.GRAVITY * self.h * k * k), "swing": 0.0, "falling": True, "flip": flip}
                 return None
         return None
+
+    def _point(self, who, t, part):
+        """Куда лететь курсору: голова или нога героя, центр иконки, кнопка «Пуск» (пиксели) или None."""
+        if who in self.actors:
+            return self.where(who, t)[0] * self.w, self.ground - (self.fig * 0.92 if part == "head" else self.fig * 0.02)
+        if who == "start":
+            return self.w * 0.02 + self.h * 0.03, self.ground + (self.h - self.ground) * 0.42
+        if who in self.icons.ids():
+            x, y, _a = self.icons.at(who, t)
+            return x + self.icons.size / 2, y + self.icons.size / 2
+        return None
+
+    def _boxes(self, t):
+        """Где тела героев (для попадания иконкой): [(id, x0, x1, y0, y1)] в пикселях."""
+        out = []
+        for aid, a in self.actors.items():
+            if self.carried(aid, t) or self.is_hidden(aid, t):
+                continue
+            x = self.where(aid, t)[0] * self.w
+            size = self.fig * a["scale"]
+            out.append((aid, x - size * 0.18, x + size * 0.18, self.ground - size * 1.05, self.ground))
+        return out
+
+    def _trash(self):
+        """Курсор отпустил героя над корзиной — тот проваливается внутрь и выпрыгивает, когда у него следующее движение.
+        {id: (когда упал, когда выпрыгнет или None)}."""
+        out = {}
+        for what, b in self.cursor.releases():
+            if what not in self.actors or b > self.secs:
+                continue
+            r = self.icons.trash_rect(b)
+            cx, cy = self.cursor.pos(b)
+            if r and r[0] <= cx <= r[0] + r[2] and r[1] - self.fig * 0.3 <= cy <= r[1] + r[3]:
+                nxt = [s["t0"] for s in self.segs[what] if s["t0"] > b + 0.4]
+                out[what] = (b, min(nxt) if nxt else None)
+        return out
+
+    def menu_open(self, t):
+        """Насколько выдвинуто меню «Пуск» (0..1): после клика по «Пуску» выезжает и через 1,6 с убирается."""
+        k = 0.0
+        for tc in self.cursor.clicks_on("start"):
+            if tc <= t < tc + 1.9:
+                d = t - tc
+                k = max(k, ease(d / 0.18) if d < 1.6 else 1 - ease((d - 1.6) / 0.3))
+        return k
+
+    def is_hidden(self, aid, t):
+        tr = getattr(self, "trashed", {}).get(aid)
+        return bool(tr and tr[0] + TRASH_IN <= t and (tr[1] is None or t < tr[1]))
 
     def _drop_head(self, aid, b):
         """Откуда падает герой, когда курсор его отпустил (точка «головы» для расчёта падения): держал за голову — голова
@@ -1104,6 +1179,22 @@ class Scene:
                     land = b + DP.fall_time((self.ground - self.fig * 0.92) - self._drop_head(what, b), self.h)
                     add(b + 0.05, "whoosh", what, args={"dur": 0.4}, gain_db=-4)
                     add(land, "thud", what)
+        for what, a_, b in self.cursor.grabs:                             # иконки: бросок, стук об пол, попадание
+            if what in self.icons.flights and b <= self.secs:
+                ev.append({"t": round(b + 0.08, 4), "kind": "whoosh", "who": next(iter(self.actors)), "pan": 0.0, "args": {"dur": 0.35}})
+        for tb, iid in self.icons.bounces:
+            if tb <= self.secs:
+                ev.append({"t": round(tb, 4), "kind": "tap", "who": next(iter(self.actors)), "pan": 0.0, "args": {"pitch": 520}})
+        for ht, victim, _d in self.icons.hits_on:
+            add(ht, "punch", victim, args={"size": 0.8})
+        for tc in self.cursor.clicks_on("start"):
+            ev.append({"t": round(tc + 0.08, 4), "kind": "pop", "who": next(iter(self.actors)), "pan": -0.9})
+        for aid, (tin, tout) in self.trashed.items():                     # корзина: провалился, выпрыгнул
+            add(tin + TRASH_IN * 0.8, "thud", aid, gain_db=-6, args={"size": 0.6})
+            add(tin + TRASH_IN * 0.85, "tap", aid, args={"pitch": 260})
+            if tout is not None:
+                add(tout + 0.05, "pop", aid)
+                add(tout + 0.1, "whoosh", aid, args={"dur": 0.3}, gain_db=-4)
         for ht, victim, _d in self.cursor.hits():                         # курсор врезался в героя
             if victim in self.actors:
                 add(ht - 0.06, "swish", victim, gain_db=-3)
@@ -1140,7 +1231,7 @@ class Scene:
         План сцены (shot) задаёт исходное приближение к главному герою; камера всегда чуть плывёт вперёд —
         движется уже на первом кадре и ещё движется на стыке (кроме тихих сцен и финала: там держится)."""
         zoom, fx, fy = 1.0, self.w / 2, self.h / 2
-        if self.shot and not self.look.get("still"):                   # доска стоит: рисунок виден целиком
+        if self.shot and not self.look.get("still") and not getattr(self, "live_desktop", False):   # доска и живой стол стоят
             base = SHOTS[self.shot]
             drift = 0.0 if self.beat in ("quiet", "ending") else DRIFT * t / self.secs
             zoom = base * (1 + drift)
@@ -1178,7 +1269,7 @@ class Scene:
             c.paint()
             c.restore()
         elif bg == "desktop":
-            desktop(c, w, h, t)
+            desktop(c, w, h, t, fake=not self.live_desktop)
         else:
             c.set_source_rgb(*bg)
             c.paint()
@@ -1217,11 +1308,21 @@ class Scene:
             if t >= when:
                 gx = (at if at is not None else self.where(who, when)[0] + 0.25 * self.where(who, when)[1]) * w
                 draw_hand_prop(self._pen(c), kind, (gx, self.ground - self.fig * 0.02), 1, self.fig, ink)
+        if self.live_desktop and bg == "desktop":
+            from . import desktop_play as DP
+
+            top = self.ground + h * 0.005
+            DP.draw_taskbar(c, w, h, top, t, active=self.menu_open(t) > 0)
+            inside = any(self.is_hidden(a, t) or (tr[0] <= t < tr[0] + TRASH_IN) or (tr[1] is not None and tr[1] <= t < tr[1] + 0.3)
+                         for a, tr in self.trashed.items())
+            self.icons.draw(c, t, COLORS, wobble=0.12 if inside else 0.0)
         self.windows.draw(c, t, COLORS)
+        if self.live_desktop and bg == "desktop" and self.menu_open(t) > 0:
+            DP.draw_taskbar(c, w, h, self.ground + h * 0.005, t, menu=self.menu_open(t), only_menu=True)
         hands = {}
         for aid in sorted(self.actors, key=lambda k: self.actors[k]["scale"]):
             t0, t1 = self.plan.get(aid, (-1.0, -1.0))
-            if t < t0:
+            if t < t0 or self.is_hidden(aid, t):
                 continue
             tt = t1 if t < t1 else t                                    # пока маркер рисует героя — он замер
             hands[aid], pts, r = self._actor(c, aid, tt, ink, measure=True)
@@ -1269,7 +1370,7 @@ class Scene:
         from . import desktop_play as DP
 
         for what, b in self.cursor.releases():
-            if what == aid and b <= t:
+            if what == aid and b <= t and aid not in getattr(self, "trashed", {}):
                 fall = DP.fall_time((self.ground - self.fig * 0.92) - self._drop_head(aid, b), self.h)
                 if b + fall <= t < b + fall + 1.0:
                     return t - b - fall
@@ -1321,6 +1422,23 @@ class Scene:
         front = self._front
         size = self.fig * a["scale"]
         hang = self.carried(aid, t)
+        tr = self.trashed.get(aid) if hasattr(self, "trashed") else None
+        if tr and tr[0] <= t < tr[0] + TRASH_IN:                          # проваливается в корзину: сжимается в неё
+            k = (t - tr[0]) / TRASH_IN
+            r_ = self.icons.trash_rect(t)
+            bx, by = r_[0] + r_[2] / 2, r_[1] + r_[3] * 0.35
+            sz = size * (1 - 0.85 * ease(k))
+            pose = pose_of("surprised")
+            pts, r = skeleton(pose, bx, by + sz * 0.9 * ease(k), sz, facing, True)
+            if measure:
+                return pts["hand1"], pts, r
+            draw_figure(c, pts, r, a["color"], self.look, "surprised", 0.0, 0, sz)
+            return pts["hand1"], pts, r
+        if tr and tr[1] is not None and tr[1] <= t < tr[1] + TRASH_OUT:   # выпрыгивает: дугой из корзины
+            k = (t - tr[1]) / TRASH_OUT
+            r_ = self.icons.trash_rect(t)
+            pose = dict(pose_of("cheer"), dy=(self.ground - r_[1]) / size * 0.6 * (1 - k) + 0.3 * math.sin(math.pi * k))
+            emo = "happy"
         if hang:                                                         # висит на курсоре или падает — болтает руками-ногами
             g = math.sin(t * 13)
             pose = dict(BASE, sh1=150 + 20 * g, el1=30, sh2=-150 + 20 * g, el2=-30, hip1=12 + 18 * g, kn1=-25, hip2=-12 - 18 * g,
@@ -1662,7 +1780,10 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "Стиль neon_desktop (рабочий стол): \"windows\": [{{\"id\": \"w1\", \"x\", \"y\", \"w\", \"h\" (доли кадра), \"color\"}}]; "
          "курсор — персонаж: \"cursor\": [{{\"t\": доля сцены, \"x\", \"y\", \"grab\": id окна или героя | \"release\": true | \"click\": true}}] — "
          "тащит окна, хватает героя (\"by\": \"foot\" — за ногу, вниз головой; x, y можно не писать — сам найдёт героя) и роняет; "
-         "\"mood\": \"angry\" (краснеет, дрожит) | \"happy\" | \"calm\"; \"hit\": id героя — курсор с замахом врезается в героя, тот отлетает; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "
+         "\"mood\": \"angry\" (краснеет, дрожит) | \"happy\" | \"calm\"; \"click\": \"start\" — открыть меню «Пуск»; "
+         "иконки (по умолчанию folder, file, music и корзина trash; свои — \"icons\": [{{\"id\", \"kind\": folder|file|music|game|trash, \"x\", \"y\"}}]): "
+         "курсор берёт иконку (\"grab\": id) и, отпустив на быстром движении, швыряет — она летит, отскакивает и сбивает героя; "
+         "пинок с \"target\": id иконки отправляет её в полёт; отпустить героя над корзиной — провалится и выпрыгнет к своему следующему движению; \"hit\": id героя — курсор с замахом врезается в героя, тот отлетает; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "
          "Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
          "в серии — отлетает дугой, едет по полу и встаёт (~1,5 с, не ставь цели движений на это время).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))
