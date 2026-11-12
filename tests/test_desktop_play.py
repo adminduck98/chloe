@@ -141,6 +141,21 @@ class LiveDesktop(unittest.TestCase):
         self.assertIn("tap", kinds)
         self.assertIn("pop", kinds)                                        # меню «Пуск»
 
+    def test_cursor_dives_into_trash(self):
+        spec = dict(self.SPEC, cursor=self.SPEC["cursor"] + [{"t": 0.9, "into": "trash"}])
+        sc = A.Scene(spec, "neon_desktop", (W, H), 12.0)
+        r = sc.icons.trash_rect(10.8)
+        x, y = sc.cursor.pos(10.8)
+        self.assertTrue(r[0] <= x <= r[0] + r[2])
+        self.assertFalse(sc.cursor.gone(10.8))
+        self.assertTrue(sc.cursor.gone(11.5))
+        self.assertIn("boop", [e["kind"] for e in sc.sound_events()])
+        import cairo
+
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, W, H)
+        for t in (10.9, 11.5):
+            sc.render(cairo.Context(surf), t, cairo)
+
     def test_trash_swallows_and_pops_out(self):
         sc = self.scene()
         tin, tout = sc.trashed["byte"]

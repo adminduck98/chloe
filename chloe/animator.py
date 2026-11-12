@@ -722,6 +722,8 @@ class Scene:
                 continue
             do = str(s.get("do") or "stand").lower().strip()
             do = do if do in ACTIONS else SYNONYMS.get(do, "stand")
+            if do == "climb" and not any(p_.get("kind") == "ladder" for p_ in (spec or {}).get("props") or []):
+                do = "jump"                                               # лезть не по чему — прыжок
             self.segs[who].append(dict(s, t0=a * self.secs, t1=b * self.secs, do=do))
         for k in self.segs:
             self.segs[k].sort(key=lambda s: s["t0"])
@@ -738,11 +740,17 @@ class Scene:
         self._track()
         if self._reach():
             self._track()                                                 # подшагнул к цели — путь пересчитать
-        icon_specs = (spec or {}).get("icons")
-        if icon_specs is None and self.look["bg"] == "desktop" and (self.cursor or (spec or {}).get("windows")):
-            icon_specs = DP.DEFAULT_ICONS                                  # живой рабочий стол — со своими иконками
+        icon_specs = list((spec or {}).get("icons") or [])
+        if self.look["bg"] == "desktop" and (self.cursor or (spec or {}).get("windows") or icon_specs):
+            mine = {str(i.get("id") or "") for i in icon_specs} | {str(i.get("kind") or "") for i in icon_specs if i.get("kind") == "trash"}
+            icon_specs += [d for d in DP.DEFAULT_ICONS if d["id"] not in mine]   # стандартные иконки — всегда, свои — к ним
         self.icons = DP.Icons(icon_specs, self.cursor, self.w, self.h, self.ground)
         self.live_desktop = bool(self.cursor or self.icons.items or (spec or {}).get("windows"))
+        for t, aid, s_ in self.hit_times():                               # герой бьёт курсор: курсор сам под кулак и отлетает
+            if s_.get("target") == "cursor" and self.cursor:
+                x, f = self.where(aid, t)
+                size = self.fig * self.actors[aid]["scale"]
+                self.cursor.bump(t, x * self.w + f * size * 0.5, self.ground - size * 0.62, f)
         self.cursor.resolve(self._point)                                  # курсор летит к герою, иконке, «Пуску»
         self.trashed = {}
         self.knocks = self._knocks()
@@ -858,7 +866,7 @@ class Scene:
         self.path = {}
         for aid, a in self.actors.items():
             x, facing, pts = a["x"], a["facing"], []
-            drops = [{"t0": b, "t1": b, "x": self.cursor.pos(b)[0] / self.w, "_drop": True}
+            drops = [{"t0": b, "t1": b, "x": max(0.06, min(0.94, self.cursor.pos(b)[0] / self.w)), "_drop": True}
                      for what, _a, b in self.cursor.grabs if what == aid and b <= self.secs]
             knocks = [{"t0": k["t"], "t1": k["t"] + KNOCK_SLIDE * k["dur"], "_knock": k} for k in self.knocks if k["who"] == aid]
             tr = getattr(self, "trashed", {}).get(aid)
@@ -945,8 +953,9 @@ class Scene:
             return self.where(who, t)[0] * self.w, self.ground - (self.fig * 0.92 if part == "head" else self.fig * 0.02)
         if who == "start":
             return self.w * 0.02 + self.h * 0.03, self.ground + (self.h - self.ground) * 0.42
-        if who in self.icons.ids():
-            x, y, _a = self.icons.at(who, t)
+        if who in self.icons.ids() or (who == "trash" and self.icons.trash()):
+            iid = who if who in self.icons.ids() else self.icons.trash()["id"]
+            x, y, _a = self.icons.at(iid, t)
             return x + self.icons.size / 2, y + self.icons.size / 2
         return None
 
@@ -1189,6 +1198,9 @@ class Scene:
             add(ht, "punch", victim, args={"size": 0.8})
         for tc in self.cursor.clicks_on("start"):
             ev.append({"t": round(tc + 0.08, 4), "kind": "pop", "who": next(iter(self.actors)), "pan": -0.9})
+        for td in self.cursor.dives():                                    # курсор нырнул в корзину
+            ev.append({"t": round(td, 4), "kind": "tap", "who": next(iter(self.actors)), "pan": 0.8, "args": {"pitch": 300}})
+            ev.append({"t": round(td + 0.05, 4), "kind": "boop", "who": next(iter(self.actors)), "pan": 0.8})
         for aid, (tin, tout) in self.trashed.items():                     # корзина: провалился, выпрыгнул
             add(tin + TRASH_IN * 0.8, "thud", aid, gain_db=-6, args={"size": 0.6})
             add(tin + TRASH_IN * 0.85, "tap", aid, args={"pitch": 260})
@@ -1240,7 +1252,7 @@ class Scene:
                 k = (base - 1) / (SHOTS["close"] - 1)
                 fx = fx + (x * self.w - fx) * k
                 fy = fy + ((self.ground - self.fig * 0.55) - fy) * k
-        for cm in self.camera:
+        for cm in self.camera if not getattr(self, "live_desktop", False) else ():   # живой стол: камера стоит
             a, b = float(cm.get("from", 0)) * self.secs, float(cm.get("to", 1)) * self.secs
             if a <= t <= b + 0.4:
                 k = ease((t - a) / 0.6) * (1 - ease((t - b) / 0.4))
@@ -1314,7 +1326,7 @@ class Scene:
             top = self.ground + h * 0.005
             DP.draw_taskbar(c, w, h, top, t, active=self.menu_open(t) > 0)
             inside = any(self.is_hidden(a, t) or (tr[0] <= t < tr[0] + TRASH_IN) or (tr[1] is not None and tr[1] <= t < tr[1] + 0.3)
-                         for a, tr in self.trashed.items())
+                         for a, tr in self.trashed.items()) or any(0 <= t - td < 0.8 for td in self.cursor.dives())
             self.icons.draw(c, t, COLORS, wobble=0.12 if inside else 0.0)
         self.windows.draw(c, t, COLORS)
         if self.live_desktop and bg == "desktop" and self.menu_open(t) > 0:
@@ -1346,12 +1358,13 @@ class Scene:
                 py_ = sy_ + (ey_ - sy_) * (ease(k) if not f["arc"] else k) - (math.sin(math.pi * k) * self.fig * 0.45 if f["arc"] else 0)
                 draw_hand_prop(self._pen(c), f["kind"], (px_, py_), 1, self.fig, ink)
         self.windows.draw_shards(c, t, COLORS, self.ground)
-        if self.cursor:
+        if self.cursor and not self.cursor.gone(t):
             from . import desktop_play as DP
 
             pressed = [t - p for p in self.cursor.presses() if 0 <= t - p]
             DP.draw_cursor(c, self.cursor.pos(t), self.h, min(pressed) if pressed else None, self.cursor.holding(t)[0] is not None,
-                           self.cursor.mood(t), self.cursor.velocity(t), t)
+                           self.cursor.mood(t), self.cursor.velocity(t) if not self.cursor.bumped(t)[2] else (0.0, 0.0), t,
+                           self.cursor.bumped(t)[2])
         for tip in pens:                                                 # маркер — поверх всего, в координатах экрана
             draw_marker(c, tip, self.h, t)
         if self.look.get("flash"):                                       # вспышка на кадре сильного удара и разбитого стекла
@@ -1439,6 +1452,10 @@ class Scene:
             r_ = self.icons.trash_rect(t)
             pose = dict(pose_of("cheer"), dy=(self.ground - r_[1]) / size * 0.6 * (1 - k) + 0.3 * math.sin(math.pi * k))
             emo = "happy"
+        if hang:
+            m = size * 0.35                                               # не за краем кадра: герой всегда виден
+            hang = dict(hang, head=(max(m, min(self.w - m, hang["head"][0])), hang["head"][1]),
+                        grip=(max(m, min(self.w - m, hang.get("grip", hang["head"])[0])), hang.get("grip", hang["head"])[1]))
         if hang:                                                         # висит на курсоре или падает — болтает руками-ногами
             g = math.sin(t * 13)
             pose = dict(BASE, sh1=150 + 20 * g, el1=30, sh2=-150 + 20 * g, el2=-30, hip1=12 + 18 * g, kn1=-25, hip2=-12 - 18 * g,
@@ -1491,6 +1508,11 @@ class Scene:
                 draw_dust(c, pts, self.ground, size, land * 2)
             if kn and kn[0] in ("slide",) and not measure and not getattr(self, "_ghost", False):
                 draw_dust(c, {"foot1": pts["head"], "foot2": pts["hip"]}, self.ground, size, t)
+        xs = [px for px, _py in pts.values()]                                # вся фигура — в кадре (и голова, и ноги)
+        edge = size * 0.12 + r
+        shift = (edge - min(xs)) if min(xs) < edge else ((self.w - edge) - max(xs)) if max(xs) > self.w - edge else 0.0
+        if shift:
+            pts = {k: (px + shift, py) for k, (px, py) in pts.items()}
         if measure:
             return pts["hand1"], pts, r
         if self.look.get("trails") and not getattr(self, "_ghost", False):
@@ -1781,6 +1803,7 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "курсор — персонаж: \"cursor\": [{{\"t\": доля сцены, \"x\", \"y\", \"grab\": id окна или героя | \"release\": true | \"click\": true}}] — "
          "тащит окна, хватает героя (\"by\": \"foot\" — за ногу, вниз головой; x, y можно не писать — сам найдёт героя) и роняет; "
          "\"mood\": \"angry\" (краснеет, дрожит) | \"happy\" | \"calm\"; \"click\": \"start\" — открыть меню «Пуск»; "
+         "\"into\": \"trash\" — курсор ныряет в корзину и исчезает до конца сцены; "
          "иконки (по умолчанию folder, file, music и корзина trash; свои — \"icons\": [{{\"id\", \"kind\": folder|file|music|game|trash, \"x\", \"y\"}}]): "
          "курсор берёт иконку (\"grab\": id) и, отпустив на быстром движении, швыряет — она летит, отскакивает и сбивает героя; "
          "пинок с \"target\": id иконки отправляет её в полёт; отпустить героя над корзиной — провалится и выпрыгнет к своему следующему движению; \"hit\": id героя — курсор с замахом врезается в героя, тот отлетает; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "

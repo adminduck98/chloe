@@ -30,8 +30,13 @@ class Cursor:
                              "x": float(k["x"]) * w if k.get("x") is not None else None,
                              "y": float(k["y"]) * h if k.get("y") is not None else None,
                              "grab": k.get("grab"), "by": k.get("by"), "release": bool(k.get("release")), "click": k.get("click") or None,
-                             "mood": k.get("mood"), "hit": k.get("hit")}
+                             "mood": k.get("mood"), "hit": k.get("hit"), "into": k.get("into")}
                             for k in keys or []), key=lambda k: k["t"])
+        for k in self.keys:                               # курсор не уходит за края кадра
+            if k["x"] is not None:
+                k["x"] = max(w * 0.04, min(w * 0.96, k["x"]))
+            if k["y"] is not None:
+                k["y"] = max(h * 0.04, min(h * 0.96, k["y"]))
         last = (w * 0.9, h * 0.1)
         for k in self.keys:                               # точка без координат (удар по герою) — пока на месте прошлой
             k["_auto"] = k["x"] is None or k["y"] is None
@@ -55,6 +60,25 @@ class Cursor:
     def __bool__(self):
         return bool(self.keys)
 
+    def bump(self, t, x, y, d):
+        """Героя ударили курсор: курсор прилетает под кулак (точка пути в момент t) и отлетает, кувыркаясь, потом возвращается."""
+        self.keys.append({"t": t, "x": x, "y": y, "grab": None, "by": None, "release": False, "click": None, "mood": "angry",
+                          "hit": None, "into": None, "_auto": False})
+        self.keys.sort(key=lambda k: k["t"])
+        self.bumps = getattr(self, "bumps", []) + [(t, d)]
+
+    def bumped(self, t):
+        """Смещение и поворот от удара: (dx, dy, угол)."""
+        dx = dy = ang = 0.0
+        for tb, d in getattr(self, "bumps", []):
+            k = t - tb
+            if 0 <= k < 1.0:
+                fly = math.sin(math.pi * min(1.0, k / 0.5)) if k < 0.5 else 1 - _ease((k - 0.5) / 0.5)
+                dx += d * self.w * 0.22 * fly
+                dy -= self.h * 0.18 * math.sin(math.pi * min(1.0, k / 0.6)) * (1 if k < 0.6 else 0)
+                ang += d * 2 * math.pi * min(1.0, k / 0.55)
+        return dx, dy, ang
+
     def resolve(self, point_at):
         """Точки без координат: удар — в голову цели, захват героя — за голову или ногу, где он сейчас стоит.
         point_at(id, t, "head" | "foot") → (x, y) в пикселях или None (не герой)."""
@@ -62,12 +86,19 @@ class Cursor:
             if not k["_auto"]:
                 continue
             who, part = (k["hit"], "head") if k["hit"] else (k["grab"], k["by"] or "head") if k["grab"] else \
-                (k["click"], "center") if isinstance(k["click"], str) else (None, None)
+                (k["click"], "center") if isinstance(k["click"], str) else (k["into"], "center") if k.get("into") else (None, None)
             p = point_at(str(who), k["t"], part) if who else None
             if p:
                 k["x"], k["y"] = p
 
     def pos(self, t):
+        p = self._pos(t)
+        if p and getattr(self, "bumps", None):
+            dx, dy, _a = self.bumped(t)
+            return p[0] + dx, p[1] + dy
+        return p
+
+    def _pos(self, t):
         ks = self.keys
         if not ks:
             return None
@@ -131,6 +162,14 @@ class Cursor:
                 span = max(b["t"] - a["t"], 1e-3)
                 return (b["x"] - a["x"]) / span * 1.5, (b["y"] - a["y"]) / span * 1.5
         return self.velocity(t)
+
+    def dives(self):
+        """Когда курсор нырнул в корзину."""
+        return [k["t"] for k in self.keys if k.get("into") == "trash"]
+
+    def gone(self, t):
+        """Курсор уже в корзине — не рисуется."""
+        return any(td + 0.12 <= t for td in self.dives())
 
     def clicks_on(self, what):
         """Моменты кликов по названной цели («start» — кнопка «Пуск»)."""
@@ -278,14 +317,14 @@ def draw_window(c, rect, col, h):
         c.fill()
 
 
-def draw_cursor(c, pos, h, pressed_for=None, holding=False, mood="calm", vel=(0.0, 0.0), t=0.0):
+def draw_cursor(c, pos, h, pressed_for=None, holding=False, mood="calm", vel=(0.0, 0.0), t=0.0, spin=0.0):
     """Стрелка курсора с чёрной обводкой. Нажатие — расходящееся кольцо; держит — стрелка чуть меньше;
     наклоняется по движению; злой — краснеет и дрожит, с «паром»; весёлый — покачивается."""
     if not pos:
         return
     x, y = pos
     s = h * (0.05 if not holding else 0.044)
-    tilt = max(-0.5, min(0.5, vel[0] / h * 0.18))
+    tilt = max(-0.5, min(0.5, vel[0] / h * 0.18)) + spin
     fill = (1, 1, 1)
     if mood == "angry":
         x += math.sin(t * 157) * h * 0.003
@@ -356,7 +395,8 @@ class Icons:
         for i, sp in enumerate(specs or []):
             kind = sp.get("kind") if sp.get("kind") in ICON_KINDS else "file"
             self.items.append({"id": str(sp.get("id") or "{}{}".format(kind, i)), "kind": kind,
-                               "x": float(sp.get("x", 0.03)) * w, "y": float(sp.get("y", 0.1)) * h})
+                               "x": min(w * (1 - ICON * h / w), max(0.0, float(sp.get("x", 0.03)) * w)),
+                               "y": min(ground - ICON * h * 1.05, max(0.0, float(sp.get("y", 0.1)) * h))})   # не ниже пола
         self.size = ICON * h
         self.flights = {}                                  # id → [(t, x, y, угол)] полёта
         self.hits_on = []                                  # (t, герой, направление) — иконка сбила героя

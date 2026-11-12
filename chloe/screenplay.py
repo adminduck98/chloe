@@ -109,6 +109,22 @@ ANIM = """
 {vocab}
 """
 
+DESKTOP = """
+ЖАНР «СТИКМЕН ПРОТИВ ИНТЕРФЕЙСА» (стиль neon_desktop): свои герои, не копия чужих серий.
+- Курсор — второй герой и противник со своим характером (mood: calm → angry → happy и обратно). Ты сам ставишь его путь (cursor).
+- Каждая сцена — цепочка гэгов: действие → ответ → эскалация. Курсор пакостит (тащит окно, швыряет иконку, хватает героя,
+  тащит в корзину, бьёт с замаха — hit), герой отвечает (уклоняется прыжком, бьёт курсор: punch/kick с "target": "cursor",
+  пинает иконку в курсор, разбивает окно ударом). Герой обязательно даёт сдачи хотя бы раз; в финале — неожиданный поворот.
+- Используй интерфейс: окна (windows), иконки по умолчанию folder, file, music и корзина trash (свои не нужны), «Пуск» (click: "start").
+  Координаты y — выше пола (y < 0.75); x, y у grab/hit героя можно не писать — курсор сам найдёт.
+- Камера на рабочем столе не приближает — "camera" не пиши. Лестницы тут нет — climb не используй.
+- Закадровый текст в этом жанре — короткие смешные реплики рассказчика-комментатора (до 10 слов на сцену), про то, что
+  происходит в драке, без философии и вопросов зрителю. Движения важнее слов.
+- Это скетч, не объяснение: никаких «все думают, что… а на самом деле», «секрет в том», «главная правда».
+- Текст говорит ТОЛЬКО о том, что зритель видит в этой сцене, и только о том, что умеют герои и курсор (список выше).
+  Хочешь, чтобы курсор нырнул в корзину, — поставь ему "into": "trash"; нельзя показать — не пиши.
+"""
+
 ANIM_FORMAT = """
 ВАЖНО: это мультфильм — в КАЖДОЙ из {n} сцен обязательны поля "place" и "anim" (без них человечки будут стоять).
 Ответь ТОЛЬКО JSON:
@@ -264,6 +280,8 @@ def prompt(idea, notes="", references="", duration=None, style_key=None, anim=Fa
         from .animator import VOCAB
 
         parts.append(ANIM.format(vocab=VOCAB))
+        if style_key == "neon_desktop":
+            parts.append(DESKTOP)
     parts.append("\nИДЕЯ ПОЛЬЗОВАТЕЛЯ (его слова как есть):\n" + idea.strip())
     if notes.strip():
         parts.append("\nУКАЗАНИЯ И ССЫЛКИ ОТ ПОЛЬЗОВАТЕЛЯ (главнее твоих догадок):\n" + notes.strip())
@@ -288,7 +306,7 @@ def model_ask(text, think=True):
 
     kw = {} if think else {"thinking": {"type": "disabled"}}
     r = anthropic.Anthropic(timeout=300, max_retries=1).messages.create(
-        model=config.MIXED_STRONG or "claude-haiku-5-5", max_tokens=16000 if think else 6000,
+        model=config.MIXED_STRONG or "claude-haiku-5-5", max_tokens=16000,      # мультфильм с курсором и окнами — длинный JSON
         messages=[{"role": "user", "content": text}], **kw)
     out = "".join(b.text for b in r.content if b.type == "text")
     if not out.strip():

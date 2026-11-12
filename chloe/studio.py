@@ -224,16 +224,16 @@ def _ass_time(t):
     return "{}:{:02d}:{:05.2f}".format(int(t // 3600), int(t % 3600 // 60), t % 60)
 
 
-def captions_ass(words, size, path, shift=0.0):
-    """Файл субтитров ASS: короткие фразы внизу кадра, белый текст с тёмной обводкой — читается на любом фоне."""
+def captions_ass(words, size, path, shift=0.0, top=False):
+    """Файл субтитров ASS: короткие фразы внизу кадра (top — вверху: внизу панель задач), белый текст с тёмной обводкой."""
     w, h = size
     fs = round(min(w, h) * 0.058)
     head = ("[Script Info]\nScriptType: v4.00+\nPlayResX: {w}\nPlayResY: {h}\nWrapStyle: 0\n\n"
             "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
             "Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-            "Style: Cap,Noto Sans,{fs},&H00FFFFFF,&H00FFFFFF,&H00141414,&H64000000,1,0,0,0,100,100,0,0,1,{ol},1,2,{m},{m},{mv},1\n\n"
+            "Style: Cap,Noto Sans,{fs},&H00FFFFFF,&H00FFFFFF,&H00141414,&H64000000,1,0,0,0,100,100,0,0,1,{ol},1,{al},{m},{m},{mv},1\n\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n").format(
-        w=w, h=h, fs=fs, ol=max(2, round(fs / 11)), m=round(w * 0.06), mv=round(h * 0.07))
+        w=w, h=h, fs=fs, ol=max(2, round(fs / 11)), m=round(w * 0.06), mv=round(h * (0.04 if top else 0.07)), al=8 if top else 2)
     lines = ["Dialogue: 0,{},{},Cap,,0,0,0,,{}".format(_ass_time(a + shift), _ass_time(b + shift),
                                                        t.replace("{", "(").replace("}", ")").replace("\n", " "))
              for a, b, t in phrases(words)]
@@ -374,7 +374,8 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
             words_file.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
     lead = LEAD if (sfx and i > 0 and voice_file) else 0.0
     secs = max(MIN_SCENE, (duration(voice_file) + TAIL + lead) if voice_file else MIN_SCENE) + hold
-    ass = captions_ass(words, size, work / "captions{:02d}.ass".format(i), shift=lead) if (captions and words) else None
+    ass = captions_ass(words, size, work / "captions{:02d}.ass".format(i), shift=lead,
+                       top=mode == "anim" and look == "neon_desktop") if (captions and words) else None
     whoosh_file = whoosh(work / "whoosh.wav") if (sfx and i > 0) else None
     part = work / "clip{:02d}.part.mp4".format(i)
     if mode == "anim":
@@ -460,7 +461,7 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
         out = qm.VIDEO_DIR / "{}-{}{}.mp4".format(time.strftime("%Y%m%d-%H%M%S"), qm._slug(title or scenes[0]["picture"]), tail)
         joined = work / "joined.mp4"
         join(clips, joined)
-        track = music_track() if music else None
+        track = music_track(title) if music else None
         mixed = work / "mixed.mp4"
         if track:
             add_music(joined, track, mixed)
@@ -548,13 +549,19 @@ def hear(video, folder, scenes=None):
         wav.unlink(missing_ok=True)
 
 
-def music_track():
-    """Фоновая музыка: первый файл из «Музыка/Chloe» (кладёт пользователь). Нет папки — ролик без музыки."""
+MUSIC_FOLDER = "Фон"     # подпапка «Музыка/Chloe»: в самой «Музыка/Chloe» лежат озвучки и аудиокниги Хлои, не музыка
+
+
+def music_track(seed=None):
+    """Фоновая музыка из «Музыка/Chloe/Фон» (кладёт пользователь, например треки из Фонотеки YouTube).
+    Нет папки или пусто — ролик без музыки. seed (название ролика) выбирает трек: у разных роликов — разная музыка."""
     from .config import user_dir
 
-    folder = user_dir("MUSIC", "Music") / "Chloe"
+    folder = user_dir("MUSIC", "Music") / "Chloe" / MUSIC_FOLDER
     files = sorted(p for p in folder.glob("*") if p.suffix.lower() in (".mp3", ".m4a", ".ogg", ".wav", ".flac")) if folder.exists() else []
-    return files[0] if files else None
+    if not files:
+        return None
+    return files[sum(map(ord, seed)) % len(files)] if seed else files[0]
 
 
 def add_music(video, track, out):
