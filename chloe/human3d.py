@@ -6,8 +6,9 @@
   • MPFB — дополнение MakeHuman для Blender (GPL), и ассеты MakeHuman (CC0: тело, одежда, обувь).
 Сценарий для Blender — chloe/data/blender/human3d.py; Blender запускается отдельным процессом без окна.
 
-Скорость: на встроенной видеокарте Intel ~4–5 с на кадр 960×540 (10 секунд движения — около 20 минут);
-с работающей видеокартой NVIDIA — в разы быстрее.
+Скорость (960×540, человек в одежде с физикой ткани): видеокарта NVIDIA (ноутбук в режиме on-demand — Blender
+сам отправляется на неё) — ~1,2 с на кадр, 10 секунд движения — около 5 минут; встроенная Intel — ~2,5 с на кадр.
+Сцена не собирается заново каждый кадр, кадры подряд рендерятся одним заходом.
 """
 import glob
 import json
@@ -23,7 +24,8 @@ VIEWS = ("34", "filmed", "side", "front")
 PROPS = ("rifle", "pistol")
 OUTFITS = ("male_casualsuit01", "male_casualsuit02", "male_casualsuit03", "male_casualsuit04", "male_casualsuit05",
            "male_casualsuit06", "male_worksuit01", "male_elegantsuit01")
-SECONDS_PER_FRAME = 4.5                 # встроенная Intel UHD 630, 960×540, EEVEE (для оценки времени)
+SECONDS_PER_FRAME = {"nvidia": 1.2, "intel": 2.6}   # 960×540, EEVEE, человек в одежде с тканью (замерено)
+SETUP_SECONDS = 25                                      # запуск Blender, тело, одежда, расчёт ткани
 
 
 class Human3DError(Exception):
@@ -60,6 +62,31 @@ def why_not():
     return ""
 
 
+NVIDIA_ENV = {"__NV_PRIME_RENDER_OFFLOAD": "1", "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+              "__EGL_VENDOR_LIBRARY_FILENAMES": "/usr/share/glvnd/egl_vendor.d/10_nvidia.json"}
+
+
+def nvidia_ready():
+    """Работает ли видеокарта NVIDIA (драйвер загружен) — тогда Blender рисует на ней (ноутбук в режиме on-demand)."""
+    if os.environ.get("CHLOE_BLENDER_GPU") == "intel":
+        return False
+    smi = shutil.which("nvidia-smi")
+    if not smi or not os.path.exists(NVIDIA_ENV["__EGL_VENDOR_LIBRARY_FILENAMES"]):
+        return False
+    try:
+        return subprocess.run([smi, "-L"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def gpu_env():
+    """Окружение для Blender: на ноутбуке с двумя видеокартами — рендер на NVIDIA (PRIME offload), иначе как есть."""
+    env = dict(os.environ)
+    if nvidia_ready():
+        env.update(NVIDIA_ENV)
+    return env
+
+
 def norm_props(props):
     """Предметы по времени: [{"at": 0..1, "prop": "rifle"|"pistol"|None}] — лишнее отбрасывается."""
     out = []
@@ -77,9 +104,10 @@ def norm_props(props):
     return sorted(out, key=lambda p: p["at"])
 
 
-def estimate(frames):
-    """Сколько минут займёт рендер (по скорости встроенной видеокарты)."""
-    return max(1, round(frames * SECONDS_PER_FRAME / 60))
+def estimate(frames, gpu=None):
+    """Сколько минут займёт рендер: по скорости видеокарты, на которой будет рисовать Blender."""
+    gpu = gpu or ("nvidia" if nvidia_ready() else "intel")
+    return max(1, round((SETUP_SECONDS + frames * SECONDS_PER_FRAME[gpu]) / 60))
 
 
 def command(move_json, out_dir, view="34", size=(960, 540), outfit="male_casualsuit04", shoes="shoes01", props=(),
@@ -114,7 +142,7 @@ def render(move_name, out, view="34", size=(960, 540), outfit="male_casualsuit04
         frames_dir = tmp / "frames"
         frames_dir.mkdir()
         cmd = command(mj, frames_dir, view, size, outfit, "shoes01", props, cloth, frames)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=gpu_env())
         t0, tail = time.time(), []
         for line in proc.stdout:
             tail = (tail + [line.rstrip()])[-20:]

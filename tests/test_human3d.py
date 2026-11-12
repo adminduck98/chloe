@@ -51,7 +51,18 @@ class Command(unittest.TestCase):
         self.assertTrue(H3.SCRIPT.exists())
 
     def test_estimate(self):
-        self.assertEqual(H3.estimate(237), 18)
+        self.assertEqual(H3.estimate(237, "nvidia"), 5)
+        self.assertEqual(H3.estimate(237, "intel"), 11)
+
+    def test_blender_goes_to_nvidia_when_it_works(self):
+        with mock.patch.object(H3, "nvidia_ready", return_value=True):
+            env = H3.gpu_env()
+        self.assertEqual(env["__NV_PRIME_RENDER_OFFLOAD"], "1")
+        with mock.patch.object(H3, "nvidia_ready", return_value=False), mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("__NV_PRIME_RENDER_OFFLOAD", None)
+            self.assertNotIn("__NV_PRIME_RENDER_OFFLOAD", H3.gpu_env())
+        with mock.patch.dict(os.environ, {"CHLOE_BLENDER_GPU": "intel"}):
+            self.assertFalse(H3.nvidia_ready())                            # можно заставить рисовать на Intel
 
 
 REAL_POPEN = H3.subprocess.Popen

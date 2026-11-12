@@ -319,9 +319,22 @@ if PHYS and suit:
     print("ТКАНЬ посчитана за %.0f с" % (time.time() - t0), flush=True)
 
 frames = list(range(1, n + 1)) if frames_arg == "all" else frames_arg_list
-for i, f in enumerate(frames, 1):
-    sc.frame_set(f)
-    sc.render.filepath = f"{out_dir}/f{f:04d}.png"
-    bpy.ops.render.render(write_still=True)
-    print("КАДР", i, len(frames), flush=True)
+sc.render.use_persistent_data = True                                # сцена не собирается заново каждый кадр
+if frames == list(range(frames[0], frames[-1] + 1)):                 # подряд — одним заходом, как анимация
+    done = {"n": 0}
+
+    def _post(scene, *_):
+        done["n"] += 1
+        print("КАДР", done["n"], len(frames), flush=True)
+    bpy.app.handlers.render_write.append(_post)
+    sc.frame_start, sc.frame_end = frames[0], frames[-1]
+    sc.render.filepath = f"{out_dir}/f####"
+    sc.render.image_settings.file_format = "PNG"
+    bpy.ops.render.render(animation=True)
+else:
+    for i, f in enumerate(frames, 1):
+        sc.frame_set(f)
+        sc.render.filepath = f"{out_dir}/f{f:04d}.png"
+        bpy.ops.render.render(write_still=True)
+        print("КАДР", i, len(frames), flush=True)
 print("ГОТОВО", len(frames), flush=True)
