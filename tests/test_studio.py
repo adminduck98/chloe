@@ -33,7 +33,7 @@ class Script(unittest.TestCase):
         self.assertEqual(len(out), studio.MAX_SCENES)
 
     def test_estimate(self):
-        self.assertAlmostEqual(studio.estimate(SCENES, "slides"), 0.5)
+        self.assertAlmostEqual(studio.estimate(SCENES, "slides"), 0.75)          # две сцены и лист героя
         self.assertGreater(studio.estimate(SCENES, "live"), 5)   # живое видео в разы дороже
 
     def test_no_scenes(self):

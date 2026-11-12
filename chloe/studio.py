@@ -81,7 +81,7 @@ def clean_scenes(scenes):
         narration = str(s.get("narration") or s.get("text") or "").strip()
         if picture:
             sc = {"picture": picture, "narration": narration}
-            for k in ("video", "stage", "place", "beat", "shot"):   # раскадровка: движение, этап сюжета, место, тип сцены, план
+            for k in ("video", "stage", "place", "beat", "shot", "camera_move", "angle", "time_effect"):   # раскадровка и камера
                 if s.get(k):
                     sc[k] = str(s[k]).strip()
             if isinstance(s.get("anim"), dict):               # мультфильм: кто что делает и когда (chloe/animator.py)
@@ -101,9 +101,9 @@ def estimate(scenes, mode, look=None):
     if mode == "anim":
         return len({sc.get("place") for sc in scenes if sc.get("place")}) * SLIDE_COST if look in BG_LOOKS else 0.0
     if mode != "live":
-        return n * SLIDE_COST
+        return (n + 1) * SLIDE_COST                                       # +1 — лист героя (по нему рисуются все кадры)
     secs = sum(max(MIN_SCENE, min(15, len(s["narration"]) / 14 + TAIL)) for s in scenes)   # ~14 знаков в секунду
-    return n * SLIDE_COST + secs * LIVE_COST
+    return (n + 1) * SLIDE_COST + secs * LIVE_COST
 
 
 def narrate(text, path):
@@ -351,7 +351,8 @@ def background(place, look, ratio, work):
     return path
 
 
-def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: None, captions=True, sfx=True, look=None, hold=0.0):
+def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: None, captions=True, sfx=True, look=None, hold=0.0,
+               hero=None):
     """Одна сцена целиком: картинка, голос, субтитры, клип. Всё лежит в папке проекта: прерванный ролик
     продолжается с того же места, готовое не делается и не оплачивается второй раз."""
     work = pathlib.Path(work)
@@ -362,7 +363,10 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
     image = work / "image{:02d}.png".format(i)
     if mode != "anim" and not image.exists():
         prompt = scene["picture"] + (". " + style if style else "")
-        made = qm.image(prompt, ratio)[0]
+        if hero:                                    # по листу героя: тот же герой в новой сцене
+            made = qm.image(HERO_SCENE.format(prompt), ratio, source=str(hero))[0]
+        else:
+            made = qm.image(prompt, ratio)[0]
         shutil.copyfile(made, image)
     voice_file = work / "voice{:02d}.mp3".format(i)
     words_file = work / "words{:02d}.json".format(i)
@@ -389,10 +393,14 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
         animator.anim_clip(spec, look or "classic_light", voice_file, secs, size, part, ass, whoosh_file, lead, bg,
                            words)
     elif mode == "live":
-        task = qm.video_start(scene.get("video") or scene["picture"], str(image), seconds=min(15, int(secs + 0.99)), resolution="720P")
+        from . import motion_words as MW
+
+        gen = min(15, int(secs + 0.99))
+        task = qm.video_start(MW.video_prompt(scene, gen), str(image), seconds=gen, resolution="720P")
         raw = qm.video_wait(task, "сцена-{}".format(i + 1))
         try:
-            live_clip(raw, voice_file, secs, size, part, ass, whoosh_file, lead)
+            track = motion_sounds(raw, scene, secs, work / "clip{:02d}.sfx.wav".format(i), transition=bool(whoosh_file))
+            live_clip(raw, voice_file, secs, size, part, ass, track or whoosh_file, lead)
         finally:
             pathlib.Path(raw).unlink(missing_ok=True)       # сырой клип сцены в «Видео/Chloe» не нужен
     else:
@@ -444,11 +452,12 @@ def make_film(title, scenes, style="", ratio="16:9", mode="slides", progress=lam
     with tempfile.TemporaryDirectory(prefix="chloe-film-") as tmp:
         work = pathlib.Path(project) if project else pathlib.Path(tmp)
         work.mkdir(parents=True, exist_ok=True)
+        hero = hero_sheet(work, scenes, style, ratio, look) if mode in ("live", "slides") and project else None
         cuts = transition_plan(scenes) if sfx else set()
         hold = ending_hold(scenes) if count == len(scenes) else 0.0
         with ThreadPoolExecutor(max_workers=workers) as pool:
             jobs = [pool.submit(make_scene, i, s, style, ratio, mode, size, work, progress, captions, i in cuts, look,
-                                hold if i == len(scenes) - 1 else 0.0)
+                                hold if i == len(scenes) - 1 else 0.0, hero)
                     for i, s in enumerate(scenes[:count])]
             try:
                 clips = [j.result() for j in jobs]
@@ -495,6 +504,97 @@ def prepare(work, video, mode, look, ratio):
         return folder
     except Exception as e:                       # noqa: BLE001 — публикация не должна ронять готовый ролик
         log.info("пакет к публикации не собрался: %s", e)
+        return None
+
+
+HERO_SHEET = ("Character reference sheet: the main character alone, full body, front view, neutral standing pose, "
+              "arms relaxed, simple plain background in the style's colors, nothing else in the frame")
+HERO_SCENE = ("Draw a NEW scene: {} Use the character from the reference image exactly — same face, body, proportions, "
+              "colors and clothes — in a new pose, a new place and a new composition. Do not copy the reference background.")
+
+
+def hero_sheet(work, scenes, style, ratio, look=None):
+    """Лист героя (один раз на ролик, ~0,25 % пакета): по нему Qwen рисует все кадры — герой один и тот же.
+    Не получилось — кадры рисуются как раньше (по словесному паспорту)."""
+    from . import stickman_styles as ST
+
+    path = pathlib.Path(work) / "hero.png"
+    if path.exists():
+        return path
+    prompt = ST.frame(HERO_SHEET, look) if look in ST.STYLES else HERO_SHEET + ". " + (style or scenes[0]["picture"])
+    try:
+        shutil.copyfile(qm.image(prompt, ratio)[0], path)
+        return path
+    except qm.MediaError as e:
+        log.info("лист героя не вышел: %s", e)
+        return None
+
+
+IMPACT_WORDS = ("hit", "punch", "kick", "strike", "smash", "crash", "slam", "knock", "bump", "удар", "бьёт", "пина")
+LAND_WORDS = ("fall", "land", "drop", "jump", "trip", "tumble", "пада", "прыг", "призем")
+
+
+def video_motion(path, fps=25):
+    """Сколько меняется картинка от кадра к кадру (0..1) — «пульс движения» клипа, по крошечным серым кадрам."""
+    import numpy as np
+
+    w, h = 64, 36
+    r = subprocess.run([ffmpeg(), "-v", "error", "-i", str(path), "-vf", "fps={},scale={}:{},format=gray".format(fps, w, h),
+                        "-f", "rawvideo", "-"], capture_output=True, timeout=120)
+    data = np.frombuffer(r.stdout, dtype=np.uint8)
+    n = len(data) // (w * h)
+    if n < 3:
+        return np.zeros(0)
+    frames = data[:n * w * h].reshape(n, h, w).astype(np.float32) / 255
+    return np.concatenate([[0.0], np.mean(np.abs(np.diff(frames, axis=0)), axis=(1, 2))])
+
+
+def motion_events(energy, scene, fps=25, most=4):
+    """Резкие всплески движения в клипе → звуки: по словам сценария вокруг этого момента — удар, падение или свист.
+    Склейку (вся картинка сменилась) не озвучиваем."""
+    import numpy as np
+
+    from . import motion_words as MW
+
+    if len(energy) < 5:
+        return []
+    med = float(np.median(energy))
+    mad = float(np.median(np.abs(energy - med))) + 1e-4
+    text = MW.fit_timeline(scene.get("video") or "", len(energy) / fps).lower()
+    spans = [(float(a), float(b), seg) for a, b, seg in re.findall(r"\[(\d+(?:\.\d+)?)–(\d+(?:\.\d+)?)s\]([^\[]*)", text)]
+    out, last = [], -9.0
+    order = np.argsort(-energy)
+    for i in order:
+        e = float(energy[i])
+        if e < med + 4 * mad or len(out) >= most:
+            break
+        t = i / fps
+        if abs(t - last) < 0.4 or any(abs(t - o["t"]) < 0.4 for o in out):
+            continue
+        if e > 0.25:                                                     # сменилась вся картинка — это склейка, не удар
+            continue
+        if not (i == 0 or energy[i - 1] <= e) or not (i + 1 >= len(energy) or energy[i + 1] <= e):
+            continue
+        seg = next((sg for a, b, sg in spans if a - 0.3 <= t <= b + 0.3), text)
+        kind = "punch" if any(w in seg for w in IMPACT_WORDS) else "thud" if any(w in seg for w in LAND_WORDS) else "whoosh"
+        out.append({"t": round(t, 3), "kind": kind, "pan": 0.0, **({"args": {"dur": 0.35}, "gain_db": -3} if kind == "whoosh" else {})})
+    return sorted(out, key=lambda e: e["t"])
+
+
+def motion_sounds(raw, scene, secs, path, transition=False):
+    """Дорожка звуков для живого клипа Qwen: где в нём резкое движение — там звук (Хлоя «смотрит» клип), фон комнаты,
+    «вжух» перехода. Ошибка — без этих звуков (вернёт None)."""
+    from . import sfx as S
+
+    try:
+        events = motion_events(video_motion(raw), scene)
+        if transition:
+            events.append({"t": 0.33, "kind": "whoosh", "pan": 0.0, "gain_db": 7, "args": {"dur": 0.55}})
+        track, _placed = S.render([e for e in events if e["t"] < secs], secs)
+        S.save_wav(path, track)
+        return str(path)
+    except (OSError, ValueError, subprocess.SubprocessError, StudioError) as e:
+        log.info("звуки по движению не вышли: %s", e)
         return None
 
 
