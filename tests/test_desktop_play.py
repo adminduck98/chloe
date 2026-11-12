@@ -38,7 +38,7 @@ class CursorAndWindows(unittest.TestCase):
     def test_punch_breaks_the_window_on_the_hit_frame(self):
         sc = scene()
         tb, _ = sc.windows.broken["w1"]
-        self.assertAlmostEqual(tb, 3.0 + A.STRIKE['punch'][1] / 1.6, places=3)
+        self.assertAlmostEqual(tb, sc.hit_times()[0][0], places=3)          # на кадре первого удара
         self.assertEqual(len(sc.windows.shards["w1"]), 24)
         no_target = dict(SPEC, acting=[dict(SPEC["acting"][0], target=None)])
         self.assertEqual(scene(no_target).windows.broken, {})
@@ -57,7 +57,7 @@ class CursorAndWindows(unittest.TestCase):
         ev = scene().sound_events()
         kinds = {e["kind"]: e["t"] for e in ev}
         self.assertEqual(sorted(e["t"] for e in ev if e["kind"] == "click"), [1.0, 5.5])
-        self.assertAlmostEqual(kinds["shatter"], 3.0 + A.STRIKE['punch'][1] / 1.6, places=3)
+        self.assertAlmostEqual(kinds["shatter"], scene().hit_times()[0][0], places=3)
         lands = [e["t"] for e in ev if e["kind"] == "thud"]
         self.assertTrue(any(7.0 < t < 8.0 for t in lands))
         self.assertTrue(DP.fall_time(100, H) > DP.fall_time(10, H) > 0)

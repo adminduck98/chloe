@@ -485,3 +485,9 @@ Chloe понимает навыки Claude (Agent Skills) — с любой мо
   Если Светлана не отвечает, Chloe говорит офлайн-голосом Piper, а без него — системным (pyttsx3).
 - Linux: мышь и скриншоты работают в X11; в Wayland часто нужен вход в сеанс X11.
 - macOS: дайте Терминалу права «Микрофон», «Запись экрана» и «Универсальный доступ».
+
+## Чужие данные и приёмы
+- Живые движения стикменов (`chloe/data/moves.json`) — из Carnegie Mellon University Graphics Lab Motion Capture Database
+  (mocap.cs.cmu.edu), BVH-конверсия B. Hahne (cgspeed.com); бесплатно для любых проектов с указанием источника.
+- Приёмы (код свой): earshot (звуки), cinecode (режиссура), srt-whiteboard-animation (белая доска),
+  motion-prompt (словарь камеры), stickman-video-director (стили) — все MIT.

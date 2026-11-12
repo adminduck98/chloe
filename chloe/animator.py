@@ -82,13 +82,15 @@ POSES = {
 }
 EMOTION_OF = {"hug": "happy", "catch": "surprised", "cheer": "happy", "sad": "sad", "surprised": "surprised", "think": "think", "facepalm": "sad", "angry": "angry",
               "shrug": "neutral", "dance": "happy", "fight": "angry", "punch": "angry", "kick": "angry", "fall": "surprised"}
-ACTIONS = sorted(set(POSES) | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle",
+MOCAP_MOVES = ("jumpkick", "spinkick", "backflip", "sideflip", "cartwheel", "faceplant", "slip", "rugpull")   # из живых записей
+ACTIONS = sorted(set(POSES) | set(MOCAP_MOVES) | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle",
                                 "crawl", "climb", "throw", "fly", "sneak"})
 MOVING = ("walk", "run", "sneak", "crawl", "fly")
 FRONT = ("cheer", "shrug", "surprised", "dance", "wave", "bow")   # эти позы — лицом к зрителю: так живее
 EMOTIONS = ("neutral", "happy", "sad", "angry", "surprised", "think")
 # похожие слова, которыми модель называет движения, — к своим (иначе герой стоял бы столбом)
-SYNONYMS = {"drag": "push", "pull": "push", "lift": "push", "freeze": "surprised", "scared": "surprised", "shock": "surprised",
+SYNONYMS = {"flip": "backflip", "somersault": "backflip", "trip": "slip", "stumble": "slip", "tumble": "faceplant",
+            "handspring": "cartwheel", "flying_kick": "jumpkick", "spin_kick": "spinkick", "drag": "push", "pull": "push", "lift": "push", "freeze": "surprised", "scared": "surprised", "shock": "surprised",
             "gasp": "surprised", "lunge": "punch", "attack": "fight", "hit": "punch", "strike": "punch", "battle": "fight",
             "chase": "run", "flee": "run", "run_away": "run", "rush": "run", "sneak": "walk", "step": "walk", "approach": "walk",
             "stagger": "fall", "collapse": "fall", "die": "fall", "trip": "fall", "gesture": "talk", "explain": "talk", "speak": "talk",
@@ -145,8 +147,22 @@ def pose_of(name):
     return dict(BASE, **POSES.get(name, {}))
 
 
-def action_pose(do, t, dur):
-    """Поза движения do через t секунд от его начала (dur — длительность). Возвращает (поза, смещение x за шаг 0..1)."""
+def action_pose(do, t, dur, speed=None):
+    """Поза движения do через t секунд от его начала (dur — длительность). Возвращает (поза, смещение x за шаг 0..1).
+    Есть живая запись движения (chloe/mocap.py) — поза из неё; speed — нужная скорость шага (долей роста в секунду)."""
+    from . import mocap as MC
+
+    if do in MC.library():
+        r = MC.rate_for(do, dur, speed)
+        got = MC.pose_at(do, t * r, dur)
+        p = dict(BASE)
+        p.update(got[0])
+        hits, lands = MC.hits_in(do, dur), MC.lands_in(do, dur)
+        if any(abs(t - h) < 0.06 for h in hits):
+            p["_hit"], p["_hand"] = 1.0, "foot1" if "kick" in do else "hand1"
+        if any(0 <= t - x < 0.15 for x in lands):
+            p["_land"] = 1.0
+        return p, None
     p = pose_of("stand")
     k = t / max(dur, 0.01)
     if do in POSES:
@@ -863,6 +879,8 @@ class Scene:
 
     def _track(self):
         """Заранее: где каждый герой в каждый момент (походка двигает его к цели и разворачивает)."""
+        from . import mocap as MC
+
         self.path = {}
         for aid, a in self.actors.items():
             x, facing, pts = a["x"], a["facing"], []
@@ -901,7 +919,16 @@ class Scene:
                     if abs(tx - x) > 0.005:
                         facing = 1 if tx > x else -1
                     pts.append((s["t0"], s["t1"], x, tx, facing))
+                    s["_speed"] = abs(tx - x) * self.w / (self.fig * a["scale"]) / max(s["t1"] - s["t0"], 0.05)
                     x = tx
+                elif s["do"] in MC.library() and not MC.library()[s["do"]].get("loop") and s["do"] not in MC.REPEAT:
+                    m = MC.library()[s["do"]]                # сальто, прыжок, падение из записи — тело само сдвигается
+                    r = MC.rate_for(s["do"], s["t1"] - s["t0"])
+                    end = m["fwd"][-1] * self.fig * a["scale"] / self.w
+                    if abs(end) > 0.005:
+                        tx = max(0.05, min(0.95, x + facing * end))
+                        pts.append((s["t0"], s["t0"] + MC.duration(s["do"]) / r, x, tx, facing, "mocap", s["do"], r))
+                        x = tx
                 elif s.get("face") in ("left", "right"):
                     facing = 1 if s["face"] == "right" else -1
                     pts.append((s["t0"], s["t0"], x, x, facing))
@@ -909,10 +936,15 @@ class Scene:
 
     def hit_times(self):
         """Моменты ударов (кулак, нога) — [(время, кто, сегмент)]: на них звук, вспышка, разбитое окно."""
+        from . import mocap as MC
+
         out = []
         for aid, segs in self.segs.items():
             for s in segs:
-                if s["do"] in ("punch", "fight", "kick"):
+                if s["do"] in MC.library() and MC.library()[s["do"]]["hits"]:   # живая запись — её моменты ударов
+                    for h in MC.hits_in(s["do"], s["t1"] - s["t0"]):
+                        out.append((s["t0"] + h, aid, s))
+                elif s["do"] in ("punch", "fight", "kick"):
                     rate, peak = STRIKE[s["do"]]
                     n = 0
                     while s["t0"] + (n + peak) / rate < s["t1"]:
@@ -1014,20 +1046,39 @@ class Scene:
                 x = b
             else:
                 k = (t - t0) / max(t1 - t0, 0.01)
-                x = a + (b - a) * (1 - (1 - k) ** 2.2 if kind else k)    # отлёт: быстро в начале, юзом до остановки
+                if kind and kind[0] == "mocap":                         # сдвиг тела — как в живой записи
+                    from . import mocap as MC
+
+                    m = MC.library()[kind[1]]
+                    i = min(len(m["fwd"]) - 1, (t - t0) * kind[2] * m["fps"])
+                    lo = int(i)
+                    hi = min(lo + 1, len(m["fwd"]) - 1)
+                    cur = m["fwd"][lo] + (m["fwd"][hi] - m["fwd"][lo]) * (i - lo)
+                    k = cur / m["fwd"][-1] if m["fwd"][-1] else k
+                    x = a + (b - a) * k
+                else:
+                    x = a + (b - a) * (1 - (1 - k) ** 2.2 if kind else k)    # отлёт: быстро в начале, юзом до остановки
         return x, facing
 
     def _reach(self):
         """Удар по герою издалека: нападающий сам подшагивает на длину удара в начале движения. True — что-то поменялось."""
+        from . import mocap as MC
+
         changed = False
         for aid, segs in self.segs.items():
             for s in segs:
                 victim = s.get("target")
-                if s["do"] not in STRIKE or victim not in self.actors or victim == aid or s.get("x") is not None or s.get("_reach"):
+                lib = MC.library().get(s["do"])
+                kicks_far = bool(lib and lib["hits"] and not lib.get("loop") and s["do"] not in MC.REPEAT)
+                if (s["do"] not in STRIKE and not kicks_far) or victim not in self.actors or victim == aid or \
+                        s.get("x") is not None or s.get("_reach"):
                     continue
                 ax, _ = self.where(aid, s["t0"])
                 vx, _ = self.where(victim, s["t0"])
-                reach = REACH * self.h / self.w * (1.25 if s["do"] == "kick" else 1.0)
+                reach = REACH * self.h / self.w * (1.25 if "kick" in s["do"] else 1.0)
+                if kicks_far:                                              # тело само летит вперёд к удару — учесть
+                    r = MC.rate_for(s["do"], s["t1"] - s["t0"])
+                    reach += MC.fwd_at(s["do"], lib["hits"][0]) * self.fig * self.actors[aid]["scale"] / self.w
                 d = 1 if vx >= ax else -1
                 tx = vx - d * reach
                 if abs(tx - ax) > 0.015:
@@ -1092,7 +1143,7 @@ class Scene:
             if not seg:
                 p, _ = action_pose("stand", tt, 1.0)
                 return p
-            p, _ = action_pose(seg["do"], tt - seg["t0"], seg["t1"] - seg["t0"])
+            p, _ = action_pose(seg["do"], tt - seg["t0"], seg["t1"] - seg["t0"], seg.get("_speed"))
             return p
 
         self._front = a["front"]
@@ -1125,7 +1176,9 @@ class Scene:
 
     def sound_events(self):
         """Где в сцене звучать: шаги, удары, падения, прыжки, броски, значки — с точным временем пика и панорамой по x.
-        Время берётся из тех же формул, что движут скелет: удар звучит на кадре, где рука дальше всего."""
+        Время берётся из тех же формул (или живых записей), что движут скелет: удар звучит на кадре, где рука дальше всего."""
+        from . import mocap as MC
+
         ev = []
 
         def add(t, kind, aid, **kw):
@@ -1138,6 +1191,8 @@ class Scene:
                 d = t1 - t0
                 if do in ("walk", "run", "sneak") and s.get("x") is not None:
                     rate = {"walk": 2.4, "run": 3.6, "sneak": 1.6}[do]
+                    if do in MC.library():                              # живая запись: два шага за цикл
+                        rate = MC.rate_for(do, d, s.get("_speed")) / MC.duration(do)
                     n = 1
                     while t0 + n / (2 * rate) < t1:
                         add(t0 + n / (2 * rate), "step", aid, gain_db={"run": 3, "sneak": -8}.get(do, 0), args={"weight": 1.3 if do == "run" else 1})
@@ -1150,20 +1205,27 @@ class Scene:
                     while t0 + n / (2 * rate) < t1:
                         add(t0 + n / (2 * rate), "flutter" if do == "crawl" else "tap", aid, args={} if do == "crawl" else {"pitch": 420})
                         n += 1
-                elif do in ("punch", "fight", "kick"):
-                    rate, peak = STRIKE[do]
-                    n = 0
-                    while t0 + (n + peak) / rate < t1:
-                        t = t0 + (n + peak) / rate
-                        add(t - 0.05, "swish", aid, gain_db=-4 if do == "kick" else -6)
-                        add(t, "punch", aid, args={"size": {"fight": 0.9, "punch": 1.0, "kick": 1.2}[do]})
-                        n += 1
+                elif do in ("punch", "fight", "kick", "jumpkick", "spinkick"):
+                    for t, _a, sg in self.hit_times():
+                        if sg is s:
+                            add(t - 0.05, "swish", aid, gain_db=-4 if "kick" in do else -6)
+                            add(t, "punch", aid, args={"size": {"fight": 0.9, "punch": 1.0}.get(do, 1.2)})
+                    if do in ("jumpkick", "spinkick"):
+                        add(t0 + 0.2, "whoosh", aid, args={"dur": 0.4}, gain_db=-3)
+                        for x in MC.lands_in(do, d):
+                            add(t0 + x, "thud", aid, gain_db=-6, args={"size": 0.7})
+                elif do in MC.library() and do not in ("walk", "run", "jump"):   # акробатика и падения из записей
+                    add(t0 + min(0.4, d * 0.2), "whoosh", aid, args={"dur": 0.45}, gain_db=-2)
+                    for x in MC.lands_in(do, d):
+                        add(t0 + x, "thud", aid, gain_db=-3 if do in ("faceplant", "slip", "rugpull") else -6)
                 elif do == "fall":
                     add(t0 + d * 0.35, "whoosh", aid, args={"dur": min(0.5, d * 0.6), "heavy": True})
                     add(t0 + d * 0.625, "thud", aid)
                 elif do == "jump":
-                    add(t0 + d * 0.3, "whoosh", aid, gain_db=-3, args={"dur": min(0.4, d * 0.5)})
-                    add(t0 + d * 0.97, "thud", aid, gain_db=-7, args={"size": 0.7})
+                    lands = MC.lands_in("jump", d) if "jump" in MC.library() else [d * 0.97]
+                    add(t0 + (lands[0] * 0.55 if lands else d * 0.3), "whoosh", aid, gain_db=-3, args={"dur": min(0.4, d * 0.5)})
+                    for x in lands[:1]:
+                        add(t0 + x, "thud", aid, gain_db=-7, args={"size": 0.7})
                 elif do == "fly":
                     add(t0 + min(0.35, d * 0.4), "whoosh", aid, args={"dur": 0.7, "heavy": True})
                 elif do == "throw":
@@ -1504,6 +1566,10 @@ class Scene:
                 pose = mix(pose, pose_of("crouch"), 0.85 * math.sin(math.pi * min(1.0, land / 0.35)) ** 0.7)
             pose = self._smooth(aid, t, pose)
             pts, r = skeleton(pose, x * w, self.ground, size, facing, front)
+            low = max(py for k_, (px, py) in pts.items() if k_ != "head")
+            low = max(low, pts["head"][1] + r)
+            if low > self.ground + size * 0.01:                            # сальто и падения: никто не уходит под пол
+                pts = {k_: (px, py - (low - self.ground)) for k_, (px, py) in pts.items()}
             if land is not None and land < 0.25 and not measure:
                 draw_dust(c, pts, self.ground, size, land * 2)
             if kn and kn[0] in ("slide",) and not measure and not getattr(self, "_ghost", False):
@@ -1807,6 +1873,8 @@ VOCAB = ("Движения (do) — ТОЛЬКО эти слова: {} — по�
          "иконки (по умолчанию folder, file, music и корзина trash; свои — \"icons\": [{{\"id\", \"kind\": folder|file|music|game|trash, \"x\", \"y\"}}]): "
          "курсор берёт иконку (\"grab\": id) и, отпустив на быстром движении, швыряет — она летит, отскакивает и сбивает героя; "
          "пинок с \"target\": id иконки отправляет её в полёт; отпустить героя над корзиной — провалится и выпрыгнет к своему следующему движению; \"hit\": id героя — курсор с замахом врезается в героя, тот отлетает; удар (punch/kick/fight) с \"target\": id окна разбивает окно. "
-         "Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
+         "Живые движения из записей людей: jumpkick (пинок в прыжке), spinkick (с разворота), backflip (сальто назад), "
+         "sideflip, cartwheel (колесо), faceplant (падение лицом), slip (поскользнулся), rugpull (выдернули ковёр); "
+         "walk, run, jump, punch, kick — тоже живые. Удар по герою: \"target\": id героя — нападающий сам подшагнёт, от каждого удара цель вздрагивает, от последнего "
          "в серии — отлетает дугой, едет по полу и встаёт (~1,5 с, не ставь цели движений на это время).").format(
     ", ".join(ACTIONS), ", ".join(EMOTIONS), ", ".join(HAND_PROPS), ", ".join(EFFECTS), ", ".join(SCENE_PROPS))

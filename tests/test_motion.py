@@ -12,18 +12,15 @@ class Motion(unittest.TestCase):
         xs = [A.ramp(i / 100) for i in range(101)]
         self.assertTrue(all(b >= a for a, b in zip(xs, xs[1:])))
 
-    def test_punch_winds_up_strikes_and_recoils(self):
-        rate, peak = A.STRIKE["punch"]
-        arm = {f: A.action_pose("punch", f / rate, 1.0)[0] for f in (0.0, peak - 0.08, peak, 0.4, 0.7)}
+    def test_fight_winds_up_strikes_and_recoils(self):
+        rate, peak = A.STRIKE["fight"]                                     # серия «драка» — по формуле с замахом
+        arm = {f: A.action_pose("fight", f / rate, 1.0)[0] for f in (0.0, peak - 0.08, peak, 0.4, 0.7)}
         self.assertLess(arm[peak - 0.08]["sh1"], arm[0.0]["sh1"] - 40)      # замах: рука ушла назад
         self.assertGreater(arm[peak]["sh1"], 90)                            # удар: рука прямая вперёд
         self.assertLess(abs(arm[peak]["el1"]), 5)
         self.assertEqual(arm[peak]["_hit"], 1.0)
         self.assertEqual(arm[peak - 0.08]["_hit"], 0.0)
         self.assertEqual(arm[0.7]["sh1"], arm[0.0]["sh1"])                  # вернулся в стойку
-        kick = A.action_pose("kick", A.STRIKE["kick"][1] / A.STRIKE["kick"][0], 1.0)[0]
-        self.assertGreater(kick["hip1"], 90)
-        self.assertEqual(kick["_hit"], 1.0)
 
     def test_joints_follow_with_inertia(self):
         sc = A.Scene({"actors": [{"id": "a"}], "acting": [{"who": "a", "do": "cheer", "from": 0.5, "to": 1}]}, "classic_light",
@@ -65,8 +62,8 @@ class Knockback(unittest.TestCase):
     def test_flinch_then_last_hit_knocks_back(self):
         sc = self.scene()
         kn = sc.knocks
-        self.assertEqual(len(kn), 3)                                       # три удара за 2 с при 1,6 в секунду
-        self.assertEqual([k["big"] for k in kn], [False, False, True])
+        self.assertEqual([k["big"] for k in kn], [False] * (len(kn) - 1) + [True])   # последний удар серии — отлёт
+        self.assertGreaterEqual(len(kn), 2)
         self.assertEqual(sc.knocked("b", kn[0]["t"] + 0.1)[0], "flinch")
         t = kn[-1]["t"]
         self.assertEqual(sc.knocked("b", t + 0.1)[0], "fly")

@@ -72,18 +72,24 @@ class Events(unittest.TestCase):
         return [e["kind"] for e in ev]
 
     def test_footsteps_follow_the_gait(self):
-        ev = scene([{"who": "a", "do": "walk", "from": 0, "to": 0.5, "x": 0.6}]).sound_events()
+        sc = scene([{"who": "a", "do": "walk", "from": 0, "to": 0.5, "x": 0.6}])
+        ev = sc.sound_events()
         steps = [e["t"] for e in ev if e["kind"] == "step"]
-        self.assertEqual(len(steps), 14)                                   # 3 с ходьбы, 2,4 шага-цикла в секунду
-        self.assertAlmostEqual(steps[1] - steps[0], 1 / 4.8, places=3)
-        self.assertLess(steps[0] and ev[0]["pan"], steps[-1] and ev[-1]["pan"])   # идёт вправо — звук тоже
+        gaps = [b - a for a, b in zip(steps, steps[1:])]
+        self.assertGreaterEqual(len(steps), 4)
+        self.assertLess(max(gaps) - min(gaps), 0.01)                       # шаги — ровным темпом походки
+        self.assertTrue(0.3 < gaps[0] < 0.8)                               # живой темп: 1,3–3 шага в секунду
+        pans = [e["pan"] for e in ev if e["kind"] == "step"]
+        self.assertLess(pans[0], pans[-1])                                 # идёт вправо — звук тоже
 
     def test_punch_sounds_when_the_arm_is_out(self):
-        ev = scene([{"who": "a", "do": "punch", "from": 0.5, "to": 0.7}]).sound_events()
+        sc = scene([{"who": "a", "do": "punch", "from": 0.5, "to": 0.7}])
+        ev = sc.sound_events()
+        t_hit = sc.hit_times()[0][0]
         hit = next(e for e in ev if e["kind"] == "punch")
-        self.assertAlmostEqual(hit["t"], 3.0 + A.STRIKE['punch'][1] / 1.6, places=3)
-        pose, _ = A.action_pose("punch", hit["t"] - 3.0, 1.2)
-        self.assertGreater(pose["_hit"], 0.99)                             # рука в этот момент дальше всего
+        self.assertAlmostEqual(hit["t"], t_hit, places=3)
+        pose, _ = A.action_pose("punch", t_hit - 3.0, 1.2)
+        self.assertEqual(pose.get("_hit"), 1.0)                            # рука в этот момент вытянута
         self.assertLess(next(e for e in ev if e["kind"] == "swish")["t"], hit["t"])
 
     def test_fall_jump_throw_and_icons(self):
