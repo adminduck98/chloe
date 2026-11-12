@@ -262,7 +262,7 @@ SELECTION = {
 BLOCK = ("guard",)             # в стойке защиты удар не отбрасывает: блок
 FACE_FORWARD = ()               # низкие движения головой вперёд (подкат — ногами вперёд, его не трогаем); ползание из
                                 # записи 133_01 убрано — в ней суставы переворачиваются, ползание остаётся по формулам
-DODGE = ("duck", "slide", "roll", "diveroll", "crawl", "backflip", "sideflip", "cartwheel", "jump")   # в этих движениях удар проходит мимо
+DODGE = ("duck", "slide", "roll", "diveroll", "crawl", "backflip", "sideflip", "cartwheel", "jump", "leap")   # в этих движениях удар проходит мимо
 
 
 def despike(pos, fps, win=0.08):

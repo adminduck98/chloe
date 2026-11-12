@@ -121,7 +121,7 @@ def layouts(words):
     if len(words) >= 2:
         cut = math.ceil(len(words) / 2)
         out.append([" ".join(words[:cut]), " ".join(words[cut:])])
-    if 2 < len(words) <= 3:
+    if 2 < len(words) <= 3 and all(len(wd) > 2 for wd in words):       # предлог одной строкой — некрасиво
         out.append(list(words))
     return out
 

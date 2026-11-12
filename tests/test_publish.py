@@ -32,7 +32,8 @@ class Cover(unittest.TestCase):
 
     def test_layout_picks_biggest_letters(self):
         self.assertEqual(publish.wrap("«Курсор» против человечка и ещё слова"), ["КУРСОР", "ПРОТИВ", "ЧЕЛОВЕЧКА", "И"])
-        self.assertEqual(publish.layouts(["А", "Б", "В"])[-1], ["А", "Б", "В"])
+        self.assertEqual(publish.layouts(["АБВ", "ГДЕ", "ЖЗИ"])[-1], ["АБВ", "ГДЕ", "ЖЗИ"])
+        self.assertNotIn(["ЗАТЯНУЛО", "В", "ИГРУ"], publish.layouts(["ЗАТЯНУЛО", "В", "ИГРУ"]))   # предлог не один
         _im, short = publish.draw_cover(frame(), "Бах", subject=(0.3, 0.5))
         _im, long = publish.draw_cover(frame(), "Очень длинная надпись тут", subject=(0.3, 0.5))
         self.assertGreater(short, long)

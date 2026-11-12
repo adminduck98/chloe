@@ -89,7 +89,7 @@ EMOTION_OF = {"hug": "happy", "catch": "surprised", "cheer": "happy", "sad": "sa
               "shrug": "neutral", "dance": "happy", "fight": "angry", "punch": "angry", "kick": "angry", "fall": "surprised"}
 MOCAP_MOVES = ("jumpkick", "spinkick", "backflip", "sideflip", "cartwheel", "faceplant", "slip", "rugpull",
                "duck", "slide", "roll", "breakdance", "kazachok", "moonwalk", "ballet", "guard", "diveroll")   # из живых записей
-ACTIONS = sorted(set(POSES) | set(MOCAP_MOVES) | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle",
+ACTIONS = sorted(set(POSES) | set(MOCAP_MOVES) | {"vanish", "drop_in", "leap"} | {"walk", "run", "jump", "wave", "talk", "dance", "fight", "punch", "kick", "fall", "idle",
                                 "crawl", "climb", "throw", "fly", "sneak"})
 MOVING = ("walk", "run", "sneak", "crawl", "fly")
 FRONT = ("cheer", "shrug", "surprised", "dance", "wave", "bow")   # эти позы — лицом к зрителю: так живее
@@ -160,7 +160,7 @@ def action_pose(do, t, dur, speed=None):
     Есть живая запись движения (chloe/mocap.py) — поза из неё; speed — нужная скорость шага (долей роста в секунду)."""
     from . import mocap as MC
 
-    if do in MC.library():
+    if do in MC.library() and do != "leap":
         r = MC.rate_for(do, dur, speed)
         got = MC.pose_at(do, t * r, dur)
         p = dict(BASE)
@@ -219,7 +219,7 @@ def action_pose(do, t, dur, speed=None):
             p.update(sh1=-130 + 230 * q, el1=90 - 85 * q, torso=-12 + 32 * q, hip1=20, hip2=-24, kn1=-10, head=6 * q)
         p["_release"] = 1.0 if 0.42 <= k else 0.0
         return p, None
-    if do == "jump":
+    if do in ("jump", "leap"):                                          # leap — высокий «игровой» прыжок (в воздухе весь отрезок)
         h = math.sin(math.pi * k)
         crouch = max(0.0, 1 - k / 0.18) if k < 0.18 else (max(0.0, (k - 0.85) / 0.15))
         p["_land"] = 1.0 if k > 0.88 else 0.0
@@ -838,6 +838,10 @@ class Scene:
             from . import choreo
 
             spec = dict(spec, acting=list(spec.get("acting") or []) + choreo.expand(spec["fight"], list(self.actors), self.secs))
+        self.game = dict((spec or {}).get("game") or {})                  # игровой мир (chloe/game_world.py)
+        if self.game:
+            self.look["camera"] = None                                     # в игре камера стоит: уровень едет сам
+            self.look["hitstop"] = False
         self.segs = {k: [] for k in self.actors}
         for s in (spec or {}).get("acting") or []:
             who = s.get("who") if s.get("who") in self.actors else next(iter(self.actors))
@@ -1181,7 +1185,15 @@ class Scene:
 
     def is_hidden(self, aid, t):
         tr = getattr(self, "trashed", {}).get(aid)
-        return bool(tr and tr[0] + TRASH_IN <= t and (tr[1] is None or t < tr[1]))
+        if tr and tr[0] + TRASH_IN <= t and (tr[1] is None or t < tr[1]):
+            return True
+        segs = self.segs.get(aid, [])                                     # исчез (в кнопке, портале) — до появления
+        gone = [s_ for s_ in segs if s_["do"] == "vanish" and s_["t1"] <= t]
+        if gone:
+            back = [s_ for s_ in segs if s_["t0"] >= gone[-1]["t1"] and s_["t0"] <= t]
+            return not back
+        first = [s_ for s_ in segs if s_["do"] == "drop_in"]
+        return bool(first and t < first[0]["t0"])                        # ещё не упал в мир
 
     def _drop_head(self, aid, b):
         """Откуда падает герой, когда курсор его отпустил (точка «головы» для расчёта падения): держал за голову — голова
@@ -1425,8 +1437,8 @@ class Scene:
                 elif do == "fall":
                     add(t0 + d * 0.35, "whoosh", aid, args={"dur": min(0.5, d * 0.6), "heavy": True})
                     add(t0 + d * 0.625, "thud", aid)
-                elif do == "jump":
-                    lands = MC.lands_in("jump", d) if "jump" in MC.library() else [d * 0.97]
+                elif do in ("jump", "leap"):
+                    lands = MC.lands_in("jump", d) if do == "jump" and "jump" in MC.library() else [d * 0.97]
                     add(t0 + (lands[0] * 0.55 if lands else d * 0.3), "whoosh", aid, gain_db=-3, args={"dur": min(0.4, d * 0.5)})
                     for x in lands[:1]:
                         add(t0 + x, "thud", aid, gain_db=-7, args={"size": 0.7})
@@ -1464,6 +1476,32 @@ class Scene:
             add(ht, "punch", victim, args={"size": 0.8})
         for tc in self.cursor.clicks_on("start"):
             ev.append({"t": round(tc + 0.08, 4), "kind": "pop", "who": next(iter(self.actors)), "pan": -0.9})
+        if self.game:                                                     # игровой мир: кнопка, вспышки, гравитация, порталы
+            hero = next(iter(self.actors))
+            pl = self.game.get("play") or {}
+            if pl.get("press") is not None:
+                tp = float(pl["press"]) * self.secs
+                ev.append({"t": round(tp, 4), "kind": "click", "who": hero, "pan": 0.3})
+                ev.append({"t": round(tp + 0.05, 4), "kind": "pop", "who": hero, "pan": 0.3})
+            for f in self.game.get("flash") or []:
+                tf = float(f) * self.secs
+                ev.append({"t": round(tf + 0.05, 4), "kind": "whoosh", "who": hero, "pan": 0.0, "args": {"dur": 0.6, "heavy": True},
+                           "gain_db": 2})
+                ev.append({"t": round(tf + 0.1, 4), "kind": "sparkle", "who": hero, "pan": 0.0})
+            for fl in self.game.get("gravity") or []:
+                tf = float(fl.get("t", 0)) * self.secs
+                ev.append({"t": round(tf + 0.05, 4), "kind": "boop", "who": hero, "pan": 0.0})
+                ev.append({"t": round(tf + 0.15, 4), "kind": "whoosh", "who": hero, "pan": 0.0, "args": {"dur": 0.4}})
+            if self.game.get("new_level") is not None:
+                ev.append({"t": round(float(self.game["new_level"]) * self.secs + 0.05, 4), "kind": "ding", "who": hero, "pan": -0.6})
+            for aid, segs in self.segs.items():
+                for sg in segs:
+                    if sg["do"] == "vanish":
+                        add(sg["t0"] + 0.1, "whoosh", aid, args={"dur": max(0.3, sg["t1"] - sg["t0"]), "heavy": True})
+                    elif sg["do"] == "drop_in":
+                        from . import desktop_play as DP
+
+                        add(sg["t0"] + DP.fall_time(self.ground + self.fig * 0.3, self.h), "thud", aid)
         for td in self.cursor.dives():                                    # курсор нырнул в корзину
             ev.append({"t": round(td, 4), "kind": "tap", "who": next(iter(self.actors)), "pan": 0.8, "args": {"pitch": 300}})
             ev.append({"t": round(td + 0.05, 4), "kind": "boop", "who": next(iter(self.actors)), "pan": 0.8})
@@ -1602,6 +1640,106 @@ class Scene:
         cy = max(half_h, min(h - half_h, cy))
         return zoom, cx, cy, shake
 
+    def scroll(self, t):
+        """Насколько уровень уехал к моменту t (доли ширины): прокрутка по отрезкам {"from", "to", "speed"} (ширин в секунду)."""
+        off = 0.0
+        for sc in self.game.get("scroll") or []:
+            a, b = float(sc.get("from", 0)) * self.secs, float(sc.get("to", 1)) * self.secs
+            if t > a:
+                off += float(sc.get("speed", 0.3)) * (min(t, b) - a)
+        return off
+
+    def gravity(self, t):
+        """Гравитация: 1 — обычная, −1 — перевёрнута (герой на потолке); переворот длится 0,35 с."""
+        g = 1.0
+        for fl in sorted(self.game.get("gravity") or [], key=lambda f: f.get("t", 0)):
+            t0 = float(fl.get("t", 0)) * self.secs
+            target = -1.0 if fl.get("up", True) else 1.0
+            if t >= t0 + 0.35:
+                g = target
+            elif t >= t0:
+                g = g + (target - g) * ease((t - t0) / 0.35)
+                break
+        return g
+
+    def _game_bg(self, c, t, cairo):
+        from . import game_world as GW
+
+        w, h = self.w, self.h
+        world = self.game.get("world", "level")
+        if world == "select":
+            pl = self.game.get("play") or {}
+            press = float(pl.get("press", -1)) * self.secs
+            pr = max(0.0, 1 - abs(t - press) / 0.25) if press >= 0 else 0.0
+            glow = 1.0 if any(float(a) * self.secs <= t <= float(b) * self.secs for a, b in pl.get("glow") or []) else 0.0
+            nl = self.game.get("new_level")
+            nlk = max(0.0, (t - float(nl) * self.secs) / 0.6) if nl is not None else 0.0
+            GW.select_screen(c, w, h, t, self.ground, (float(pl.get("x", 0.68)) * w, float(pl.get("y", 0.55)) * h) if pl else None,
+                             glow, pr, nlk)
+        elif world == "black":
+            c.set_source_rgb(0, 0, 0)
+            c.paint()
+        else:
+            off = self.scroll(t) * w
+            GW.level(c, w, h, t, self.ground, off, ceiling=True)
+            size = self.fig * 0.32
+            for x in self.game.get("spikes") or []:
+                X = float(x) * w - off
+                if -size < X < w + size:
+                    GW.draw_spike(c, X, self.ground, size)
+            for x in self.game.get("ceiling_spikes") or []:
+                X = float(x) * w - off
+                if -size < X < w + size:
+                    GW.draw_spike(c, X, h * GW.CEIL, size, up=False)
+            for x in self.game.get("barriers") or []:
+                X = float(x) * w - off
+                if -self.fig < X < w + self.fig:
+                    GW.draw_barrier(c, X, self.ground, self.fig, h)
+            pl = self.game.get("play")
+            if pl:                                                        # кнопка Play прямо в уровне
+                press = float(pl.get("press", -1)) * self.secs
+                pr = max(0.0, 1 - abs(t - press) / 0.25) if press >= 0 else 0.0
+                glow = 1.0 if any(float(a) * self.secs <= t <= float(b) * self.secs for a, b in pl.get("glow") or []) else 0.0
+                GW.draw_play(c, (float(pl.get("x", 0.8)) * w - off, float(pl.get("y", 0.6)) * h), h * 0.13, t, glow, pr)
+            for pt in self.game.get("portals") or []:
+                X = float(pt.get("x") if isinstance(pt, dict) else pt) * w - off
+                top = isinstance(pt, dict) and pt.get("ceiling")
+                if -self.fig < X < w + self.fig:
+                    GW.draw_portal(c, X, h * GW.CEIL if top else self.ground, self.fig * 0.9, t, flip=bool(top))
+
+    def _game_overlay(self, c, t, cairo):
+        from . import game_world as GW
+
+        w, h = self.w, self.h
+        for f in self.game.get("flash") or []:                            # вспышка экрана
+            d = t - float(f) * self.secs
+            if 0 <= d < 0.5:
+                c.save()
+                c.identity_matrix()
+                c.set_source_rgba(1, 1, 1, (1 - d / 0.5) ** 1.5)
+                c.paint()
+                c.restore()
+        for a, b in self.game.get("fade_in") or []:                       # проявление из темноты
+            a, b = float(a) * self.secs, float(b) * self.secs
+            if t < b:
+                c.save()
+                c.identity_matrix()
+                c.set_source_rgba(0, 0, 0, 1.0 if t < a else 1 - (t - a) / max(b - a, 0.01))
+                c.paint()
+                c.restore()
+        for a, b in self.game.get("fade_out") or []:                      # уход в темноту
+            a, b = float(a) * self.secs, float(b) * self.secs
+            if t > a:
+                c.save()
+                c.identity_matrix()
+                c.set_source_rgba(0, 0, 0, min(1.0, (t - a) / max(b - a, 0.01)))
+                c.paint()
+                c.restore()
+        for tt in self.game.get("titles") or []:
+            a, b = float(tt.get("from", 0)) * self.secs, float(tt.get("to", 1)) * self.secs
+            if a <= t <= b:
+                GW.title(c, w, h, str(tt.get("text", "")), min(1.0, (t - a) / 0.6))
+
     def _paint_bg(self, c, t):
         w, h = self.w, self.h
         bg = self.look["bg"]
@@ -1622,7 +1760,11 @@ class Scene:
         c.identity_matrix()
         bg = self.look["bg"]
         follow = self.look.get("camera") == "follow"
-        if not follow:
+        if self.game:
+            import cairo as _cairo
+
+            self._game_bg(c, t, _cairo)
+        elif not follow:
             self._paint_bg(c, t)
         zoom, fx, fy, shake = self.cam(t)
         sx = math.sin(t * 61) * shake
@@ -1688,7 +1830,19 @@ class Scene:
                         [[pts["hip"], pts["kn" + s_], pts["foot" + s_]] for s_ in ("1", "2")]
                 part(aid, lambda cc, aid=aid, tt=tt: self._actor(cc, aid, tt, ink), bones)
             else:
-                self._actor(c, aid, t, ink)
+                g = self.gravity(t) if self.game else 1.0
+                if g != 1.0:                                              # гравитация перевёрнута — герой на потолке
+                    from . import game_world as GW
+
+                    m = (self.ground + self.h * GW.CEIL) / 2
+                    c.save()
+                    c.translate(0, m)
+                    c.scale(1, g if abs(g) > 0.02 else 0.02)
+                    c.translate(0, -m)
+                    self._actor(c, aid, t, ink)
+                    c.restore()
+                else:
+                    self._actor(c, aid, t, ink)
         for f in self.flights:                                           # предмет в полёте: бросок — дугой, передача — из рук в руки
             if f["t0"] <= t <= f["t1"]:
                 k = (t - f["t0"]) / max(f["t1"] - f["t0"], 0.01)
@@ -1709,6 +1863,8 @@ class Scene:
             DP.draw_cursor(c, self.cursor.pos(t), self.h, min(pressed) if pressed else None, self.cursor.holding(t)[0] is not None,
                            self.cursor.mood(t), self.cursor.velocity(t) if not self.cursor.bumped(t)[2] else (0.0, 0.0), t,
                            self.cursor.bumped(t)[2])
+        if self.game:
+            self._game_overlay(c, t, cairo)
         for tip in pens:                                                 # маркер — поверх всего, в координатах экрана
             draw_marker(c, tip, self.h, t)
         if self.look.get("impact"):                                      # искры и обломки на каждом ударе по герою
@@ -1883,6 +2039,35 @@ class Scene:
                            for k_ in pts}
                 emo = "surprised" if kn[0] == "ragdoll" else "angry"
                 front = False
+            gseg = self._seg_at(aid, t) if self.game else None
+            if gseg and gseg["do"] == "vanish":                           # затягивает в точку: крутится и тает
+                k = (t - gseg["t0"]) / max(gseg["t1"] - gseg["t0"], 0.05)
+                into = gseg.get("into") or [0.5, 0.5]
+                tx_, ty_ = float(into[0]) * w, float(into[1]) * self.h
+                hx_, hy_ = pts["hip"]
+                cx_, cy_ = hx_ + (tx_ - hx_) * ease(k), hy_ + (ty_ - hy_) * ease(k)
+                ang, sc_ = k * 4 * math.pi, max(0.02, 1 - ease(k))
+                pts = {k_: (cx_ + ((px - hx_) * math.cos(ang) - (py - hy_) * math.sin(ang)) * sc_,
+                            cy_ + ((px - hx_) * math.sin(ang) + (py - hy_) * math.cos(ang)) * sc_) for k_, (px, py) in pts.items()}
+                r *= sc_
+                emo = "surprised"
+            elif gseg and gseg["do"] == "drop_in":                        # падает сверху в мир
+                from . import desktop_play as DP
+
+                drop = self.ground + size * 0.3
+                ft = DP.fall_time(drop, self.h)
+                d_ = t - gseg["t0"]
+                if d_ < ft:
+                    off = drop - 0.5 * DP.GRAVITY * self.h * d_ * d_
+                    pose_f = dict(pose_of("surprised"), hip1=25 * math.sin(t * 14), hip2=-25 * math.sin(t * 14))
+                    pts, r = skeleton(pose_f, x * w, self.ground, size, facing, False)
+                    pts = {k_: (px, py - off) for k_, (px, py) in pts.items()}
+                    emo = "surprised"
+                elif d_ < ft + 0.45:                                      # неуклюже приземлился
+                    q = math.sin(math.pi * min(1.0, (d_ - ft) / 0.45))
+                    pts, r = skeleton(mix(pose, pose_of("crouch"), 0.9 * q), x * w, self.ground, size, facing, False)
+                    if not measure and d_ - ft < 0.2:
+                        draw_dust(c, pts, self.ground, size, d_ * 2)
             low = max(py for k_, (px, py) in pts.items() if k_ != "head")
             low = max(low, pts["head"][1] + r)
             if low > self.ground + size * 0.01:                            # сальто и падения: никто не уходит под пол

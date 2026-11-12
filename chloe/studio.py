@@ -84,6 +84,8 @@ def clean_scenes(scenes):
             for k in ("video", "stage", "place", "beat", "shot", "camera_move", "angle", "time_effect"):   # раскадровка и камера
                 if s.get(k):
                     sc[k] = str(s[k]).strip()
+            if s.get("secs"):                                  # сцена без слов — своя длина
+                sc["secs"] = float(s["secs"])
             if isinstance(s.get("anim"), dict):               # мультфильм: кто что делает и когда (chloe/animator.py)
                 sc["anim"] = s["anim"]
             if isinstance(s.get("beats"), list):
@@ -378,6 +380,8 @@ def make_scene(i, scene, style, ratio, mode, size, work, progress=lambda text: N
             words_file.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
     lead = LEAD if (sfx and i > 0 and voice_file) else 0.0
     secs = max(MIN_SCENE, (duration(voice_file) + TAIL + lead) if voice_file else MIN_SCENE) + hold
+    if scene.get("secs"):                            # сцена без слов (или длиннее голоса) — длина задана сценарием
+        secs = max(secs, float(scene["secs"]) + lead + hold)
     ass = captions_ass(words, size, work / "captions{:02d}.ass".format(i), shift=lead,
                        top=mode == "anim" and look == "neon_desktop") if (captions and words) else None
     whoosh_file = whoosh(work / "whoosh.wav") if (sfx and i > 0) else None
