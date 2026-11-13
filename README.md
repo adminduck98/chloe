@@ -471,6 +471,13 @@ Chloe понимает навыки Claude (Agent Skills) — с любой мо
 сильный мозг). Скрипты навыка запускаются через `run_command` — только после вашего «да». Каждый навык — нейрон в зоне «Навыки».
 
 - Свои навыки: `~/.chloe/skills/<имя>/SKILL.md`. Встроенные — в `skills/` проекта (пример: `morning-brief` — утренняя сводка).
+- Встроенные направления: YouTube-канал (`youtube`), Shorts (`shorts`), Reels и TikTok (`reels-tiktok`), стримы
+  (`streaming`), монтаж видео и звука (`video-editing`), учёба и языки (`study-languages`), личные финансы
+  (`personal-finance`, без советов, во что вкладывать), маркетинг и продажи (`marketing-sales`), здоровье и спорт
+  (`health-sport`, без диагнозов и лечения), программирование (`coding`), анализ данных (`data-analysis`),
+  управление компьютером (`pc-control`), проекты (`my-projects`, `project-manager`), утренняя сводка (`morning-brief`).
+- Сильный мозг Sonnet вместо Haiku: `export CHLOE_MODEL_STRONG="claude-sonnet-5-5"` в `~/.bashrc` — умнее в сложных
+  задачах, примерно втрое дороже за запрос; экран и простое по-прежнему смотрит Haiku.
 - Добавить: `python run.py --add-skill <папка или git-ссылка>`, например все навыки Anthropic:
   `python run.py --add-skill https://github.com/anthropics/skills` (20 навыков: pdf, docx, xlsx, pptx…).
   Некоторым нужны Python-библиотеки (pypdf, python-docx…) — если их нет, Chloe скажет.
