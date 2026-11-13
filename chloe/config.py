@@ -70,6 +70,14 @@ def load_keys(path=KEYS_FILE):
 
 
 load_keys()
+# выключить сервисы, не удаляя их ключей: CHLOE_OFF="anthropic,gemini" — Chloe считает, что ключей нет, и не зовёт их
+# ни мозгом, ни запасными, ни напрямую (сценарии, нарезка, проверки). Бюджет на время тестов, выбор пользователя.
+OFF_KEYS = {"anthropic": ("ANTHROPIC_API_KEY",), "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+            "qwen": ("DASHSCOPE_API_KEY", "QWEN_API_KEY"), "deepseek": ("DEEPSEEK_API_KEY",)}
+OFF = {x.strip().lower() for x in os.environ.get("CHLOE_OFF", "").split(",") if x.strip().lower() in OFF_KEYS}
+for _svc in OFF:
+    for _name in OFF_KEYS[_svc]:
+        os.environ.pop(_name, None)
 
 
 def user_dir(xdg_name, default):
