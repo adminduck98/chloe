@@ -26,6 +26,7 @@ PRE, POST = 11.0, 4.0                      # разгон до пика и хв�
 CAM_H = 0.38                               # доля высоты Shorts под веб-камеру (раскладка «стример»)
 FIT_ZOOM = 1.8                             # игра без камеры: крупнее ширины экрана (края обрезаются), ~60 % высоты
 PUNCH = 0.1                                # зум-рывок на пике (доля)
+SAFE_TOP = 120                             # крючок не выше 120 px: сверху экрана значки приложения Shorts
 EXCITE = ("офиг", "охрен", "ничего себе", "вау", "ого", "блин", "чёрт", "черт", "капец", "жесть", "погнали", "давай",
           "нет нет", "ааа", "ахах", "хаха", "смотри", "убил", "взорв", "lol", "omg", "wow", "no way", "let's go", "lets go",
           "what", "bro", "holy", "insane", "crazy", "oh my", "haha", "dude", "wtf", "yes", "no no")
@@ -590,8 +591,8 @@ def draw_caption(c, group, t, y, style=None):
     size = 82 * st["size"]
     _set_font(c, family, bold, size)
     full = c.text_extents(" ".join(w["w"].upper() for w in ws)).x_advance * 1.1
-    if full * 1.12 > SH.SIZE[0] * 0.86:                               # не влезает — шрифт меньше (с запасом на «прыжок»)
-        size = size * SH.SIZE[0] * 0.86 / (full * 1.12)
+    if full * 1.12 > SH.SIZE[0] * SH.SAFE_W:                             # не влезает — шрифт меньше (с запасом на «прыжок»)
+        size = size * SH.SIZE[0] * SH.SAFE_W / (full * 1.12)
         _set_font(c, family, bold, size)
     widths = [c.text_extents(w["w"].upper()).x_advance for w in ws]
     space = c.text_extents(" ").x_advance * 1.4 + max(widths) * 0.07   # с запасом: текущее слово «подпрыгивает» на 12 %
@@ -678,7 +679,7 @@ def render_clip(video, out, a, b, peak, layout, cam, words, hook, info, progress
             if hook and k / FPS < SH.HOOK_SECS:
                 tt = k / FPS
                 alpha = 1.0 if tt < SH.HOOK_SECS - 0.3 else max(0.0, (SH.HOOK_SECS - tt) / 0.3)
-                draw_hook(c, hook, OH * (0.04 if layout == "streamer" else 0.12), style, alpha, 0.85 + 0.15 * min(1.0, tt / 0.12))
+                draw_hook(c, hook, max(SAFE_TOP, OH * (0.04 if layout == "streamer" else 0.12)), style, alpha, 0.85 + 0.15 * min(1.0, tt / 0.12))
             g = next((g for g in groups if g[0] <= t < g[1]), None)
             if g:
                 y = OH * CAM_H + 110 if layout == "streamer" else min(OH * 0.68, bottom + 120)
