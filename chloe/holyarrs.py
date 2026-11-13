@@ -14,6 +14,8 @@ import urllib.parse
 
 import requests
 
+from . import config  # noqa: F401 — загружает ~/.config/chloe/keys.env в окружение (HOLYARRS_KEY, HOLYARRS_URL)
+
 DEFAULT_URL = "http://localhost:6262"
 TIMEOUT = 15
 SKIP = ("poster", "backdrop", "fanart", "banner", "logo", "image", "artwork", "thumb", "trailer", "url", "path", "hash")
