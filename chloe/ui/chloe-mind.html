@@ -4466,7 +4466,9 @@
     var limbD = Math.max(camera.position.z, SPH * sc * 1.05), limbK = Math.sqrt(1 - Math.pow(SPH * sc / limbD, 2));
     limb.position.set(0, 0, SPH * sc * SPH * sc / limbD);
     limb.scale.setScalar(sc * shell.scale.x * limbK);
-    limb.visible = quality.level > 0 && camera.position.z > SPH * sc * 1.15;   // внутри мозга контура нет
+    // контур края сферы выключен: когда Chloe говорит, точки оболочки волной уходят наружу, а контур оставался
+    // на месте и виднелся вторым кругом позади волны (просьба пользователя, 13.11.2026)
+    limb.visible = false;
 
     coreUpdate(t, dt);
     drift.amp = 0.035 * (1 + 0.6 * mood.think) * (1 - 0.5 * mood.sleep) * (0.6 + 0.4 * common.uDens.value);
