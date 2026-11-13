@@ -30,6 +30,16 @@ class Mixed(unittest.TestCase):
             self.assertFalse(any(m.startswith("gemini") for m in oc.backups("claude-haiku-5-5")))
             self.assertFalse(any(m.startswith("gemini") for m in oc.backups("claude-sonnet-5-5")))
 
+    def test_pricey_never_a_backup_unless_chosen(self):
+        with mock.patch.object(config, "MODEL_FAST", "claude-haiku-5-5"), \
+                mock.patch.object(config, "MODEL_STRONG", "claude-haiku-5-5"), mock.patch.object(config, "DEEPSEEK_KEY", "d"):
+            chain = oc.backups("claude-haiku-5-5")
+        self.assertNotIn("claude-sonnet-5-5", chain)
+        self.assertNotIn("deepseek-v4-pro", chain)
+        self.assertIn("qwen3.8-flash", chain)                        # дешёвые запасные остаются
+        with mock.patch.object(config, "MODEL_FAST", "claude-haiku-5-5"):
+            self.assertIn("claude-sonnet-5-5", oc.backups("claude-sonnet-5-5"))   # выбран явно — работает
+
     def test_rate_limit_moves_on(self):
         oc.cooldown["gemini-3.5-flash"] = 10 ** 12                  # 429 бесплатного лимита — пауза
         self.assertNotIn("gemini-3.5-flash", oc.backups("gemini-3.5-flash"))

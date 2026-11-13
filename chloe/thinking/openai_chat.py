@@ -48,6 +48,12 @@ PROVIDERS = {
                "key": lambda: config.GEMINI_KEY, "images": False, "timeout": float(os.environ.get("CHLOE_GEMINI_TIMEOUT", "15"))},
 }
 THINKING = "+thinking"
+
+
+def _price(model):
+    """Цена модели за миллион токенов (вход + выход) по usage.PRICES; неизвестна (Qwen по подписке) — 0."""
+    p = usage.PRICES.get(str(model or "").split("+")[0])
+    return (p[0] + p[3]) if p else 0.0
 COOLDOWN = {429: 60, 500: 120, 502: 120, 503: 120, 504: 120, 529: 120}   # 529 — Claude перегружен
 cooldown = {}   # модель → время, до которого её не трогаем
 
@@ -101,9 +107,14 @@ def backups(model):
     same_tier = [(config.STRONG_DEFAULT if strong else config.FAST_DEFAULT)[p] for p in providers if config.has_key(p)]
     other_tier = [(config.FAST_DEFAULT if strong else config.STRONG_DEFAULT)[p] for p in providers if config.has_key(p)]
     order = [model, config.MODEL_STRONG if strong else config.MODEL_FAST] + same_tier + other_tier
+    known = [_price(c) for c in (config.MODEL_FAST, config.MODEL_STRONG, getattr(config, "MODEL_EYES", None)) if c and _price(c)]
+    cap = max(known) if known else None             # цены выбранных моделей неизвестны (Qwen по подписке) — без потолка
     seen, out = set(), []
     for m in order:
-        chosen_gemini = m and m.startswith("gemini") and m in (model, config.MODEL_FAST, config.MODEL_STRONG)
+        chosen = (model, config.MODEL_FAST, config.MODEL_STRONG, getattr(config, "MODEL_EYES", None))
+        chosen_gemini = m and m.startswith("gemini") and m in chosen
+        if m and m not in chosen and cap is not None and _price(m) > cap * 1.5:
+            continue                                    # запасная не дороже выбранных: выбран Haiku — Sonnet не позовём
         if m and m not in seen and (m.split("+")[0][:4] in ("qwen", "deep", "clau") or chosen_gemini) \
                 and config.has_key(provider_of(m)):
             seen.add(m)
