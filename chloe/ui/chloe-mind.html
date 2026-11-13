@@ -408,6 +408,36 @@
     #eeg, #stats, #search { display: none; }
     #reply, body.clean #reply { bottom: calc(var(--sa) + 132px); font-size: 24px; }
   }
+
+  /* ===== движение (по мотивам designbookmark.com/motion) ===== */
+  /* Streaming reply: ответ проявляется по словам — из размытия, снизу вверх */
+  #reply .w { display: inline-block; white-space: pre; opacity: 0; filter: blur(6px); transform: translateY(.18em);
+    animation: wordIn .42s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: var(--d, 0s); }
+  @keyframes wordIn { to { opacity: 1; filter: blur(0); transform: none; } }
+  /* Scramble text: услышанное собирается из перемешанных букв */
+  #reply.heard .sc { color: var(--coral); opacity: .55; }
+  /* Thinking text: статус «думает» переливается бегущим бликом */
+  #statusTxt.shimmer { background: linear-gradient(90deg, var(--iron) 0%, var(--iron) 35%, var(--ink) 50%, var(--iron) 65%, var(--iron) 100%);
+    background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shimmer 1.6s linear infinite; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+  #statusTxt.live { color: var(--ink); }
+  /* Tab pill: подсветка переезжает к нажатой кнопке внизу */
+  #toggles { position: relative; }
+  #tabPill { position: absolute; z-index: -1; left: 0; top: 0; height: 0; width: 0; border-radius: 999px; pointer-events: none;
+    background: rgba(242,242,242,.07); box-shadow: inset 0 0 0 1px rgba(242,242,242,.06); opacity: 0;
+    transition: transform .45s cubic-bezier(.3,1.35,.5,1), width .45s cubic-bezier(.3,1.35,.5,1), height .3s, opacity .25s; }
+  #tabPill.show { opacity: 1; }
+  #tabPill i { position: absolute; left: 50%; bottom: 3px; width: 14px; height: 2px; margin-left: -7px; border-radius: 2px; background: var(--coral);
+    opacity: 0; transition: opacity .25s; }
+  #tabPill.active i { opacity: 1; }
+  #toggles button.pilled.on { border-bottom-color: transparent; }
+  #bottom { isolation: isolate; }
+  @media (prefers-reduced-motion: reduce) {
+    #reply .w { animation: none; opacity: 1; filter: none; transform: none; }
+    #statusTxt.shimmer { animation: none; color: var(--ink); background: none; }
+    #tabPill { transition: opacity .2s; }
+  }
 </style>
 </head>
 <body>
@@ -502,6 +532,42 @@
     }
     replyEl.scrollTop = 0;
     replyEl.classList.toggle("scroll", replyEl.scrollHeight > replyEl.clientHeight + 2);
+  }
+  var CALM = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var scrambleRaf = 0;
+  // Streaming reply: слова уже стоят на местах (размер и прокрутка считаются по целому ответу), проявляются по очереди
+  function showReply(text) {
+    cancelAnimationFrame(scrambleRaf);
+    replyEl.textContent = text; fitReply();
+    if (CALM) return;
+    var parts = String(text).split(/(\s+)/), words = parts.filter(function (p) { return p && !/^\s+$/.test(p); }).length;
+    var step = Math.min(0.06, 1.4 / Math.max(1, words)), k = 0, frag = document.createDocumentFragment();
+    parts.forEach(function (p) {
+      if (!p) return;
+      if (/^\s+$/.test(p)) { frag.appendChild(document.createTextNode(p)); return; }
+      var s = document.createElement("span"); s.className = "w"; s.textContent = p;
+      s.style.setProperty("--d", (k++ * step).toFixed(3) + "s"); frag.appendChild(s);
+    });
+    replyEl.textContent = ""; replyEl.appendChild(frag);
+  }
+  // Scramble text: услышанное собирается слева направо из случайных букв
+  var SCRAMBLE = "абвгдеёжзиклмнопрстуфхцчшщыэюяabcdefghijklmnopqrstuvwxyz0123456789";
+  function scrambleReply(text) {
+    cancelAnimationFrame(scrambleRaf);
+    replyEl.textContent = text; fitReply();
+    if (CALM) return;
+    var t0 = performance.now(), dur = Math.min(900, 260 + text.length * 14), mine = replyEl.innerHTML;
+    (function frame(t) {
+      if (replyEl.innerHTML !== mine) return;   // в строку ответа уже написал кто-то другой
+      var p = Math.min(1, (t - t0) / dur), fixed = Math.floor(p * text.length), html = escapeHtml(text.slice(0, fixed)), tail = "";
+      for (var i = fixed; i < text.length; i++) {
+        var c = text[i];
+        tail += /\s|[«»"',.!?—-]/.test(c) ? c : SCRAMBLE[(Math.random() * SCRAMBLE.length) | 0];
+      }
+      replyEl.innerHTML = html + (tail ? '<span class="sc">' + escapeHtml(tail) + "</span>" : "");
+      mine = replyEl.innerHTML;
+      if (p < 1) scrambleRaf = requestAnimationFrame(frame);
+    })(t0);
   }
 
   var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -649,7 +715,9 @@
     STATE.name = name;
     STATE.since = now();
     sound.state(name);
-    statusTxt.textContent = name === "sleeping" ? "спит" : "онлайн";
+    statusTxt.textContent = { sleeping: "спит", thinking: "думает", listening: "слушает", speaking: "говорит" }[name] || "онлайн";
+    statusTxt.classList.toggle("shimmer", name === "thinking");
+    statusTxt.classList.toggle("live", name === "listening" || name === "speaking");
     dot.style.background = name === "sleeping" ? "#3a3a3a" : "#FF7777";
   }
   function touch() {
@@ -2052,7 +2120,7 @@
   }
   function speak(text, after) {
     setState("speaking");
-    replyEl.textContent = text; fitReply();
+    replyEl.classList.remove("heard"); showReply(text);
     replyEl.style.opacity = 1;
     var done = function () {
       voice.chloe = 0;
@@ -4173,6 +4241,40 @@
   window.chloeThink = function (steps, onDone) { touch(); think(steps, onDone); };
   window.chloeError = function (name, why) { touch(); error(findSkill(name), why); };
   window.chloeSuccess = function () { touch(); success(); };
+  // Tab pill: подсветка под кнопками разделов переезжает к наведённой, а без наведения — к открытой
+  (function () {
+    var bar = document.getElementById("toggles"), more = document.getElementById("moreMenu");
+    if (!bar) return;
+    var pill = document.createElement("span"); pill.id = "tabPill"; pill.appendChild(document.createElement("i"));
+    bar.insertBefore(pill, bar.firstChild);
+    var NOT_TABS = { moreTogglesBtn: 1, micBtn: 1, soundBtn: 1, wallBtn: 1 };   // переключатели и меню, не разделы
+    var tabs = Array.prototype.filter.call(bar.querySelectorAll("button"), function (b) { return !NOT_TABS[b.id]; });
+    tabs.forEach(function (b) { b.classList.add("pilled"); });
+    var hover = null;
+    function inRow(b) {   // кнопка видна в ряду, а не в выпадающем «Ещё»
+      if (!b.getClientRects().length) return false;
+      return b.parentNode === bar || window.getComputedStyle(more).display === "contents";
+    }
+    function place() {
+      var open = tabs.filter(function (b) { return b.classList.contains("on") && inRow(b); })[0];
+      var to = hover && inRow(hover) ? hover : open;
+      pill.classList.toggle("show", !!to);
+      pill.classList.toggle("active", !!to && to === open);
+      if (!to) return;
+      var r = to.getBoundingClientRect(), base = bar.getBoundingClientRect(), padX = 12, padY = 2;
+      pill.style.width = (r.width + padX * 2) + "px"; pill.style.height = (r.height + padY * 2) + "px";
+      pill.style.transform = "translate(" + (r.left - base.left - padX) + "px," + (r.top - base.top - padY) + "px)";
+    }
+    tabs.forEach(function (b) {
+      b.addEventListener("pointerenter", function () { hover = b; place(); });
+      b.addEventListener("pointerleave", function () { if (hover === b) { hover = null; place(); } });
+    });
+    new MutationObserver(function (recs) {
+      if (recs.some(function (r) { return r.target !== pill; })) place();
+    }).observe(bar, { subtree: true, attributes: true, attributeFilter: ["class"] });
+    window.addEventListener("resize", place);
+    place();
+  })();
   window.chloeState = function (name) {
     // активность — только настоящая смена состояния: слух на каждый шум в комнате шлёт «idle» повторно,
     // и это держало мозг на полной частоте кадров (40 % ядра в покое)
@@ -4184,11 +4286,11 @@
   window.chloeSay = function (text) { touch(); speak(text); };
   window.chloeReply = function (text) {         // Chloe говорит: текст под мозгом, состояние «говорит» до chloeState("idle")
     touch(); setState("speaking");
-    replyEl.classList.remove("heard"); replyEl.textContent = text; fitReply(); replyEl.style.opacity = 1;
+    replyEl.classList.remove("heard"); showReply(text); replyEl.style.opacity = 1;
   };
   window.chloeHeard = function (text) {          // что Chloe услышала
     touch();
-    replyEl.classList.add("heard"); replyEl.textContent = "«" + text + "»"; fitReply(); replyEl.style.opacity = 1;
+    replyEl.classList.add("heard"); scrambleReply("«" + text + "»"); replyEl.style.opacity = 1;
   };
   window.chloeEnsure = function (name, type, desc, zone) {   // навык есть — ничего; нет — вырастить
     for (var i = 0; i < nCount; i++) if (neurons[i].name === name) return neurons[i].id;
