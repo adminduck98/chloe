@@ -827,10 +827,6 @@
     ].join("\n")
   }));
   shell.frustumCulled = false;
-  // большой шар-оболочка вокруг всего мозга и его светящийся край — выключены (не понравились пользователю, 13.11.2026);
-  // вернуть — SHOW_SHELL = true. Сама сфера в расчётах остаётся (её размер ведёт мозг и камеру), просто не рисуется.
-  var SHOW_SHELL = false;
-  shell.visible = SHOW_SHELL;
   group.add(shell);
   // светящийся край сферы (как атмосфера у планеты): тонкое кольцо по контуру, всегда лицом к зрителю.
   // Кольцо, а не целая сфера: закрашиваются только пиксели края, а не весь диск мозга.
@@ -4470,7 +4466,7 @@
     var limbD = Math.max(camera.position.z, SPH * sc * 1.05), limbK = Math.sqrt(1 - Math.pow(SPH * sc / limbD, 2));
     limb.position.set(0, 0, SPH * sc * SPH * sc / limbD);
     limb.scale.setScalar(sc * shell.scale.x * limbK);
-    limb.visible = SHOW_SHELL && quality.level > 0 && camera.position.z > SPH * sc * 1.15;   // внутри мозга контура нет
+    limb.visible = quality.level > 0 && camera.position.z > SPH * sc * 1.15;   // внутри мозга контура нет
 
     coreUpdate(t, dt);
     drift.amp = 0.035 * (1 + 0.6 * mood.think) * (1 - 0.5 * mood.sleep) * (0.6 + 0.4 * common.uDens.value);
