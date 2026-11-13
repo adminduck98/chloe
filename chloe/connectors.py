@@ -89,6 +89,18 @@ def _youtube_forget():
     return "доступ к YouTube отозван у Google, токен удалён" if yt.sign_out() else "YouTube и так не был подключён"
 
 
+def _holyarrs_status():
+    from . import holyarrs as ha
+
+    if not ha.configured():
+        return "off", "нет ключа — HolyArrs → Settings → API, строка HOLYARRS_KEY=… в keys.env"
+    try:
+        ha.health()
+        return "ok", "подключено: {}".format(ha.creds()[0])
+    except ha.HolyArrsError as e:
+        return "fail", str(e)
+
+
 def _tg_status():
     from .telegram import telegram
 
@@ -211,6 +223,9 @@ REGISTRY = [
     Connector("youtube", "YouTube", "статистика вашего канала и списки роликов — только чтение", {"youtube"},
               status=_youtube_status, forget=_youtube_forget,
               connect_hint="«Хлоя, подключи YouTube» — вход через Google в браузере", data="токен — ~/.config/chloe/youtube_token.json"),
+    Connector("holyarrs", "HolyArrs", "медиасервер: фильмы, сериалы и музыка — загрузки, календарь, поиск, запросы", {"holyarrs"},
+              status=_holyarrs_status, connect_hint="ключ API HolyArrs строкой HOLYARRS_KEY=… в ~/.config/chloe/keys.env",
+              data="ключ — ~/.config/chloe/keys.env; сам сервер — ~/holyarrs"),
     Connector("telegram", "Telegram", "читать чаты и отправлять сообщения от вашего имени, публиковать в ваши каналы",
               {"tg_read", "tg_unread", "tg_send", "social"}, status=_tg_status, check=_tg_check, forget=_tg_forget,
               connect_hint="python run.py --login-telegram", data="сессия — ~/.chloe/telegram.session"),
@@ -240,7 +255,7 @@ REGISTRY = [
 ]
 BY_ID = {c.id: c for c in REGISTRY}
 ALIASES = {"календарь": "google_calendar", "гугл календарь": "google_calendar", "calendar": "google_calendar",
-           "ютуб": "youtube", "youtube": "youtube", "канал": "youtube",
+           "ютуб": "youtube", "holyarrs": "holyarrs", "медиатека": "holyarrs", "фильмы": "holyarrs", "youtube": "youtube", "канал": "youtube",
            "телеграм": "telegram", "телеграмм": "telegram", "телефон": "phone", "андроид": "phone", "интернет": "internet",
            "сеть": "internet", "картинки": "qwen_media", "видео": "qwen_media", "bailian": "bailian_cli", "бэйлянь": "bailian_cli",
            "пульт": "remote", "умный дом": "home_assistant", "очки": "glasses"}

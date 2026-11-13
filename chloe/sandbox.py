@@ -58,6 +58,7 @@ OUTWARD = {
     "tg_send": ("high", False, "сообщение уйдёт человеку в Telegram — забрать его нельзя"),
     "social": ("high", False, "публикация в соцсети видна другим людям"),
     "calendar": ("medium", True, "меняет ваш Google Calendar"),
+    "holyarrs": ("medium", True, "HolyArrs найдёт и скачает фильм или сериал на этот компьютер"),
     "phone": ("medium", False, "действие на телефоне: нажатия и текст отменить нельзя"),
     "power": ("high", False, "выключает, перезагружает или усыпляет компьютер"),
     "create_media": ("low", True, "тратит кредиты Qwen; видео — заметно"),
@@ -166,6 +167,8 @@ def analyse(tool, args):
         action = args.get("action")
         if tool == "social" and action not in ("publish", "approve"):
             return result("low", True, "контент-план", ["наружу ничего не уходит: черновики"])
+        if tool == "holyarrs" and action != "request":
+            return result("low", True, "медиатека — только посмотреть", [])
         if tool == "calendar" and action in (None, "list", "status"):
             return result("low", True, "календарь — только чтение", [])
         if tool == "home" and action in (None, "status", "rooms", "devices", "state"):
