@@ -269,10 +269,11 @@ TOOLS = [
                                           "по кадрам и речи: смешное, монстры, эффектные бои, история персонажа, яркие диалоги (не езду и "
                                           "меню). Речь не на русском — субтитры переводятся (translate=false — без перевода). Стиль надписей "
                                           "под атмосферу игры сам (Ведьмак — фэнтези, GTA — Vice, Cyberpunk — неон…) или style: classic, "
-                                          "fantasy, vice, cyber, military, horror, pixel. Работает в фоне.",
+                                          "fantasy, vice, cyber, military, horror, pixel. Клип начинается с 1,2 с самого яркого момента (тизер, потом "
+                                          "история с начала); teaser=false — без него. Работает в фоне.",
      "input_schema": schema({"path": S, "count": {"type": "integer"}, "length": {"type": "number"}, "game": S,
                              "layout": {"type": "string", "enum": ["auto", "streamer", "game"]}, "lang": S,
-                             "translate": {"type": "boolean"},
+                             "translate": {"type": "boolean"}, "teaser": {"type": "boolean"},
                              "style": {"type": "string", "enum": ["classic", "fantasy", "vice", "cyber", "military", "horror", "pixel"]}},
                             ["path"])},
     {"name": "learn_move", "description": "Научиться новому движению для мультфильмов по видео пользователя: «вот видео, научись этому удару», "

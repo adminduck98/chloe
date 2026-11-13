@@ -126,6 +126,49 @@ class Render(unittest.TestCase):
         self.assertIn("Content ID", notes)
 
 
+class Teaser(unittest.TestCase):
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        # 6 с: первые 4 — чёрные, потом 2 — белые (это «пик»); звук весь ролик
+        self.clip = self.dir / "clip.mp4"
+        subprocess.run([studio.ffmpeg(), "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x568:r=30:d=4",
+                        "-f", "lavfi", "-i", "color=c=white:s=320x568:r=30:d=2", "-f", "lavfi", "-i", "sine=frequency=300:duration=6",
+                        "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", "-map", "2:a", "-shortest",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(self.clip)], check=True)
+
+    def brightness(self, t):
+        raw = subprocess.run([studio.ffmpeg(), "-v", "error", "-ss", str(t), "-i", str(self.clip), "-frames:v", "1",
+                              "-vf", "scale=8:8", "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True).stdout
+        return sum(raw) / max(1, len(raw))
+
+    def test_peak_first_then_story_from_start(self):
+        self.assertTrue(C.add_teaser(self.clip, 4.6))
+        self.assertAlmostEqual(studio.duration(self.clip), 6 + C.TEASER, delta=0.15)
+        self.assertGreater(self.brightness(0.6), 200)          # первые 1,2 с — пик (белое)
+        self.assertLess(self.brightness(2.0), 40)              # потом — начало клипа (чёрное)
+        self.assertTrue(C.probe(self.clip)["audio"])
+
+    def test_broken_file_stays_as_is(self):
+        bad = self.dir / "bad.mp4"
+        bad.write_bytes(b"not a video")
+        self.assertFalse(C.add_teaser(bad, 4.0))
+        self.assertEqual(bad.read_bytes(), b"not a video")
+
+    def test_pipeline_skips_teaser_when_peak_is_at_start(self):
+        calls = []
+        with mock.patch.object(C, "render_clip"), mock.patch.object(C, "add_teaser", side_effect=lambda *a: calls.append(a)), \
+                mock.patch.object(C, "probe", return_value={"secs": 60, "w": 640, "h": 360, "fps": 30, "audio": True}), \
+                mock.patch.object(C, "audio_curve", return_value=C.np.zeros(600)), \
+                mock.patch.object(C, "motion_curve", return_value=(C.np.zeros(600), [])), \
+                mock.patch.object(C, "onset_curve", return_value=None), mock.patch.object(C, "transcribe", return_value=[]), \
+                mock.patch.object(C, "find_facecam", return_value=None), \
+                mock.patch.object(C, "choose_moments", return_value=([(10.0, 40.0, 21.0, 0.9), (50.0, 60.0, 51.0, 0.5)],
+                                                                    [{"hook": "h", "title": "t"}] * 2)):
+            C.clip(self.dir / "rec.mp4", self.dir / "out", count=2, ask=False, progress=lambda t: None, vision=False)
+        self.assertEqual([round(c[1]) for c in calls], [11])                  # пик на 11-й секунде — тизер; на 1-й — нет
+
+
 class Tool(unittest.TestCase):
     def test_needs_a_video(self):
         from chloe.tools import media

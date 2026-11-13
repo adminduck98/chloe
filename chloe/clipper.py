@@ -26,6 +26,8 @@ PRE, POST = 11.0, 4.0                      # разгон до пика и хв�
 CAM_H = 0.38                               # доля высоты Shorts под веб-камеру (раскладка «стример»)
 FIT_ZOOM = 1.8                             # игра без камеры: крупнее ширины экрана (края обрезаются), ~60 % высоты
 PUNCH = 0.1                                # зум-рывок на пике (доля)
+TEASER = 1.2                               # клип начинается с 1,2 с пика (вспышка) — потом история с начала
+TEASER_MIN_LEAD = 3.0                      # пик ближе к началу, чем 3 с, — тизер не нужен: начало и так яркое
 SAFE_TOP = 120                             # крючок не выше 120 px: сверху экрана значки приложения Shorts
 EXCITE = ("офиг", "охрен", "ничего себе", "вау", "ого", "блин", "чёрт", "черт", "капец", "жесть", "погнали", "давай",
           "нет нет", "ааа", "ахах", "хаха", "смотри", "убил", "взорв", "lol", "omg", "wow", "no way", "let's go", "lets go",
@@ -698,6 +700,35 @@ def render_clip(video, out, a, b, peak, layout, cam, words, hook, info, progress
     return out
 
 
+def add_teaser(path, peak_at, audio=True):
+    """Первые секунды решают, смахнут ли Shorts: в начало клипа — 1,2 с самого яркого момента (пик, со звуком),
+    белая вспышка — и история с начала. Готовый клип перекодируется на месте; не вышло — остаётся как был."""
+    from . import studio
+
+    path = pathlib.Path(path)
+    s0 = max(0.0, peak_at - 0.4)                                        # чуть до пика — чтобы удар попал в тизер
+    t = TEASER
+    vf = ("[0:v]trim=start={s:.3f}:duration={t:.3f},setpts=PTS-STARTPTS[tv];"
+          "[0:v]setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.15:color=white[mv];").format(s=s0, t=t)
+    if audio:
+        af = ("[0:a]atrim=start={s:.3f}:duration={t:.3f},asetpts=PTS-STARTPTS,afade=t=out:st={e:.3f}:d=0.08[ta];"
+              "[0:a]asetpts=PTS-STARTPTS,afade=t=in:d=0.06[ma];[tv][ta][mv][ma]concat=n=2:v=1:a=1[v][a]").format(s=s0, t=t, e=t - 0.08)
+        maps = ["-map", "[v]", "-map", "[a]"] + [str(x) for x in studio.AUDIO_OUT]
+    else:
+        af = "[tv][mv]concat=n=2:v=1:a=0[v]"
+        maps = ["-map", "[v]"]
+    tmp = path.with_name(path.stem + ".teaser" + path.suffix)
+    r = subprocess.run([studio.ffmpeg(), "-hide_banner", "-y", "-loglevel", "error", "-i", str(path), "-filter_complex", vf + af]
+                       + maps + [str(x) for x in studio.VIDEO_OUT] + ["-movflags", "+faststart", str(tmp)],
+                       capture_output=True, text=True, timeout=600)
+    if r.returncode != 0 or not tmp.exists():
+        tmp.unlink(missing_ok=True)
+        print("[нарезчик: тизер не вышел — {}]".format((r.stderr or "").strip()[-160:]))
+        return False
+    tmp.replace(path)
+    return True
+
+
 # --- названия, крючки ---
 META = """Ты делаешь YouTube Shorts из записи игры{game}. Для каждого клипа по его речи придумай:
 "hook" — надпись на первые 2 секунды (до 5 слов, интрига, только то, что правда есть в клипе),
@@ -852,7 +883,7 @@ def choose_moments(video, score, words, secs, count, length, game="", vision=Non
 
 
 def clip(video, out_dir=None, count=5, length=30.0, game="", layout="auto", lang=None, ask=None, progress=print,
-         vision=None, translate=True, style=None):
+         vision=None, translate=True, style=None, teaser=True):
     """Запись → лучшие моменты (ИИ смотрит кадры кандидатов; vision=False — только сигналы) → Shorts в out_dir (по умолчанию — рядом с записью, папка «<имя>-shorts») + clips.txt.
     Возвращает [(путь, начало, конец, оценка, название)]."""
     video = pathlib.Path(video)
@@ -884,6 +915,8 @@ def clip(video, out_dir=None, count=5, length=30.0, game="", layout="auto", lang
         progress("Клип {} из {}: {:.0f}–{:.0f} с{}".format(i, len(moments), a, b, " — " + m["why"] if m.get("why") else ""))
         cw = translate_words(words, a, b, game, ask) if (translate and foreign(words, a, b)) else words
         render_clip(video, out, a, b, peak, lay, cam, cw, m["hook"], info, style=style)
+        if teaser and peak - a >= TEASER_MIN_LEAD:
+            add_teaser(out, peak - a, info.get("audio", True))
         made.append((out, a, b, sc, m["title"], music_suspect(audio, words, a, b)))
     tags = ["#shorts"] + (["#" + re.sub(r"\W", "", game)] if game else [])
     items = ""
