@@ -42,6 +42,15 @@ def tool_holyarrs(a):
             if not q:
                 return "Что искать в медиатеке (query)."
             return "В медиатеке: " + ha.text(ha.library(q, a.get("kind") or "all"))
+        if action == "update":
+            info = ha.update_info()
+            now, latest = info.get("version"), info.get("latest")
+            if not info.get("newer"):
+                return "HolyArrs и так последней версии ({}).".format(now or latest or "?")
+            if not confirm("Обновить HolyArrs с {} до {}? Он перезапустится на минуту, настройки сохранятся.".format(now, latest)):
+                return "Не обновляю: пользователь отказался."
+            ha.upgrade(latest)
+            return "HolyArrs обновлён до {} и перезапущен. Что нового: {}".format(latest, info.get("link") or "—")
         if action == "asks":
             return "Мои запросы: " + ha.text(ha.my_asks())
         if action == "request":
@@ -57,4 +66,4 @@ def tool_holyarrs(a):
             return "Запрос отправлен в HolyArrs: {} «{}». Ответ: {}".format(what, title, ha.text(ha.ask(tmdb, kind)))
     except ha.HolyArrsError as e:
         return "Не получилось: {}.".format(str(e).rstrip("."))
-    return "Действия: downloads, calendar, search, library, asks, request, status, open."
+    return "Действия: downloads, calendar, search, library, asks, request, status, update, open."

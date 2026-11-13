@@ -167,7 +167,7 @@ def analyse(tool, args):
         action = args.get("action")
         if tool == "social" and action not in ("publish", "approve"):
             return result("low", True, "контент-план", ["наружу ничего не уходит: черновики"])
-        if tool == "holyarrs" and action != "request":
+        if tool == "holyarrs" and action not in ("request", "update"):
             return result("low", True, "медиатека — только посмотреть", [])
         if tool == "calendar" and action in (None, "list", "status"):
             return result("low", True, "календарь — только чтение", [])

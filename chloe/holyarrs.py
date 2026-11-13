@@ -184,11 +184,79 @@ def watcher(say, every=180, stop=None, first_quiet=True):
                     say(ready_phrase(fresh))
                     announced |= {str(a.get("id")) for a in fresh}
                     settings.set(ANNOUNCED, sorted(announced)[-500:])
+            if configured():
+                check_update(say)
         except HolyArrsError as e:
             print("[HolyArrs: {}]".format(str(e)[:80]))
         except Exception as e:                                          # noqa: BLE001 — сторож не должен умирать
             print("[HolyArrs: {}]".format(repr(e)[:80]))
         (stop.wait(every) if stop else time.sleep(every))
+
+
+# --- новая версия HolyArrs: сказать один раз, обновить — по «да» ---
+UPDATE_SAID = "holyarrs_update_said"
+UPDATE_EVERY = 6 * 3600
+COMPOSE = None                  # ~/holyarrs/docker-compose.yml (путь считается при вызове — в тестах свой HOME)
+_last_update_check = {"t": 0.0}
+
+
+def update_info():
+    """{"version": стоит, "latest": последняя, "newer": есть ли новее, "link": заметки к выпуску}."""
+    return _call("GET", "/app/update")
+
+
+def check_update(say, now=None):
+    """Не чаще раза в 6 часов: вышла новая версия — сказать один раз на версию (не ночью, не посреди разговора)."""
+    import time
+
+    from .settings import settings
+
+    now = now or time.time()
+    if now - _last_update_check["t"] < UPDATE_EVERY:
+        return None
+    info = update_info()
+    _last_update_check["t"] = now
+    latest = str(info.get("latest") or "")
+    if not info.get("newer") or not latest or settings.get(UPDATE_SAID) == latest:
+        return None
+    if not _can_speak():
+        _last_update_check["t"] = 0.0                                   # не смогли сказать — проверим в следующий проход
+        return None
+    text = ("Вышла новая версия HolyArrs — {}. Вы просили напомнить: в ней должны починить поиск фильмов. "
+            "Скажите «обнови HolyArrs», если да.".format(latest))
+    say(text)
+    settings.set(UPDATE_SAID, latest)
+    return text
+
+
+def compose_file():
+    import pathlib
+
+    return pathlib.Path(COMPOSE) if COMPOSE else pathlib.Path.home() / "holyarrs" / "docker-compose.yml"
+
+
+def upgrade(version):
+    """Поставить версию образа в docker-compose.yml и перезапустить контейнер (настройки и ключи — в ./config, не трогаются)."""
+    import re
+    import subprocess
+
+    if not re.fullmatch(r"\d+\.\d+\.\d+", str(version or "")):
+        raise HolyArrsError("непонятная версия: {}".format(version))
+    f = compose_file()
+    try:
+        text = f.read_text(encoding="utf-8")
+    except OSError:
+        raise HolyArrsError("нет {} — HolyArrs поставлен не через Chloe, обновите его сами".format(f)) from None
+    new, n = re.subn(r"(image:\s*holyarrs/holyarrs:)[\w.\-]+", r"\g<1>" + version, text)
+    if not n:
+        raise HolyArrsError("в {} нет образа holyarrs/holyarrs".format(f))
+    f.write_text(new, encoding="utf-8")
+    for cmd in (["docker", "compose", "pull"], ["docker", "compose", "up", "-d"]):
+        r = subprocess.run(cmd, cwd=str(f.parent), capture_output=True, text=True, timeout=900)
+        if r.returncode != 0:
+            f.write_text(text, encoding="utf-8")                        # вернуть прежнюю версию в файле
+            raise HolyArrsError("{} не вышло: {}".format(" ".join(cmd[1:]), (r.stderr or r.stdout).strip()[-200:]))
+    return version
 
 
 def _can_speak():

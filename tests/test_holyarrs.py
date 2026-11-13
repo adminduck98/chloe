@@ -188,6 +188,92 @@ class ReadyVoice(WithKey):
         self.assertEqual(ha.ready_phrase(items), "Готово: «А», «Б», «В» и ещё 2 — все уже в медиатеке, можно смотреть.")
 
 
+class NewVersion(WithKey):
+    def setUp(self):
+        super().setUp()
+        from chloe.settings import settings
+
+        settings.set(ha.UPDATE_SAID, None)
+        ha._last_update_check["t"] = 0.0
+
+    def info(self, newer=True, latest="1.1.1"):
+        return Resp({"on": True, "version": "1.1.0", "latest": latest, "newer": newer,
+                     "link": "https://github.com/HolyArrs/HolyArrs/releases/tag/" + latest})
+
+    def test_tells_once_per_version(self):
+        said = []
+        with mock.patch("chloe.holyarrs.requests.request", return_value=self.info()), \
+                mock.patch("chloe.holyarrs._can_speak", return_value=True):
+            ha.check_update(said.append, now=10 ** 9)
+            ha.check_update(said.append, now=10 ** 9 + 7 * 3600)        # прошло 7 часов — та же версия, молчит
+        self.assertEqual(len(said), 1)
+        self.assertIn("HolyArrs — 1.1.1", said[0])
+        self.assertIn("«обнови HolyArrs»", said[0])
+
+    def test_quiet_when_nothing_new_and_not_too_often(self):
+        said = []
+        with mock.patch("chloe.holyarrs.requests.request", return_value=self.info(newer=False, latest="1.1.0")) as req, \
+                mock.patch("chloe.holyarrs._can_speak", return_value=True):
+            ha.check_update(said.append, now=10 ** 9)
+            ha.check_update(said.append, now=10 ** 9 + 60)              # через минуту — не спрашивает сервер
+        self.assertEqual(said, [])
+        self.assertEqual(req.call_count, 1)
+
+    def test_busy_means_later(self):
+        said = []
+        with mock.patch("chloe.holyarrs.requests.request", return_value=self.info()), \
+                mock.patch("chloe.holyarrs._can_speak", side_effect=[False, True]):
+            ha.check_update(said.append, now=10 ** 9)
+            ha.check_update(said.append, now=10 ** 9 + 60)              # занята была — скажет в следующий проход
+        self.assertEqual(len(said), 1)
+
+    def compose(self):
+        import pathlib
+        import tempfile
+
+        d = pathlib.Path(tempfile.mkdtemp())
+        f = d / "docker-compose.yml"
+        f.write_text("services:\n  holyarrs:\n    image: holyarrs/holyarrs:1.1.0\n    container_name: holyarrs\n", encoding="utf-8")
+        p = mock.patch.object(ha, "COMPOSE", str(f))
+        p.start()
+        self.addCleanup(p.stop)
+        return f
+
+    def test_update_after_yes(self):
+        f = self.compose()
+        ok = mock.Mock(returncode=0, stdout="", stderr="")
+        with mock.patch("chloe.voice.confirm", return_value=True) as ask, \
+                mock.patch("chloe.holyarrs.requests.request", return_value=self.info()), \
+                mock.patch("subprocess.run", return_value=ok) as run:
+            out, _, _ = run_tool("holyarrs", {"action": "update"})
+        self.assertIn("с 1.1.0 до 1.1.1", ask.call_args[0][0])
+        self.assertIn("image: holyarrs/holyarrs:1.1.1", f.read_text(encoding="utf-8"))
+        self.assertEqual([c[0][0] for c in run.call_args_list], [["docker", "compose", "pull"], ["docker", "compose", "up", "-d"]])
+        self.assertEqual(run.call_args.kwargs["cwd"], str(f.parent))
+        self.assertIn("обновлён до 1.1.1", out)
+
+    def test_update_no_means_nothing_changes(self):
+        f = self.compose()
+        with mock.patch("chloe.voice.confirm", return_value=False), \
+                mock.patch("chloe.holyarrs.requests.request", return_value=self.info()), mock.patch("subprocess.run") as run:
+            run_tool("holyarrs", {"action": "update"})
+        run.assert_not_called()
+        self.assertIn(":1.1.0", f.read_text(encoding="utf-8"))
+
+    def test_failed_pull_restores_file(self):
+        f = self.compose()
+        bad = mock.Mock(returncode=1, stdout="", stderr="manifest unknown")
+        with mock.patch("subprocess.run", return_value=bad):
+            with self.assertRaises(ha.HolyArrsError):
+                ha.upgrade("1.1.1")
+        self.assertIn(":1.1.0", f.read_text(encoding="utf-8"))
+
+    def test_bad_version_never_written(self):
+        self.compose()
+        with self.assertRaises(ha.HolyArrsError):
+            ha.upgrade("latest; rm -rf ~")
+
+
 class NoKey(unittest.TestCase):
     def test_explains_how_to_connect(self):
         with mock.patch.dict(os.environ, {"HOLYARRS_KEY": ""}), mock.patch("chloe.holyarrs.requests.request") as req:
