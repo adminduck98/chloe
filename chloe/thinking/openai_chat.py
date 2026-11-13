@@ -41,6 +41,11 @@ PROVIDERS = {
     "deepseek": {"base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
                  "key": lambda: config.DEEPSEEK_KEY, "images": False},
     "anthropic": {"key": lambda: config.ANTHROPIC_KEY, "images": True},   # официальная библиотека Anthropic
+    # Gemini через вход Google, совместимый с OpenAI: быстрый мозг для разговора (CHLOE_MODEL_FAST=gemini-3.5-flash).
+    # Бесплатный тариф Google может использовать присланное для обучения — поэтому скриншоты ему не отправляются
+    # (просьбы про экран берёт сильный мозг), а запасным он не становится: только если выбран явно.
+    "gemini": {"base_url": os.environ.get("GEMINI_OPENAI_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+               "key": lambda: config.GEMINI_KEY, "images": False, "timeout": float(os.environ.get("CHLOE_GEMINI_TIMEOUT", "15"))},
 }
 THINKING = "+thinking"
 COOLDOWN = {429: 60, 500: 120, 502: 120, 503: 120, 504: 120, 529: 120}   # 529 — Claude перегружен
@@ -50,6 +55,8 @@ cooldown = {}   # модель → время, до которого её не �
 def provider_of(model):
     if model.startswith("claude"):
         return "anthropic"
+    if model.startswith("gemini"):
+        return "gemini"
     return "deepseek" if model.startswith("deepseek") else "qwen"
 
 
@@ -75,6 +82,8 @@ def make_clients():
 def request_args(model):
     """Имя модели для API и настройки раздумий. Для голосового помощника скорость важнее глубины."""
     name, thinking = (model[:-len(THINKING)], True) if model.endswith(THINKING) else (model, False)
+    if provider_of(name) == "gemini":
+        return name, {"reasoning_effort": "low" if thinking else "none"}   # голосу важнее скорость
     if provider_of(name) == "deepseek":
         # раздумья DeepSeek с инструментами требуют возвращать их текст в каждом запросе — без них проще и быстрее
         return name, {"extra_body": {"thinking": {"type": "disabled"}}}
@@ -94,7 +103,9 @@ def backups(model):
     order = [model, config.MODEL_STRONG if strong else config.MODEL_FAST] + same_tier + other_tier
     seen, out = set(), []
     for m in order:
-        if m and m not in seen and m.split("+")[0][:4] in ("qwen", "deep", "clau") and config.has_key(provider_of(m)):
+        chosen_gemini = m and m.startswith("gemini") and m in (model, config.MODEL_FAST, config.MODEL_STRONG)
+        if m and m not in seen and (m.split("+")[0][:4] in ("qwen", "deep", "clau") or chosen_gemini) \
+                and config.has_key(provider_of(m)):
             seen.add(m)
             out.append(m)
     now = time.time()

@@ -62,7 +62,10 @@ class LookWithEyes(unittest.TestCase):
         self.assertFalse(router.sees_images("deepseek-flash"))
         self.assertTrue(router.sees_images("qwen3.8-flash+thinking"))
         self.assertTrue(router.sees_images("claude-haiku-5-5"))
-        self.assertTrue(router.sees_images("gemini-3.5-flash"))
+        with mock.patch.object(router.config, "PROVIDER", "gemini"):
+            self.assertTrue(router.sees_images("gemini-3.5-flash"))       # думает целиком Gemini — видит экран
+        with mock.patch.object(router.config, "PROVIDER", "qwen"):
+            self.assertFalse(router.sees_images("gemini-3.5-flash"))      # быстрый мозг рядом с другими — без скриншотов
 
 
 class FramesOnlyWhenNeeded(unittest.TestCase):

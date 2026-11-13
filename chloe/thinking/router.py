@@ -48,8 +48,12 @@ MAX_FAST_STEPS = 3
 
 
 def sees_images(model):
-    """Умеет ли модель смотреть на картинки: DeepSeek — нет; Qwen, Claude, Gemini — да."""
-    return bool(model) and not str(model).split("+")[0].startswith("deepseek")
+    """Умеет ли модель смотреть на картинки: DeepSeek — нет; Qwen, Claude — да; Gemini — да, только когда думает
+    целиком он (CHLOE_PROVIDER=gemini): быстрым мозгом рядом с Claude скриншоты ему не отправляются (бесплатный тариф)."""
+    name = str(model or "").split("+")[0]
+    if name.startswith("gemini"):
+        return config.PROVIDER == "gemini"
+    return bool(name) and not name.startswith("deepseek")
 
 
 class Route:

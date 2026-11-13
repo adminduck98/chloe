@@ -488,6 +488,10 @@ Chloe понимает навыки Claude (Agent Skills) — с любой мо
   управление компьютером (`pc-control`), проекты (`my-projects`, `project-manager`), утренняя сводка (`morning-brief`).
 - Сильный мозг Sonnet вместо Haiku: `export CHLOE_MODEL_STRONG="claude-sonnet-5-5"` в `~/.bashrc` — умнее в сложных
   задачах, примерно втрое дороже за запрос; экран и простое по-прежнему смотрит Haiku.
+- Обычный разговор — бесплатный Gemini: `export CHLOE_MODEL_FAST="gemini-3.5-flash"` (нужен `GEMINI_API_KEY`).
+  Идёт через вход Google, совместимый с OpenAI; скриншоты Gemini не получает (бесплатный тариф Google может
+  использовать присланное для обучения) — просьбы про экран берёт сильный мозг. Упёрся в лимит — отвечают Qwen,
+  DeepSeek, Claude Haiku. Запасным для других задач Gemini не становится.
 - Добавить: `python run.py --add-skill <папка или git-ссылка>`, например все навыки Anthropic:
   `python run.py --add-skill https://github.com/anthropics/skills` (20 навыков: pdf, docx, xlsx, pptx…).
   Некоторым нужны Python-библиотеки (pypdf, python-docx…) — если их нет, Chloe скажет.
