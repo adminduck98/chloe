@@ -204,6 +204,17 @@ def assistant(args):
                     print("[не Хлое — окно закрылось: {}]".format(heard[:60]))   # не «Вы:» — ответа не будет
                     go_idle()
                     continue   # не обращались к Хлое
+                if not woke:                    # окно без «Хлоя»: вдруг человек говорит другому помощнику или в созвоне
+                    from .addressee import followup_for_chloe
+                    from .vision import active_window
+
+                    mine, why = followup_for_chloe(command, voice.last_said, active_window())
+                    if not mine:
+                        print("[не Хлое — {}: {}]".format(why, heard[:60]))
+                        journal.add("overheard", "Слух", heard, {"why": why})
+                        state["listen_until"] = 0
+                        go_idle()
+                        continue
                 print("Вы:", heard)
                 brain.heard(heard)
                 idle["sent"] = False
