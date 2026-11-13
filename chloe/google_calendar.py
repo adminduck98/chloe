@@ -57,9 +57,9 @@ def client():
     return c if c.get("client_id") and c.get("client_secret") else None
 
 
-def connected():
+def connected(token_file=None):
     try:
-        return bool(json.loads(TOKEN_FILE.read_text(encoding="utf-8")).get("refresh_token"))
+        return bool(json.loads((token_file or TOKEN_FILE).read_text(encoding="utf-8")).get("refresh_token"))
     except (OSError, ValueError):
         return False
 
@@ -86,8 +86,9 @@ class _Catch(http.server.BaseHTTPRequestHandler):
         pass
 
 
-def sign_in(open_browser=webbrowser.open, wait=SIGN_IN_WAIT):
-    """Открывает страницу входа Google; пользователь входит и разрешает сам. Ждёт ответа на 127.0.0.1."""
+def sign_in(open_browser=webbrowser.open, wait=SIGN_IN_WAIT, scope=None, token_file=None):
+    """Открывает страницу входа Google; пользователь входит и разрешает сам. Ждёт ответа на 127.0.0.1.
+    scope и token_file — для других сервисов Google на том же клиенте (YouTube); по умолчанию — календарь."""
     c = client()
     if not c:
         raise NotConnected("нет файла {} — сначала создайте OAuth client (Desktop app) в Google Cloud Console".format(CLIENT_FILE))
@@ -101,7 +102,7 @@ def sign_in(open_browser=webbrowser.open, wait=SIGN_IN_WAIT):
     server = socketserver.TCPServer(("127.0.0.1", 0), Handler)
     redirect = "http://127.0.0.1:{}/".format(server.server_address[1])
     url = AUTH_URL + "?" + urllib.parse.urlencode({
-        "client_id": c["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": SCOPE,
+        "client_id": c["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": scope or SCOPE,
         "access_type": "offline", "prompt": "consent", "state": state,
         "code_challenge": challenge, "code_challenge_method": "S256"})
     server.timeout = 1
@@ -126,48 +127,50 @@ def sign_in(open_browser=webbrowser.open, wait=SIGN_IN_WAIT):
     if resp.status_code != 200 or "refresh_token" not in tok:
         raise NotConnected("Google не выдал доступ: {}".format(tok.get("error_description") or tok.get("error") or resp.status_code))
     tok["expires_at"] = time.time() + int(tok.get("expires_in", 3600)) - 60
-    _write_private(TOKEN_FILE, tok)
+    _write_private(token_file or TOKEN_FILE, tok)
     return True
 
 
-def sign_out():
+def sign_out(token_file=None):
     """Отозвать доступ у Google и удалить токен."""
+    token_file = token_file or TOKEN_FILE
     try:
-        tok = json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
+        tok = json.loads(token_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     try:
         requests.post(REVOKE_URL, data={"token": tok.get("refresh_token") or tok.get("access_token")}, timeout=10)
     except requests.RequestException:
         pass
-    TOKEN_FILE.unlink(missing_ok=True)
+    token_file.unlink(missing_ok=True)
     return True
 
 
 _lock = threading.Lock()
 
 
-def access_token():
+def access_token(token_file=None, what="календарь"):
+    token_file = token_file or TOKEN_FILE
     with _lock:
         try:
-            tok = json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
+            tok = json.loads(token_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            raise NotConnected("календарь не подключён")
+            raise NotConnected("{} не подключён".format(what))
         if tok.get("access_token") and tok.get("expires_at", 0) > time.time():
             return tok["access_token"]
         c = client()
         if not c or not tok.get("refresh_token"):
-            raise NotConnected("календарь не подключён")
+            raise NotConnected("{} не подключён".format(what))
         resp = requests.post(TOKEN_URL, data={"client_id": c["client_id"], "client_secret": c["client_secret"],
                                               "refresh_token": tok["refresh_token"], "grant_type": "refresh_token"}, timeout=20)
         new = resp.json()
         if resp.status_code != 200 or "access_token" not in new:
             if new.get("error") == "invalid_grant":   # доступ отозван в аккаунте Google
-                TOKEN_FILE.unlink(missing_ok=True)
-                raise NotConnected("Google отозвал доступ — подключите календарь заново")
+                token_file.unlink(missing_ok=True)
+                raise NotConnected("Google отозвал доступ — подключите {} заново".format(what))
             raise NotConnected("Google не обновил доступ: {}".format(new.get("error") or resp.status_code))
         tok.update(access_token=new["access_token"], expires_at=time.time() + int(new.get("expires_in", 3600)) - 60)
-        _write_private(TOKEN_FILE, tok)
+        _write_private(token_file, tok)
         return tok["access_token"]
 
 

@@ -73,6 +73,22 @@ def _calendar_forget():
     return "доступ к календарю отозван у Google, токен удалён" if gc.sign_out() else "календарь и так не был подключён"
 
 
+def _youtube_status():
+    from . import youtube_api as yt
+
+    if yt.connected():
+        return "ok", "вход выполнен, только чтение: статистика и ролики"
+    if yt.client():
+        return "off", "клиент Google есть; включите YouTube Data API v3 и YouTube Analytics API в проекте — «подключи YouTube»"
+    return "off", "нет OAuth-клиента Google"
+
+
+def _youtube_forget():
+    from . import youtube_api as yt
+
+    return "доступ к YouTube отозван у Google, токен удалён" if yt.sign_out() else "YouTube и так не был подключён"
+
+
 def _tg_status():
     from .telegram import telegram
 
@@ -192,6 +208,9 @@ REGISTRY = [
     Connector("google_calendar", "Google Calendar", "смотреть, добавлять и удалять события вашего календаря", {"calendar"},
               status=_calendar_status, check=_calendar_check, forget=_calendar_forget,
               connect_hint="«Хлоя, подключи календарь» — вход через Google в браузере", data="токен — ~/.config/chloe/google_token.json"),
+    Connector("youtube", "YouTube", "статистика вашего канала и списки роликов — только чтение", {"youtube"},
+              status=_youtube_status, forget=_youtube_forget,
+              connect_hint="«Хлоя, подключи YouTube» — вход через Google в браузере", data="токен — ~/.config/chloe/youtube_token.json"),
     Connector("telegram", "Telegram", "читать чаты и отправлять сообщения от вашего имени, публиковать в ваши каналы",
               {"tg_read", "tg_unread", "tg_send", "social"}, status=_tg_status, check=_tg_check, forget=_tg_forget,
               connect_hint="python run.py --login-telegram", data="сессия — ~/.chloe/telegram.session"),
@@ -221,6 +240,7 @@ REGISTRY = [
 ]
 BY_ID = {c.id: c for c in REGISTRY}
 ALIASES = {"календарь": "google_calendar", "гугл календарь": "google_calendar", "calendar": "google_calendar",
+           "ютуб": "youtube", "youtube": "youtube", "канал": "youtube",
            "телеграм": "telegram", "телеграмм": "telegram", "телефон": "phone", "андроид": "phone", "интернет": "internet",
            "сеть": "internet", "картинки": "qwen_media", "видео": "qwen_media", "bailian": "bailian_cli", "бэйлянь": "bailian_cli",
            "пульт": "remote", "умный дом": "home_assistant", "очки": "glasses"}

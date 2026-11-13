@@ -21,10 +21,10 @@ BUILTIN = {"if", "for", "Audio", "while", "switch", "return", "function", "catch
            "Date", "Array", "Object", "isNaN", "isFinite", "Float32Array", "Uint8Array", "Uint16Array", "Uint32Array",
            "Int32Array", "requestAnimationFrame", "cancelAnimationFrame", "encodeURIComponent", "decodeURIComponent",
            "RegExp", "URLSearchParams", "Error", "Image", "Promise", "Map", "Set", "Event", "Proxy", "fetch", "alert",
-           "confirm", "SpeechSynthesisUtterance", "KeyboardEvent",
+           "confirm", "SpeechSynthesisUtterance", "KeyboardEvent", "MutationObserver",
            "abs", "cross", "distance", "exp", "floor", "fract", "fwidth", "length", "max", "min", "mix", "mod", "normalize", "pow",
            "sin", "cos", "smoothstep", "texture2D", "vec2", "vec3", "vec4", "clamp", "step", "dot", "sqrt", "main", "rgba",
-           "calc", "env", "onArrive", "then", "cb", "onDone", "onThink", "after", "rng", "f", "Rec", "reply", "fn", "job", "done", "reopen", "fromApi"}
+           "calc", "env", "translate", "onArrive", "then", "cb", "onDone", "onThink", "after", "rng", "f", "Rec", "reply", "fn", "job", "done", "reopen", "fromApi"}
 
 
 class Bridge(unittest.TestCase):
