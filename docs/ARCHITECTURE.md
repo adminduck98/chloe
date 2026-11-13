@@ -47,6 +47,9 @@ app.assistant()                  главный цикл
 | `ears.py` | офлайн-слух Vosk: слышит «Хлоя» без интернета, `~/.chloe/ears` | config, signals |
 | `voice.py` | слух (`route_phrase`: офлайн решает, что отправлять в Google), голос (Светлана → Piper → системный), `confirm()` | ears, brain, journal, signals, config |
 | `speech_stream.py` | голос потоком: Светлана говорит с первого кусочка звука (miniaudio), следующая часть качается, пока звучит эта | — |
+| `youtube_api.py` | YouTube-канал пользователя: статистика и ролики, только чтение (Data + Analytics API); вход — общий OAuth-клиент с календарём, свой токен `youtube_token.json` | google_calendar, config |
+| `publish.py` | пакет «к публикации»: обложки, название, описание с главами, теги, субтитры — для мультфильмов Chloe и для любого видео пользователя (`package_video`, Shorts — свой пакет) | clipper, studio, screenplay |
+| `holyarrs.py` | медиасервер [HolyArrs](https://github.com/HolyArrs/HolyArrs) в Docker (`~/holyarrs`, порт 6262): загрузки, календарь, поиск, медиатека, запросы (`POST /api/v1/asks`, без дублей); ключ `HOLYARRS_KEY` в keys.env; поток `watcher` раз в 3 минуты говорит, что запрошенное стало «available» (не ночью, не посреди разговора, каждое — один раз, `holyarrs_announced` в settings) | config, settings, voice, signals |
 | `tools/` | всё, что Chloe умеет делать | voice, memory, journal, brain |
 | `thinking/` | мышление: `prompt.py` (системная подсказка), `router.py` (быстрый или сильный мозг), `claude.py`, `gemini.py`, `openai_chat.py` (Qwen и DeepSeek), `claude_bridge.py` (Claude вместе с ними) | tools, memory, journal, signals |
 | `app.py` | главный цикл, окно (pywebview), `Api` для страницы мозга | всё выше |

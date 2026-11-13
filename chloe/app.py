@@ -144,6 +144,9 @@ def assistant(args):
     from . import missions, proactive
 
     proactive.start(voice.say)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
+    from . import holyarrs
+
+    holyarrs.start(voice.say)      # HolyArrs: запрошенное скачалось — сказать один раз (не ночью, не посреди разговора)
     missions.start(voice.say)      # задания: шаги по одному, когда Chloe свободна; прерванные — по слову «продолжи задание»
     from .voice import warm_phrases
 

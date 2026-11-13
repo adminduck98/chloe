@@ -21,8 +21,6 @@ def tool_holyarrs(a):
         url, _ = ha.creds()
         webbrowser.open(url)
         return "Открыла HolyArrs: {}.".format(url)
-    if action == "status" and not ha.configured():
-        return _intro()
     if not ha.configured():
         return _intro()
     try:
@@ -37,7 +35,8 @@ def tool_holyarrs(a):
             q = str(a.get("query") or "").strip()
             if not q:
                 return "Что искать (query): название или описание словами («космический фильм 2014»)."
-            return "Найдено (tmdb id — для request): " + ha.text(ha.search(q))
+            return ("Найдено (tmdb id — для request; если похожих названий несколько — спроси пользователя, какое "
+                    "именно, назвав год, и не бери первое): " + ha.text(ha.search(q)))
         if action == "library":
             q = str(a.get("query") or "").strip()
             if not q:
@@ -50,6 +49,9 @@ def tool_holyarrs(a):
             kind = a.get("kind") if a.get("kind") in ("movie", "show") else "movie"
             title = str(a.get("title") or "").strip() or "TMDB {}".format(tmdb)
             what = "фильм" if kind == "movie" else "сериал"
+            have = ha.already(tmdb, kind, a.get("title") or "")
+            if have:
+                return "Не запрашиваю: {}.".format(have)
             if not confirm("Запросить в HolyArrs {} «{}»? Он сам найдёт и скачает его по вашим правилам.".format(what, title)):
                 return "Не запрашиваю: пользователь отказался."
             return "Запрос отправлен в HolyArrs: {} «{}». Ответ: {}".format(what, title, ha.text(ha.ask(tmdb, kind)))
