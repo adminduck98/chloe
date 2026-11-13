@@ -180,6 +180,36 @@ class Package(unittest.TestCase):
         self.assertIn("00:00:01,000 --> ", srt)
         self.assertTrue(any("главы: 3" in r for r in report), report)
 
+    def test_vertical_short_gets_shorts_package(self):
+        from chloe import studio
+
+        d = pathlib.Path(tempfile.mkdtemp())
+        video = d / "клип.mp4"
+        subprocess.run([studio.ffmpeg(), "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=25:duration=20",
+                        "-f", "lavfi", "-i", "sine=frequency=440:duration=20", "-shortest", "-pix_fmt", "yuv420p", str(video)],
+                       check=True, timeout=120)
+        reply = json.dumps({"title": "Он не ожидал", "description": "Смешной момент.", "tags": ["игры"],
+                            "hashtags": ["#gta", "#shorts", "#игры"], "chapters": [[0, "А"], [5, "Б"], [12, "В"]],
+                            "covers": ["НЕ НУЖНО"]}, ensure_ascii=False)
+        with mock.patch("chloe.clipper.transcribe", return_value=[{"s": 1.0, "e": 1.5, "w": "Смотри!"}]), \
+                mock.patch("chloe.publish.suggestions", return_value=[]):
+            out, report = publish.package_video(video, "", ask=lambda text, think=True: reply, progress=lambda t: None)
+        self.assertEqual(report[0], "это Shorts")
+        self.assertEqual(sorted(p.name for p in out.glob("*.jpg")), ["кадр-1.jpg", "кадр-2.jpg", "кадр-3.jpg"])
+        with __import__("PIL.Image").Image.open(out / "кадр-1.jpg") as im:
+            self.assertEqual(im.size, (360, 640))                              # вертикальный кадр как есть
+        text = (out / "описание.txt").read_text(encoding="utf-8")
+        self.assertIn("Он не ожидал", text)
+        self.assertIn("#shorts #gta #игры", text)                               # #shorts — один раз и первым
+        self.assertNotIn("0:00", text)                                         # у Shorts нет глав
+        self.assertIn("Связанное видео", text)
+
+    def test_shorts_detection(self):
+        self.assertTrue(publish.is_shorts({"w": 1080, "h": 1920, "secs": 59}))
+        self.assertTrue(publish.is_shorts({"w": 1080, "h": 1080, "secs": 179}))
+        self.assertFalse(publish.is_shorts({"w": 1080, "h": 1920, "secs": 240}))   # дольше 3 минут — обычный ролик
+        self.assertFalse(publish.is_shorts({"w": 1920, "h": 1080, "secs": 30}))
+
     def test_tool_needs_a_real_video(self):
         out, _, _ = run_tool("youtube", {"action": "package", "path": "/нет/такого.mp4"})
         self.assertIn("Нужен путь к видео", out)
