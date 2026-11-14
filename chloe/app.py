@@ -11,7 +11,7 @@ import time
 
 from . import config
 from .brain import brain
-from . import remote, skillbook, snapshots
+from . import ducking, remote, skillbook, snapshots
 from .changes import changes
 from .ears import ears, has_wake, is_wake_word
 from .ears import install as ears_install
@@ -202,6 +202,7 @@ def assistant(args):
                 command, woke = strip_wake(heard)
                 if not woke and began > state["listen_until"]:
                     print("[не Хлое — окно закрылось: {}]".format(heard[:60]))   # не «Вы:» — ответа не будет
+                    ducking.release()
                     go_idle()
                     continue   # не обращались к Хлое
                 if not woke:                    # окно без «Хлоя»: вдруг человек говорит другому помощнику или в созвоне
@@ -213,6 +214,7 @@ def assistant(args):
                         print("[не Хлое — {}: {}]".format(why, heard[:60]))
                         journal.add("overheard", "Слух", heard, {"why": why})
                         state["listen_until"] = 0
+                        ducking.release()
                         go_idle()
                         continue
                 print("Вы:", heard)
@@ -830,5 +832,16 @@ def main():
     window.events.loaded += on_loaded
     window.events.before_load += brain.pause   # перезагрузка окна (после «забудь») — события ждут, а не теряются
     threading.Thread(target=assistant, args=(args,), daemon=True, name="assistant").start()
+    import signal
+
+    def on_signal(sig, _frame):   # кто-то завершил Chloe снаружи — пусть в журнале будет видно (14.11.2026: исчезала молча)
+        print("[Chloe завершают снаружи: сигнал {}]".format(signal.Signals(sig).name), flush=True)
+        os._exit(0)
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, on_signal)
+        except (ValueError, OSError):
+            pass
     webview.start(private_mode=False, storage_path=str(DATA / "webview"))
+    print("[окно Chloe закрыто — выхожу]", flush=True)
     os._exit(0)

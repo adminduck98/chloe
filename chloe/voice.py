@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import config, persona, phrase_cache, qwen_audio, speech_stream
+from . import config, ducking, persona, phrase_cache, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -254,6 +254,7 @@ class Voice:
             if where == "phone":
                 pass   # просьба была с телефона: он и озвучит ответ, компьютер молчит (текст — в окне)
             elif self.enabled:
+                ducking.duck()   # пока Chloe говорит, музыка тише — её слышно, и её голос не путается с песней
                 # голоса по очереди: основной (CHLOE_TTS) → второй → системный; svetlana — только Светлана, без запасных
                 engines = {"piper": [self._say_piper, self._say_edge], "edge": [self._say_edge, self._say_piper],
                            "svetlana": [self._say_edge], "qwen": [self._say_qwen, self._say_edge]}
@@ -264,6 +265,7 @@ class Voice:
         finally:
             self.saying = ""
             self.spoke_until = time.time()
+            ducking.release(after=1.5)   # договорила — через полторы секунды громкость как была (если не заговорят снова)
         brain.state("idle")
 
     def stop_audio(self):
@@ -672,6 +674,7 @@ def listener():
                 if not busy.is_set() and time.time() > state["listen_until"]:
                     brain.state("idle")
                 continue
+            ducking.duck()   # говорят с Chloe — музыка тише: дослушать и распознать без неё (вернётся после ответа)
             open_continuation()
             if not busy.is_set() or voice.awaiting:
                 brain.voice(0.7, "user")
