@@ -282,5 +282,24 @@ class NoKey(unittest.TestCase):
         self.assertIn("HOLYARRS_KEY", out)
 
 
+
+class Summary(unittest.TestCase):
+    def test_short_status(self):
+        from unittest import mock
+
+        from chloe import holyarrs as H
+
+        st = {"states": [{"name": "Alerts", "state": "running", "stuck": False}, {"name": "Music", "state": "off", "stuck": False}]}
+        with mock.patch.object(H, "health", return_value=st), \
+                mock.patch.object(H, "downloads", return_value={"clients": [{"name": "Transmission", "health": "waiting"}]}), \
+                mock.patch.object(H, "update_info", return_value={"newer": True, "latest": "1.1.4", "version": "1.1.0"}):
+            text = H.summary()
+        self.assertTrue(text.startswith("HolyArrs работает,"))
+        self.assertIn("загрузчик не подключён (Transmission)", text)
+        self.assertIn("есть обновление 1.1.4", text)
+        self.assertNotIn("{", text)
+        with mock.patch.object(H, "health", side_effect=H.HolyArrsError("нет связи")):
+            self.assertIn("не отвечает", H.summary())
+
 if __name__ == "__main__":
     unittest.main()

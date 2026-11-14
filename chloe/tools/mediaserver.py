@@ -25,7 +25,7 @@ def tool_holyarrs(a):
         return _intro()
     try:
         if action == "status":
-            return "Состояние HolyArrs: " + ha.text(ha.health())
+            return ha.summary()
         if action == "downloads":
             return "Загрузки сейчас: " + ha.text(ha.downloads())
         if action == "calendar":

@@ -83,6 +83,32 @@ def health():
     return _call("GET", "/health/states")
 
 
+def summary():
+    """Состояние коротко, для голоса: работает ли, что сломалось, подключён ли загрузчик, есть ли обновление."""
+    try:
+        states = (health() or {}).get("states", [])
+    except HolyArrsError as e:
+        return "HolyArrs не отвечает: {}.".format(e)
+    broken = [x.get("name") for x in states if x.get("stuck") or x.get("state") in ("failed", "error", "crashed")]
+    parts = ["HolyArrs работает" if not broken else "HolyArrs работает с проблемами: " + ", ".join(broken)]
+    try:
+        clients = (downloads() or {}).get("clients", [])
+        bad = [c.get("name", "загрузчик") for c in clients if c.get("health") != "ok"]
+        parts.append("загрузчик не подключён ({}) — загрузки не идут".format(", ".join(bad)) if bad
+                     else "загрузчик подключён" if clients else "загрузчика нет")
+    except HolyArrsError:
+        parts.append("загрузки не узнать")
+    try:
+        u = update_info() or {}
+        if u.get("newer"):
+            parts.append("есть обновление {} (сейчас {})".format(u.get("latest"), u.get("version")))
+        elif u.get("version"):
+            parts.append("версия {}, свежая".format(u.get("version")))
+    except HolyArrsError:
+        pass
+    return ", ".join(parts) + "."
+
+
 def downloads():
     return _call("GET", "/downloads/view")
 
