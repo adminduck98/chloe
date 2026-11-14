@@ -4411,12 +4411,15 @@
     var hands = dragging || nowMs - lastHands < 1200;
     var gap = hands ? 0 : 33;
     // покой (14.11.2026, просьба пользователя: меньше нагрузки, но мозг живой): сразу 15 к/с, через полминуты
-    // тишины — 10, сон или окно на фоне — 6; слушает, думает, говорит — полные 30 и все эффекты
+    // тишины — 8, через две минуты — 6, сон или окно на фоне — 5; слушает, думает, говорит — полные 30 и все эффекты.
+    // Замер: WebKit тратит ~25–35 мс процессора на каждый показанный кадр, сколько бы ни было нарисовано (сцена
+    // считается за 1,9 мс, разрешение холста почти не влияет) — экономит только число кадров
     var saving = calm && !VIEW.full;
     if (saving) {
       gap = 66;
-      if (quiet > 30) gap = 100;
-      if (STATE.name === "sleeping" || VIEW.state === "background" || !document.hasFocus()) gap = 166;
+      if (quiet > 30) gap = 125;
+      if (quiet > 120) gap = 166;
+      if (STATE.name === "sleeping" || VIEW.state === "background" || !document.hasFocus()) gap = 200;
     } else if (calm) gap = 33;
     setLite(saving && quiet > 10);
     lastGap = gap;
