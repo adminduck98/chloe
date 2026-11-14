@@ -96,10 +96,27 @@ def tool_doodle_short(a):
             plan["title"], total, beats or "без слов", res, " (сверх недельного лимита)" if MB.video_block() else "",
             cost, MB.note(cost))):
         return "Не делаю мультик. План был: {}.".format(beats)
-    MB.spend("video", cost, plan["title"])
-    holder["id"] = _start("doodle", plan["title"], lambda: DS.make(plan, work, progress, quality), a.get("open", True) is not False)
+    at = MB.spend("video", cost, plan["title"])
+    holder["id"] = _start("doodle", plan["title"], _paid(lambda: DS.make(plan, work, progress, quality), at,
+                                                         lambda: any(work.glob("part*.mp4"))), a.get("open", True) is not False)
     return ("Делаю мультик «{}» (#{}, {}): {} с, моменты: {}. Это 5–12 минут: Qwen оживляет сцены по очереди, потом сборка. "
             "Скажу, когда будет готово.".format(plan["title"], holder["id"], res, total, beats))
+
+
+def _paid(work, at, made=lambda: False):
+    """Платная работа в фоне: упала, ничего не сделав (made() — что-то готово), — трата возвращается: неудачная попытка
+    не занимает недельный лимит (14.11.2026: мультик не вышел из-за пустого пакета, а неделя считалась занятой)."""
+    def run():
+        try:
+            return work()
+        except Exception:
+            if at and not made():
+                from .. import media_budget as MB
+
+                if MB.refund(at):
+                    print("[бюджет: попытка не удалась — в недельный лимит не считается]")
+            raise
+    return run
 
 
 def _shorts_error():
@@ -198,8 +215,8 @@ def tool_create_media(a):
             task = qm.video_start(prompt, source, seconds, res, a.get("ratio") or "16:9")
         except qm.MediaError as e:
             return "Видео не началось: {}.".format(e)
-        MB.spend("video", cost, prompt)
-        job = _start("video", prompt, lambda: qm.video_wait(task, prompt), open_result)
+        at = MB.spend("video", cost, prompt)
+        job = _start("video", prompt, _paid(lambda: qm.video_wait(task, prompt), at), open_result)
         return ("Видео поставлено в очередь Alibaba (#{}): обычно 2–5 минут. Когда будет готово — скажу и открою. "
                 "Файлы — в {}.".format(job, qm.short(qm.VIDEO_DIR)))
     return "Неизвестное действие: " + action
@@ -322,13 +339,14 @@ def tool_make_film(a):
     if not confirm(question):
         return "Не делаю ролик."
     folder = studio.new_project(title, scenes, style_extra, ratio, mode, {"script": script, "look": look})
-    if mode == "live":
-        MB.spend("video", part if upto < len(scenes) else whole, title, key=str(folder))
-    return _launch(folder, title, scenes, style_extra, ratio, mode, upto, a.get("open", True) is not False, look)
+    at = MB.spend("video", part if upto < len(scenes) else whole, title, key=str(folder)) if mode == "live" else None
+    return _launch(folder, title, scenes, style_extra, ratio, mode, upto, a.get("open", True) is not False, look, at)
 
 
-def _launch(folder, title, scenes, style, ratio, mode, upto, open_result=True, look=None):
+def _launch(folder, title, scenes, style, ratio, mode, upto, open_result=True, look=None, at=None):
     holder = {}
+    clips = lambda: len([c for c in folder.glob("clip*.mp4") if not c.name.endswith(".part.mp4")])   # noqa: E731
+    before = clips()
 
     def progress(text):
         job = jobs.get(holder.get("id"))
@@ -337,8 +355,8 @@ def _launch(folder, title, scenes, style, ratio, mode, upto, open_result=True, l
             job["step"] = "готово сцен: {} из {}".format(job["done"], upto)
 
     kind = "preview" if upto < len(scenes) else "film"
-    job = _start(kind, title, lambda: studio.make_film(title, scenes, style, ratio, mode, progress, project=folder, upto=upto,
-                                                       look=look), open_result)
+    job = _start(kind, title, _paid(lambda: studio.make_film(title, scenes, style, ratio, mode, progress, project=folder,
+                                                             upto=upto, look=look), at, lambda: clips() > before), open_result)
     holder["id"] = job
     if kind == "preview":
         return ("Начала пробный кусок (#{}): первые {} сцены со звуком и субтитрами. Когда будет готово — скажу и открою. "
@@ -370,10 +388,9 @@ def _continue_film(a):
     if cost >= 0.5 and not confirm("Доделать ролик «{}»: ещё {} сцен из {}, примерно {:.0f} % месячного пакета Qwen?".format(
             p["title"], len(rest), len(scenes), max(1, cost))):
         return "Не доделываю."
-    if mode == "live":
-        MB.spend("video", cost, p["title"], key=str(p["folder"]))
+    at = MB.spend("video", cost, p["title"], key=str(p["folder"])) if mode == "live" else None
     return _launch(p["folder"], p["title"], scenes, p.get("style", ""), p.get("ratio", "16:9"), mode, len(scenes),
-                   a.get("open", True) is not False, look)
+                   a.get("open", True) is not False, look, at)
 
 
 def _film_shorts(a):

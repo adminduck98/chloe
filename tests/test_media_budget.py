@@ -63,6 +63,40 @@ class Budget(unittest.TestCase):
         self.assertEqual(start.call_args[0][0], "doodle")
 
 
+class Refund(unittest.TestCase):
+    def setUp(self):
+        self.saved = settings.get(MB.KEY)
+        settings.set(MB.KEY, [])
+
+    def tearDown(self):
+        settings.set(MB.KEY, self.saved)
+
+    def test_failed_cartoon_does_not_take_the_week(self):
+        from chloe import doodle_short as DS
+        from chloe.tools import media
+
+        ran = {}
+
+        def start(kind, title, work, open_result=True):
+            ran["work"] = work
+            return 1
+        with mock.patch.object(DS.qm, "available", return_value=True), mock.patch.object(DS, "make_plan", return_value=PLAN), \
+                mock.patch("chloe.tools.media.confirm", return_value=True), mock.patch.object(media, "_start", side_effect=start), \
+                mock.patch.object(DS, "make", side_effect=DS.qm.MediaError("кредиты Qwen закончились")):
+            run_tool("doodle_short", {"idea": "кофе"})
+            self.assertEqual(MB.week_videos(), 1)                       # пока делается — неделя занята
+            with self.assertRaises(DS.qm.MediaError):
+                ran["work"]()                                           # упал, ни одного кадра
+        self.assertEqual(MB.week_videos(), 0)                           # неделя свободна
+        self.assertIsNone(MB.video_block())
+
+    def test_spend_and_refund(self):
+        at = MB.spend("video", 5, "проба")
+        self.assertTrue(MB.refund(at))
+        self.assertFalse(MB.refund(at))
+        self.assertEqual(MB.month_percent(), 0)
+
+
 class DayLimit(unittest.TestCase):
     def test_over_limit(self):
         day = time.strftime("%Y-%m-%d")

@@ -52,11 +52,23 @@ def video_block(over_limit=False, key=None, now=None):
 
 
 def spend(kind, percent, title="", key=None, now=None):
-    """Записать трату: kind — video или image, percent — оценка доли месячного пакета."""
+    """Записать трату: kind — video или image, percent — оценка доли месячного пакета. Возвращает её отметку (для refund)."""
+    at = now or time.time()
     log = entries()
-    log.append({"at": now or time.time(), "kind": kind, "percent": round(float(percent), 2), "title": str(title)[:60],
+    log.append({"at": at, "kind": kind, "percent": round(float(percent), 2), "title": str(title)[:60],
                 **({"key": str(key)} if key else {})})
     settings.set(KEY, log[-300:])
+    return at
+
+
+def refund(at):
+    """Попытка не удалась, ничего не сделав (Alibaba за неё не берёт) — убрать трату: в лимит и в месяц не считается."""
+    log = entries()
+    left = [e for e in log if e.get("at") != at]
+    if len(left) != len(log):
+        settings.set(KEY, left)
+        return True
+    return False
 
 
 def note(percent, now=None):
