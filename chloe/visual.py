@@ -65,7 +65,7 @@ def describe_image(data, hint=""):
     content = [{"type": "text", "text": PROMPT + ("\nОкно или источник: " + hint if hint else "")},
                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode()}}]
     clients = oc.make_clients()
-    model = config.MODEL_FAST if oc.PROVIDERS[oc.provider_of(config.MODEL_FAST)]["images"] else getattr(config, "MODEL_EYES", None) or config.MODEL_STRONG
+    model = config.MODEL_FAST if oc.sees(config.MODEL_FAST) else getattr(config, "MODEL_EYES", None) or config.MODEL_STRONG
     msg, _m = oc.chat(clients, [{"role": "user", "content": content}], model, tools=False, max_tokens=300)
     return parse_description(msg.content or "")
 

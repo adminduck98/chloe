@@ -48,6 +48,19 @@ PROVIDERS = {
                "key": lambda: config.GEMINI_KEY, "images": False, "timeout": float(os.environ.get("CHLOE_GEMINI_TIMEOUT", "15"))},
 }
 THINKING = "+thinking"
+# модели, которые видят картинки, хотя их провайдер в целом — нет: DeepSeek V4.1 Flash (с 2026, input_modalities
+# text+image; замер 14.11.2026 — скриншот за 1,8 с против 4,4 с у Qwen). V4 Pro — только текст.
+SEES_IMAGES = {m.strip() for m in os.environ.get("CHLOE_VISION_MODELS", "deepseek-flash").split(",") if m.strip()}
+# провайдеры, которые не думают за Chloe (только картинки и видео): CHLOE_BRAIN_SKIP="qwen" — Qwen для мультиков
+BRAIN_SKIP = {p.strip().lower() for p in os.environ.get("CHLOE_BRAIN_SKIP", "").split(",") if p.strip()}
+
+
+def sees(model):
+    """Видит ли эта модель картинки."""
+    name = str(model or "").split("+")[0]
+    if name in SEES_IMAGES:
+        return True
+    return bool(name) and PROVIDERS.get(provider_of(name), {}).get("images", False)
 
 
 def _price(model):
@@ -115,6 +128,8 @@ def backups(model):
         chosen_gemini = m and m.startswith("gemini") and m in chosen
         if m and m not in chosen and cap is not None and _price(m) > cap * 1.5:
             continue                                    # запасная не дороже выбранных: выбран Haiku — Sonnet не позовём
+        if m and provider_of(m) in BRAIN_SKIP and m not in chosen:
+            continue                                    # этот провайдер — только для картинок и видео
         if m and m not in seen and (m.split("+")[0][:4] in ("qwen", "deep", "clau") or chosen_gemini) \
                 and config.has_key(provider_of(m)):
             seen.add(m)
@@ -132,14 +147,15 @@ def tool_specs(only=None):
                                               "parameters": t["input_schema"]}} for t in TOOLS if only is None or t["name"] in only]
 
 
-def for_provider(messages, provider):
-    """История для конкретного провайдера: без служебных полей ("_anthropic"), а DeepSeek не принимает картинки —
-    вместо них пометка."""
+def for_provider(messages, provider, model=None):
+    """История для конкретного провайдера: без служебных полей ("_anthropic"), а модели, которые не видят картинки
+    (DeepSeek V4 Pro), получают вместо них пометку."""
+    images = sees(model) if model else PROVIDERS[provider]["images"]
     out = []
     for m in messages:
         if any(k.startswith("_") for k in m):
             m = {k: v for k, v in m.items() if not k.startswith("_")}
-        if isinstance(m.get("content"), list) and not PROVIDERS[provider]["images"]:
+        if isinstance(m.get("content"), list) and not images:
             text = " ".join(c["text"] for c in m["content"] if c.get("type") == "text")
             m = dict(m, content=text + " [скриншот: эта модель картинки не видит]")
         out.append(m)
@@ -169,6 +185,8 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
 
     messages = keep_last_images(messages)
     models = backups(model)
+    if any(isinstance(x.get("content"), list) for x in messages if x.get("role") == "user"):
+        models = sorted(models, key=lambda x: not sees(x))   # есть скриншот — сначала те, кто его увидит
     allowed = [m for m in models if not usage.over_limit(m)]
     for m in models:
         hit = usage.over_limit(m)
@@ -191,7 +209,7 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
             else:
                 name, extra = request_args(m)
                 resp = clients[provider].chat.completions.create(
-                    model=name, messages=for_provider(messages, provider), max_tokens=max_tokens,
+                    model=name, messages=for_provider(messages, provider, m), max_tokens=max_tokens,
                     **({"tools": tool_specs(tools if isinstance(tools, (set, list, tuple, frozenset)) else None)} if tools else {}),
                     **extra)
                 msg = resp.choices[0].message
@@ -294,7 +312,7 @@ def think_openai(clients, messages, user_text, route):
         messages.insert(0, {"role": "system", "content": ""})
     messages[0]["content"] = system_prompt()   # память и навыки могли измениться
     text = start_thinking(user_text)
-    frame = vision.fresh_frame() if PROVIDERS[provider_of(route.model)]["images"] and wants_frame(user_text) else None
+    frame = vision.fresh_frame() if sees(route.model) and wants_frame(user_text) else None
     if frame:   # постоянное зрение: что пользователь видит прямо сейчас
         messages.append({"role": "user", "_vision": True, "content": [   # _vision: служебная пометка, в модель не уходит
             {"type": "text", "text": text},

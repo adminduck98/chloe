@@ -48,18 +48,25 @@ class RepeatGuard(unittest.TestCase):
 class LookWithEyes(unittest.TestCase):
     def test_screen_question_goes_to_model_that_sees(self):
         settings.set("vision", True)
-        with mock.patch.object(config, "MODEL_FAST", "deepseek-flash"), \
-             mock.patch.object(config, "MODEL_STRONG", "deepseek-v4-pro"), \
+        # быстрый мозг не видит экран (V4 Pro) — вопрос про экран уходит «глазам»
+        with mock.patch.object(config, "MODEL_FAST", "deepseek-v4-pro"), \
+             mock.patch.object(config, "MODEL_STRONG", "deepseek-v4-pro+thinking"), \
              mock.patch.object(config, "MODEL_EYES", "claude-haiku-5-5", create=True):
             self.assertEqual(router.Route("что это за ошибка?").model, "claude-haiku-5-5")
-            self.assertEqual(router.Route("поставь будильник на 7").model, "deepseek-flash")
+            self.assertEqual(router.Route("поставь будильник на 7").model, "deepseek-v4-pro")
+        # DeepSeek Flash видит сам — никуда не переключается
+        with mock.patch.object(config, "MODEL_FAST", "deepseek-flash"), \
+             mock.patch.object(config, "MODEL_STRONG", "deepseek-v4-pro"), \
+             mock.patch.object(config, "MODEL_EYES", "deepseek-flash", create=True):
+            self.assertEqual(router.Route("что это за ошибка?").model, "deepseek-flash")
         with mock.patch.object(config, "MODEL_FAST", "qwen3.8-flash"), \
              mock.patch.object(config, "MODEL_STRONG", "qwen3.8-flash+thinking"), \
              mock.patch.object(config, "MODEL_EYES", None, create=True):
             self.assertEqual(router.Route("что это за ошибка?").model, "qwen3.8-flash")   # Qwen и так видит
 
     def test_sees_images(self):
-        self.assertFalse(router.sees_images("deepseek-flash"))
+        self.assertTrue(router.sees_images("deepseek-flash"))              # V4.1 Flash видит картинки (14.11.2026)
+        self.assertFalse(router.sees_images("deepseek-v4-pro"))
         self.assertTrue(router.sees_images("qwen3.8-flash+thinking"))
         self.assertTrue(router.sees_images("claude-haiku-5-5"))
         with mock.patch.object(router.config, "PROVIDER", "gemini"):

@@ -53,7 +53,10 @@ def sees_images(model):
     name = str(model or "").split("+")[0]
     if name.startswith("gemini"):
         return config.PROVIDER == "gemini"
-    return bool(name) and not name.startswith("deepseek")
+    if name.startswith("deepseek"):
+        from .openai_chat import SEES_IMAGES   # DeepSeek Flash картинки видит, V4 Pro — нет
+        return name in SEES_IMAGES
+    return bool(name)
 
 
 class Route:
@@ -116,6 +119,8 @@ class Route:
         """Быстрый мозг взялся за сложное: его ответ не выполняем, шаг заново сделает сильный. True — повторить шаг."""
         hard = set(tool_names) & HARD_TOOLS
         if self.is_fast and hard:
+            if hard <= SCREEN_TOOLS and self.is_eyes:
+                return False                       # быстрый мозг и есть «глаза» (DeepSeek Flash) — смотрит сам, без круга
             if self.eyes and hard <= SCREEN_TOOLS:
                 self.use_eyes("нужно " + ", ".join(sorted(hard)))
             else:
