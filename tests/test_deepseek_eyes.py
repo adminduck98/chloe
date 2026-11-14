@@ -48,6 +48,17 @@ class NoLoop(unittest.TestCase):
             self.assertEqual(r.model, "deepseek-flash")
 
 
+class HaikuEyes(unittest.TestCase):
+    def test_assigned_eyes_take_screen_even_if_fast_sees(self):
+        from chloe.vision import Vision
+
+        with mock.patch.object(config, "MODEL_FAST", "deepseek-flash"), mock.patch.object(config, "MODEL_STRONG", "deepseek-v4-pro"), \
+                mock.patch.object(config, "MODEL_EYES", "claude-haiku-5-5", create=True), \
+                mock.patch.object(Vision, "enabled", new_callable=mock.PropertyMock, return_value=True):
+            self.assertEqual(router.Route("что у меня на экране?").model, "claude-haiku-5-5")
+            self.assertEqual(router.Route("поставь будильник на 7").model, "deepseek-flash")
+
+
 class Skip(unittest.TestCase):
     def test_qwen_not_a_brain_backup(self):
         with mock.patch.object(oc, "BRAIN_SKIP", {"qwen"}), mock.patch.object(config, "PROVIDER", "deepseek"), \

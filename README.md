@@ -274,10 +274,10 @@ Chloe — продюсер канала: знает, как снимать, уп
   месяц и сколько будет после (оценка; «сколько осталось Qwen» — тоже покажет).
 - Деньги на мышление в день: `CHLOE_DAY_LIMIT="anthropic=0.3"` — только Claude, DeepSeek дешёвый и без лимита (`off` — без лимитов; `deepseek=0.5` — добавить и ему). Лимит исчерпан —
   модель до завтра пропускается; исчерпаны все — Chloe так и скажет.
-- Режим тестов в `~/.bashrc`: обычные просьбы и экран — DeepSeek Flash (видит картинки, самый быстрый: ~1–2 с на шаг),
+- Режим тестов в `~/.bashrc`: обычные просьбы — DeepSeek Flash (самый быстрый: ~1–2 с на шаг), экран — Claude Haiku (на скриншотах быстрее и точнее Flash; Flash — запасные глаза),
   сложные задачи — DeepSeek V4 Pro, запасной — Claude Haiku (Sonnet не зовётся — дороже выбранных), слух — Google,
   Qwen только для картинок, видео и мультиков: `CHLOE_MODEL_FAST=deepseek-flash`, `CHLOE_MODEL_STRONG=deepseek-v4-pro`,
-  `CHLOE_MODEL_EYES=deepseek-flash`, `CHLOE_BRAIN_SKIP=qwen`, `CHLOE_ASR=google`, `CHLOE_OFF=gemini`.
+  `CHLOE_MODEL_EYES=claude-haiku-5-5`, `CHLOE_BRAIN_SKIP=qwen`, `CHLOE_ASR=google`, `CHLOE_OFF=gemini`.
   Какие модели видят картинки — `CHLOE_VISION_MODELS` (по умолчанию `deepseek-flash`).
 
 ## Ролик из идеи (Creative Studio)

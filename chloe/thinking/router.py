@@ -90,7 +90,14 @@ class Route:
         (DeepSeek), отвечать вслепую нельзя: берёт модель с глазами."""
         from ..vision import SCREEN_HINT, vision
 
-        if not (vision.enabled and SCREEN_HINT.search(user_text or "")) or sees_images(self.model):
+        if not (vision.enabled and SCREEN_HINT.search(user_text or "")):
+            return
+        if self.eyes and self.eyes != self.model and sees_images(self.eyes):
+            # «глаза» назначены отдельно — экран смотрят они, даже если быстрый мозг тоже видит картинки
+            # (14.11.2026: Haiku на скриншотах быстрее и точнее DeepSeek Flash — 2,3 с против 2,8 с)
+            self.use_eyes("просьба про экран — это работа глаз")
+            return
+        if sees_images(self.model):
             return
         if self.eyes and sees_images(self.eyes):
             self.use_eyes("просьба про экран, а «{}» картинок не видит".format(self.model))
