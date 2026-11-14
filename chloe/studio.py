@@ -547,6 +547,10 @@ def hero_sheet(work, scenes, style, ratio, look=None):
     path = pathlib.Path(work) / "hero.png"
     if path.exists():
         return path
+    ready = ST.hero_file(look)
+    if ready:                                       # у стиля свой готовый лист героев — без Qwen, герои всегда одни и те же
+        shutil.copyfile(ready, path)
+        return path
     prompt = ST.frame(HERO_SHEET, look) if look in ST.STYLES else HERO_SHEET + ". " + (style or scenes[0]["picture"])
     try:
         shutil.copyfile(qm.image(prompt, ratio)[0], path)

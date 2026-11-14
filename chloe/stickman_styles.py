@@ -97,13 +97,28 @@ STYLES = {
                   "only red, orange and blue as small concept accents; no text, no photo details, no 3D, no textures"),
         "music": "тихое пианино или без музыки",
     },
+    "doodle": {
+        "name": "Рисованный: Персик и Пушок",
+        "when": "милые короткие сценки, чувства, юмор, отношения, мемы, Reels и Shorts — как нарисовано от руки в скетчбуке",
+        "anchor": ("two original cute characters: Peach — a small round chubby peach-colored blob with a tiny green leaf sprouting "
+                   "on top of its head, two black dot eyes, a small cat-like smile, pink blush marks; Puff — a slightly taller soft "
+                   "lavender bean-shaped creature with two small rounded ears, two black dot eyes, a small flat mouth, pink blush marks"),
+        "world": ("hand-drawn doodle on slightly textured warm off-white paper: wobbly black felt-tip marker outlines with uneven line "
+                  "weight, flat pastel colors filled loosely with visible colored-pencil strokes, color a little outside the lines, "
+                  "cozy sketchbook look, muted olive and beige for places and objects; no 3D, no gradients, no photo details"),
+        "music": "весёлая укулеле и колокольчики",
+        # лист героев: по этому рисунку Qwen рисует каждую сцену — Персик и Пушок везде одни и те же (сам лист уже готов)
+        "hero": "assets/styles/doodle-hero.jpg",
+    },
 }
 DEFAULT = "classic_light"
 ALIASES = {"3d": "action3d", "3д": "action3d", "объём": "action3d", "объем": "action3d", "манекен": "action3d", "экшен": "action", "драк": "action", "боевик": "action", "доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
            "тёмн": "classic_dark", "темн": "classic_dark", "чёрн": "classic_dark", "черн": "classic_dark",
            "светл": "classic_light", "бел": "classic_light", "классик": "classic_light", "неон": "neon_desktop",
            "компьютер": "neon_desktop", "экран": "neon_desktop", "шапк": "beanie", "студи": "beanie", "уют": "cozy",
-           "истори": "historical", "пещер": "prehistoric", "древн": "prehistoric"}   # основы слов: «в тёмном стиле»
+           "истори": "historical", "пещер": "prehistoric", "древн": "prehistoric",
+           "рисованн": "doodle", "персик": "doodle", "пушок": "doodle", "пушк": "doodle", "карандаш": "doodle", "скетч": "doodle",
+           "doodle": "doodle"}   # основы слов: «в тёмном стиле»
 
 
 def find(text):
@@ -117,6 +132,15 @@ def find(text):
         if word in t:
             return key
     return None
+
+
+def hero_file(key):
+    """Готовый лист героев стиля (если есть) — путь к файлу, иначе None."""
+    import pathlib
+
+    rel = (STYLES.get(key) or {}).get("hero")
+    p = pathlib.Path(__file__).parent / rel if rel else None
+    return p if p and p.exists() else None
 
 
 def catalog():
