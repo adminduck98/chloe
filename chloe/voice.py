@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import config, persona, phrase_cache, qwen_audio, speech_stream
+from . import addressee, config, persona, phrase_cache, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -611,9 +611,9 @@ def route_phrase(audio, started):
     if voice.awaiting and not overlapped:
         return "cloud"                                   # ответ «да/нет» на её вопрос
     working = busy.is_set() or overlapped
-    if not working and time.time() < state["listen_until"]:
+    if not working and time.time() < state["listen_until"] and addressee.window_open_for(voice.last_said):
         voice.reason = "window"
-        return "cloud"                                   # окно после её ответа
+        return "cloud"                                   # окно после её вопроса: ответ без «Хлоя»
     if not working and started < voice.open_until:
         voice.reason = "continue"
         return "cloud"                                   # продолжение начатой просьбы

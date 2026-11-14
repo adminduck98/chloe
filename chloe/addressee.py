@@ -1,37 +1,31 @@
-"""Кому сказано: после ответа Chloe слушает без слова «Хлоя» (окно CHLOE_ACTIVE), но речь рядом бывает не ей —
-человек диктует другому помощнику, говорит в Telegram или на созвоне. Тогда без «Хлоя» не отвечаем.
+"""Кому сказано: Chloe отвечает, когда к ней обращаются по имени.
 
-Со словом «Хлоя» — всегда ей. Без него в окне — ей, если:
-- она сама только что спросила (её реплика кончилась «?») — это ответ;
-- фраза короткая (продолжение: «а завтра?», «открой его», «нет, второй»), и в это время не открыто окно, где человек
-  говорит с кем-то другим (CHLOE_OTHER_APPS — через запятую, по умолчанию помощники, мессенджеры, созвоны).
+Правило пользователя (14.11.2026): «когда говорю просто так — не слушать; сказал „Хлоя“ — сразу включиться».
+- Со словом «Хлоя» — всегда ей, что бы ни было открыто на экране (проверку активного окна убрали: Chloe молчала,
+  пока работаешь в окне Claude, Telegram и т. п.).
+- Без «Хлоя» — только ответ на её вопрос: её последняя реплика кончилась «?» («Какую музыку?», «Делать?»), и
+  фраза сказана в окне CHLOE_ACTIVE после её ответа. Остальная речь в комнате — не ей.
+CHLOE_FOLLOWUP=all — как было раньше: в окне после ответа ей — любая фраза без «Хлоя».
 """
 import os
 
-SHORT_WORDS = int(os.environ.get("CHLOE_FOLLOWUP_WORDS", "10"))   # длиннее без «Хлоя» и без её вопроса — не ей
-OTHER_APPS = tuple(x.strip().lower() for x in os.environ.get(
-    "CHLOE_OTHER_APPS",
-    "claude,chatgpt,gemini,copilot,perplexity,telegram,whatsapp,discord,zoom,meet,skype,teams,slack,viber").split(",")
-    if x.strip())
+MODE = os.environ.get("CHLOE_FOLLOWUP", "question").strip().lower()
 
 
-def other_app(title):
-    """Активно окно, где человек говорит не с Chloe (её собственное окно — «Chloe» — сюда не попадает)."""
-    t = (title or "").lower()
-    if not t or t.startswith("chloe"):
-        return ""
-    return next((a for a in OTHER_APPS if a in t.replace("‎", "").replace("⁨", "").replace("⁩", "")), "")
+def asked(last_said):
+    """Chloe сама спросила — ей можно ответить без «Хлоя»."""
+    return (last_said or "").rstrip().rstrip("»\"')").endswith("?")
+
+
+def window_open_for(last_said):
+    """Слушать ли в окне после ответа без слова «Хлоя» (отправлять ли речь распознаваться)."""
+    return MODE == "all" or asked(last_said)
 
 
 def followup_for_chloe(text, last_said="", title=""):
-    """(ей ли это, почему) — для фразы без «Хлоя» в окне после её ответа."""
-    asked = (last_said or "").rstrip().endswith("?")
-    app = other_app(title)
-    if app:
-        return False, "открыто «{}» — говорите там".format(app)
-    if asked:
+    """(ей ли это, почему) — для фразы без «Хлоя» в окне после её ответа. title — больше не учитывается."""
+    if asked(last_said):
         return True, "ответ на её вопрос"
-    n = len((text or "").split())
-    if n > SHORT_WORDS:
-        return False, "длинная фраза без «Хлоя» ({} слов), а она ничего не спрашивала".format(n)
-    return True, "короткое продолжение"
+    if MODE == "all":
+        return True, "окно после ответа"
+    return False, "без «Хлоя», а она ничего не спрашивала"

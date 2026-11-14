@@ -54,10 +54,17 @@ class Route(unittest.TestCase):
         for talk in ("хлоя какая погода", "сделай погромче хлоя", "ну и как тебе хлоя", "у хлои есть"):
             self.assertEqual(self.way(talk), "cloud", talk)
 
-    def test_after_her_answer_no_wake_needed(self):
+    def test_after_her_question_no_wake_needed(self):
         state["listen_until"] = time.time() + 10
+        voice.last_said = "Какую музыку, босс?"
         self.assertEqual(self.way("а завтра"), "cloud")
         self.assertEqual(self.heard, [])   # даже офлайн-слух не понадобился
+
+    def test_after_her_answer_without_question_name_needed(self):
+        """Правило пользователя 14.11.2026: просто так — не слушать, только «Хлоя» (или ответ на её вопрос)."""
+        state["listen_until"] = time.time() + 10
+        voice.last_said = "Поставила Beck — Loser."
+        self.assertEqual(self.way("а завтра"), "skip")
 
     def test_rest_of_the_phrase_follows(self):
         voice.open_until = time.time() + 1
