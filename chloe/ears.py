@@ -80,8 +80,14 @@ def is_wake_word(w):
             and any(near(w, base) for base in ("хлоя", "хлое", "хлои", "хлою")))
 
 
+# так офлайн-слух слышит «Хлоя» в начале обращения (журнал 15.11.2026: «слоя что на экране сейчас»); это и обычное
+# слово («два слоя краски»), поэтому именем считается, только если фраза с него начинается
+START_ONLY = ("слоя",)
+
+
 def has_wake(text):
-    return any(is_wake_word(w) for w in words(text))
+    ws = words(text)
+    return any(is_wake_word(w) for w in ws) or bool(ws) and ws[0].lower() in START_ONLY
 
 
 def install(model=EARS_MODEL):

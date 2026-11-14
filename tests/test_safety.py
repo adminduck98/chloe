@@ -41,7 +41,7 @@ class Wake(unittest.TestCase):
         self.assertEqual(strip_wake("Хлоа, какая погода"), ("какая погода", True))
         self.assertEqual(strip_wake("Клои привет"), ("привет", True))
         self.assertTrue(strip_wake("скажи, хло, который час")[1])
-        for text in ("хлоп в ладоши", "хлор в воде", "клон овцы", "хлопья на завтрак", "слоя краски"):
+        for text in ("хлоп в ладоши", "хлор в воде", "клон овцы", "хлопья на завтрак", "два слоя краски"):
             self.assertFalse(strip_wake(text)[1], text)
 
 

@@ -13,7 +13,7 @@ from . import config
 from .brain import brain
 from . import remote, skillbook, snapshots
 from .changes import changes
-from .ears import ears, has_wake, is_wake_word
+from .ears import START_ONLY, ears, has_wake, is_wake_word
 from .ears import install as ears_install
 from .config import ACTIVE_WINDOW, BRAIN_FILE, DATA, EXIT_WORDS, STOP_WORDS, UI_DIR, WAKE_WORDS
 from .journal import journal
@@ -40,7 +40,7 @@ def strip_wake(text):
     if m:
         return text[m.end():], True
     m = re.match(r"^\W*(\w+)\b[\s,.!:-]*", text)
-    if m and is_wake_word(m.group(1)):   # «Хлоа, …», «Клое, …» — распознавание исказило имя
+    if m and (is_wake_word(m.group(1)) or m.group(1).lower() in START_ONLY):   # «Хлоа, …», «Слоя, …» — имя искажено
         return text[m.end():], True
     return text, has_wake(text)
 

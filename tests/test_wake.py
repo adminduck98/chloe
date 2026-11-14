@@ -54,6 +54,11 @@ class Route(unittest.TestCase):
         for talk in ("хлоя какая погода", "сделай погромче хлоя", "ну и как тебе хлоя", "у хлои есть"):
             self.assertEqual(self.way(talk), "cloud", talk)
 
+    def test_sloya_at_start_is_her_name(self):
+        """Офлайн-слух слышит «Хлоя» как «слоя» (журнал 15.11.2026) — это ей; «слои» — нет."""
+        self.assertEqual(self.way("слоя что на экране сейчас"), "cloud")
+        self.assertEqual(self.way("два слои краски"), "skip")
+
     def test_after_her_question_no_wake_needed(self):
         state["listen_until"] = time.time() + 10
         voice.last_said = "Какую музыку, босс?"
@@ -140,7 +145,7 @@ class RealModel(unittest.TestCase):
     def test_wake_found_and_not_imagined(self):
         for text in ("Хлоя, какая погода", "сделай погромче, Хлоя", "привет Хлоя"):
             self.assertTrue(has_wake(self.ears.hear(self.say(text))), text)
-        for text in ("мы вчера играли в доту на инвокере", "хлопья на завтрак", "клоун пришёл", "слоя краски"):
+        for text in ("мы вчера играли в доту на инвокере", "хлопья на завтрак", "клоун пришёл", "два слоя краски"):
             self.assertFalse(has_wake(self.ears.hear(self.say(text))), text)
 
     def test_fast_enough(self):
