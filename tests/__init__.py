@@ -13,6 +13,7 @@ for _key in ("XDG_DATA_HOME", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DASHSCOP
     os.environ.pop(_key, None)
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 os.environ["CHLOE_STREAM_VOICE"] = "off"   # потоковый голос ходит в сеть и в звуковую карту — у него свои тесты с подменой
+os.environ["CHLOE_DAY_LIMIT"] = "off"        # тестовые траты за день копятся — лимит проверяет свой тест
 
 # защита: если пакет chloe уже загружен с настоящей домашней папкой, тесты испортили бы настоящие память и журнал
 import sys as _sys

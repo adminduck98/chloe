@@ -37,31 +37,42 @@ NAMES = {"image": ("Картинка", "готова", "не получилас�
          "human3d": ("3D-человек", "готов", "не получился"),
          "publish": ("Пакет к публикации", "готов (обложки, название, описание, теги и субтитры — в папке рядом с видео)", "не получился"),
          "doodle": ("Мультик «Персик и Пушок»", "готов (без голоса, со своей музыкой — можно выкладывать в Reels и Shorts)", "не получился"),
+         "doodle_draft": ("Черновик мультика", "готов (без Qwen, бесплатно) — скажите «делай мультик по черновику», если нравится", "не получился"),
          "clips": ("Нарезка Shorts", "готова (названия и описания — в clips.txt рядом)", "не получилась"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
 
 
 def tool_doodle_short(a):
-    """Мультик «Персик и Пушок»: план от модели → цена и «да» → в фоне первый кадр, цепочка видео Qwen, сборка."""
+    """Мультик «Персик и Пушок»: план от модели → цена и «да» → в фоне первый кадр, цепочка видео Qwen, сборка.
+    quality: draft — черновик без Qwen (бесплатно), normal — 480P (по умолчанию), high — 720P («качественно»).
+    from_draft — сделать настоящий мультик по плану последнего черновика."""
     from .. import doodle_short as DS
+    from .. import media_budget as MB
+    from ..settings import settings
 
-    if not qm.available():
-        return "Нет ключа Qwen — мультик рисовать не на чем."
-    idea = str(a.get("idea") or "").strip()
-    if not idea:
-        return "Нужна идея (idea): что происходит и что говорят — своими словами пользователя."
-    seconds = max(6, min(int(a.get("seconds") or 12), 20))
-    try:
-        plan = DS.make_plan(idea, seconds)
-    except DS.DoodleError as e:
-        return "Не получилось: {}.".format(e)
-    except Exception as e:                                            # noqa: BLE001 — модель недоступна
-        return "Не вышел план: {}.".format(str(e)[:120])
+    quality = a.get("quality") if a.get("quality") in ("draft", "normal", "high") else "normal"
+    if quality != "draft" and not qm.available():
+        return "Нет ключа Qwen — настоящий мультик рисовать не на чем. Могу сделать черновик без Qwen (quality=draft)."
+    if a.get("from_draft"):
+        last = settings.get("doodle_draft") or {}
+        if not last.get("plan"):
+            return "Черновика ещё нет — сначала сделайте черновик или скажите идею."
+        plan = last["plan"]
+        if quality == "draft":
+            quality = "normal"
+    else:
+        idea = str(a.get("idea") or "").strip()
+        if not idea:
+            return "Нужна идея (idea): что происходит и что говорят — своими словами пользователя."
+        seconds = max(6, min(int(a.get("seconds") or 12), 20))
+        try:
+            plan = DS.make_plan(idea, seconds)
+        except DS.DoodleError as e:
+            return "Не получилось: {}.".format(e)
+        except Exception as e:                                        # noqa: BLE001 — модель недоступна
+            return "Не вышел план: {}.".format(str(e)[:120])
     total = sum(b["seconds"] for b in plan["beats"])
     beats = "; ".join("«{}»".format(b["words"]) for b in plan["beats"] if b["words"])
-    if not confirm("Мультик «{}»: {} с, {}. Это примерно {:.0f} % месячного пакета Qwen. Делать?".format(
-            plan["title"], total, beats or "без слов", DS.cost_percent(plan))):
-        return "Не делаю мультик. План был: {}.".format(beats)
     work = qm.VIDEO_DIR / "doodle" / "{}-{}".format(time.strftime("%Y%m%d-%H%M%S"), qm._slug(plan["title"]))
     holder = {}
 
@@ -69,9 +80,26 @@ def tool_doodle_short(a):
         job = jobs.get(holder.get("id"))
         if job:
             job["step"] = str(text)
-    holder["id"] = _start("doodle", plan["title"], lambda: DS.make(plan, work, progress), a.get("open", True) is not False)
-    return ("Делаю мультик «{}» (#{}): {} с, моменты: {}. Это 5–12 минут: Qwen оживляет сцены по очереди, потом сборка. "
-            "Скажу, когда будет готово.".format(plan["title"], holder["id"], total, beats))
+    if quality == "draft":
+        settings.set("doodle_draft", {"plan": plan, "at": time.time()})
+        holder["id"] = _start("doodle_draft", plan["title"], lambda: DS.make(plan, work, progress, "draft"),
+                              a.get("open", True) is not False)
+        return ("Делаю черновик мультика «{}» (#{}) без Qwen — бесплатно: лист героев, плавная камера, слова и музыка, "
+                "{} с, моменты: {}. Меньше минуты. Понравится — скажите «делай мультик по черновику».".format(
+                    plan["title"], holder["id"], total, beats))
+    blocked = MB.video_block(bool(a.get("over_limit")))
+    if blocked:
+        return "Не делаю настоящий мультик: " + blocked
+    cost = DS.cost_percent(plan, quality)
+    res = DS.QUALITY[quality][0]
+    if not confirm("Мультик «{}»: {} с, {}, {}{}. Это примерно {:.0f} % месячного пакета Qwen. {} Делать?".format(
+            plan["title"], total, beats or "без слов", res, " (сверх недельного лимита)" if MB.video_block() else "",
+            cost, MB.note(cost))):
+        return "Не делаю мультик. План был: {}.".format(beats)
+    MB.spend("video", cost, plan["title"])
+    holder["id"] = _start("doodle", plan["title"], lambda: DS.make(plan, work, progress, quality), a.get("open", True) is not False)
+    return ("Делаю мультик «{}» (#{}, {}): {} с, моменты: {}. Это 5–12 минут: Qwen оживляет сцены по очереди, потом сборка. "
+            "Скажу, когда будет готово.".format(plan["title"], holder["id"], res, total, beats))
 
 
 def _shorts_error():
@@ -139,28 +167,38 @@ def tool_create_media(a):
                 qm._image_ref(source)            # нет файла — скажем сразу, а не через минуту
             except qm.MediaError as e:
                 return "Не могу: {}.".format(e)
+        from .. import media_budget as MB
+
+        MB.spend("image", 0.3 * int(n), prompt)
         job = _start("image", prompt, lambda: qm.image(prompt, ratio, n, source), open_result)
         return ("Начала {} (#{}): это 30–90 секунд, когда будет готово — скажу и открою. "
                 "Файлы — в {}.".format("менять картинку" if source else "рисовать", job, qm.short(qm.IMAGE_DIR)))
 
     if action == "video":
         seconds = max(3, min(int(a.get("seconds") or 5), 15))
-        res = (a.get("resolution") or "720P").upper()
-        res = res if res in ("720P", "1080P") else "720P"
+        res = (a.get("resolution") or "480P").upper()
+        res = res if res in ("480P", "720P", "1080P") else "480P"
         if source:
             try:
                 qm._image_ref(source)
             except qm.MediaError as e:
                 return "Не могу: {}.".format(e)
         # замер 10.11.2026: 5 с 720P ≈ 4,5 % месячного Token Plan; 1080P у Alibaba ≈ в 1,8 раза дороже
-        cost = 0.9 * seconds * (1.8 if res == "1080P" else 1)
-        if not confirm("Сделать видео {} секунд{}? Это примерно {:.0f} % месячного пакета Qwen.".format(
-                seconds, " из картинки" if source else "", max(1, cost))):
+        from .. import media_budget as MB
+
+        blocked = MB.video_block(bool(a.get("over_limit")))
+        if blocked:
+            return "Не делаю видео: " + blocked
+        cost = 0.9 * seconds * {"480P": 0.5, "1080P": 1.8}.get(res, 1)
+        if not confirm("Сделать видео {} секунд{}, {}{}? Это примерно {:.0f} % месячного пакета Qwen. {}".format(
+                seconds, " из картинки" if source else "", res, " (сверх недельного лимита)" if MB.video_block() else "",
+                max(1, cost), MB.note(cost))):
             return "Не делаю видео."
         try:
             task = qm.video_start(prompt, source, seconds, res, a.get("ratio") or "16:9")
         except qm.MediaError as e:
             return "Видео не началось: {}.".format(e)
+        MB.spend("video", cost, prompt)
         job = _start("video", prompt, lambda: qm.video_wait(task, prompt), open_result)
         return ("Видео поставлено в очередь Alibaba (#{}): обычно 2–5 минут. Когда будет готово — скажу и открою. "
                 "Файлы — в {}.".format(job, qm.short(qm.VIDEO_DIR)))
@@ -274,9 +312,18 @@ def tool_make_film(a):
     else:
         question = "Сделать ролик «{}» из {} сцен, {}? Это примерно {:.0f} % месячного пакета Qwen. Сцены: {}".format(
             title, len(scenes), what, max(1, whole), plan)
+    if mode == "live":
+        from .. import media_budget as MB
+
+        blocked = MB.video_block(bool(a.get("over_limit")))
+        if blocked:
+            return "Не делаю ролик с живым видео: " + blocked
+        question += " " + MB.note(part if upto < len(scenes) else whole)
     if not confirm(question):
         return "Не делаю ролик."
     folder = studio.new_project(title, scenes, style_extra, ratio, mode, {"script": script, "look": look})
+    if mode == "live":
+        MB.spend("video", part if upto < len(scenes) else whole, title, key=str(folder))
     return _launch(folder, title, scenes, style_extra, ratio, mode, upto, a.get("open", True) is not False, look)
 
 
@@ -314,9 +361,17 @@ def _continue_film(a):
         return "Ролик «{}» уже сделан целиком — он в {}.".format(p["title"], qm.short(qm.VIDEO_DIR))
     look = p.get("look")
     cost = studio.estimate(rest, mode, look)
+    from .. import media_budget as MB
+
+    if mode == "live":
+        blocked = MB.video_block(bool(a.get("over_limit")), key=str(p["folder"]))
+        if blocked:
+            return "Не доделываю: " + blocked
     if cost >= 0.5 and not confirm("Доделать ролик «{}»: ещё {} сцен из {}, примерно {:.0f} % месячного пакета Qwen?".format(
             p["title"], len(rest), len(scenes), max(1, cost))):
         return "Не доделываю."
+    if mode == "live":
+        MB.spend("video", cost, p["title"], key=str(p["folder"]))
     return _launch(p["folder"], p["title"], scenes, p.get("style", ""), p.get("ratio", "16:9"), mode, len(scenes),
                    a.get("open", True) is not False, look)
 

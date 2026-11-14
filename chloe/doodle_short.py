@@ -28,6 +28,9 @@ W, H, FPS = 1080, 1920, 48
 SR = 44100
 VIDEO_PERCENT_PER_SEC = 0.9            # 5 с 720P ≈ 4,5 % Token Plan
 IMAGE_PERCENT = 0.3
+# качество: draft — черновик без Qwen (бесплатно: лист героев, плавная камера, слова и музыка — проверить идею);
+# normal — 480P (вдвое дешевле, растягивается до 1080×1920); high — 720P («качественно»)
+QUALITY = {"normal": ("480P", 0.5), "high": ("720P", 1.0)}
 RED = (0.88, 0.33, 0.30)
 STYLE = ("Hand-drawn 2D cartoon animation, smooth and expressive like anime, keep the exact same marker and colored pencil drawing "
          "style, paper texture, colors and background, static camera, no zoom, no cuts, the same two characters only, "
@@ -83,9 +86,12 @@ def make_plan(idea, seconds=12, ask=None):
     return parse_plan(reply, seconds)
 
 
-def cost_percent(plan):
-    """Примерная цена в процентах месячного пакета Qwen."""
-    return IMAGE_PERCENT + VIDEO_PERCENT_PER_SEC * sum(b["seconds"] for b in plan["beats"])
+def cost_percent(plan, quality="high"):
+    """Примерная цена в процентах месячного пакета Qwen; черновик — бесплатно."""
+    if quality == "draft":
+        return 0.0
+    k = QUALITY.get(quality, QUALITY["high"])[1]
+    return IMAGE_PERCENT + VIDEO_PERCENT_PER_SEC * k * sum(b["seconds"] for b in plan["beats"])
 
 
 # --- слова на экране ---
@@ -260,7 +266,7 @@ def first_frame(plan, work):
     return path
 
 
-def chain(plan, work, progress=print):
+def chain(plan, work, progress=print, resolution="720P"):
     """Цепочка видео Qwen: каждое начинается с последнего кадра предыдущего. Готовое не переделывается."""
     work = pathlib.Path(work)
     start = first_frame(plan, work)
@@ -269,23 +275,51 @@ def chain(plan, work, progress=print):
         clip = work / "part{}.mp4".format(i + 1)
         if not clip.exists():
             progress("Оживляю момент {} из {}…".format(i + 1, len(plan["beats"])))
-            task = qm.video_start(STYLE + b["motion"], source=str(start), seconds=b["seconds"])
+            task = qm.video_start(STYLE + b["motion"], source=str(start), seconds=b["seconds"],
+                                   resolution=resolution)
             shutil.copyfile(qm.video_wait(task, "{}-{}".format(plan["title"], i + 1)), clip)
         clips.append(clip)
         start = last_frame(clip, work / "part{}-last.png".format(i + 1))
     return clips
 
 
-def assemble(clips, plan, out, work):
-    """Встык (без повторного кадра), сглаживание до 48 к/с, слова сверху, музыка и «поп»."""
+def _encode(frames, plan, out, work, fps=FPS, stamp=False):
+    """Кадры (bytes BGRA W×H) → mp4: слова сверху, музыка и «поп»; stamp — пометка «черновик»."""
     import cairo
 
     from .studio import ffmpeg
 
-    work = pathlib.Path(work)
     words, phrases = word_times(plan)
     total = float(sum(b["seconds"] for b in plan["beats"]))
-    audio = soundtrack(total, words, work / "sound.wav")
+    audio = soundtrack(total, words, pathlib.Path(work) / "sound.wav")
+    enc = subprocess.Popen([ffmpeg(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", "{}x{}".format(W, H),
+                            "-r", str(fps), "-i", "-", "-i", str(audio), "-map", "0:v", "-map", "1:a", "-c:v", "libx264",
+                            "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                            "-shortest", "-movflags", "+faststart", str(out)], stdin=subprocess.PIPE)
+    f = 0
+    try:
+        for raw in frames:
+            buf = bytearray(raw)
+            surf = cairo.ImageSurface.create_for_data(buf, cairo.FORMAT_RGB24, W, H)
+            c = cairo.Context(surf)
+            draw_words(c, f / fps, words, phrases)
+            if stamp:
+                draw_stamp(c)
+            surf.flush()
+            enc.stdin.write(bytes(buf))
+            f += 1
+    finally:
+        enc.stdin.close()
+        enc.wait()
+    if not f or not pathlib.Path(out).exists():
+        raise DoodleError("сборка не вышла")
+    return out
+
+
+def assemble(clips, plan, out, work):
+    """Встык (без повторного кадра), сглаживание до 48 к/с, слова сверху, музыка и «поп»."""
+    from .studio import ffmpeg
+
     ins, fc = [], []
     for i, clip in enumerate(clips):
         ins += ["-i", str(clip)]
@@ -296,29 +330,97 @@ def assemble(clips, plan, out, work):
                   "".join("[c{}]".format(i) for i in range(len(clips))), len(clips), FPS, W, H, W, H))
     dec = subprocess.Popen([ffmpeg(), "-v", "error"] + ins + ["-filter_complex", ";".join(fc), "-map", "[v]",
                            "-f", "rawvideo", "-pix_fmt", "bgra", "-"], stdout=subprocess.PIPE)
-    enc = subprocess.Popen([ffmpeg(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", "{}x{}".format(W, H),
-                            "-r", str(FPS), "-i", "-", "-i", str(audio), "-map", "0:v", "-map", "1:a", "-c:v", "libx264",
-                            "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                            "-shortest", "-movflags", "+faststart", str(out)], stdin=subprocess.PIPE)
-    f = 0
-    try:
+
+    def frames():
         while True:
             raw = dec.stdout.read(W * H * 4)
             if len(raw) < W * H * 4:
-                break
-            buf = bytearray(raw)
-            surf = cairo.ImageSurface.create_for_data(buf, cairo.FORMAT_RGB24, W, H)
-            draw_words(cairo.Context(surf), f / FPS, words, phrases)
-            surf.flush()
-            enc.stdin.write(bytes(buf))
-            f += 1
+                return
+            yield raw
+    try:
+        return _encode(frames(), plan, out, work)
     finally:
-        enc.stdin.close()
-        enc.wait()
         dec.wait()
-    if not f or not pathlib.Path(out).exists():
-        raise DoodleError("сборка не вышла")
-    return out
+
+
+# --- черновик без Qwen ---
+DRAFT_FPS = 24
+
+
+def draw_stamp(c):
+    import cairo
+
+    c.select_font_face("Caveat", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+    c.set_font_size(64)
+    c.set_source_rgba(0.45, 0.45, 0.5, 0.75)
+    c.move_to(W - c.text_extents("черновик").x_advance - 50, H - 70)
+    c.show_text("черновик")
+
+
+def focus_of(beat):
+    """Куда смотрит камера в момент: на Персика (слева), на Пушка (справа) или на обоих."""
+    text = (beat.get("motion", "") + " " + beat.get("words", "")).lower()
+    peach = any(w in text for w in ("peach", "персик"))
+    puff = any(w in text for w in ("puff", "пушок", "пушк"))
+    return 0.32 if peach and not puff else 0.68 if puff and not peach else 0.5
+
+
+def draft_frames(plan, hero_png):
+    """Лист героев на бумаге, мягкая камера: в каждый момент — плавный наезд на того, кто действует."""
+    import cairo
+
+    img = cairo.ImageSurface.create_from_png(str(hero_png))
+    iw, ih = img.get_width(), img.get_height()
+    base = max(W / iw, H / ih)
+    beats = plan["beats"]
+    total = sum(b["seconds"] for b in beats)
+    marks, t = [], 0.0
+    for b in beats:
+        marks.append((t, b["seconds"], focus_of(b)))
+        t += b["seconds"]
+
+    def smooth(x):
+        x = min(1.0, max(0.0, x))
+        return x * x * (3 - 2 * x)
+    for f in range(int(round(total * DRAFT_FPS))):
+        t = f / DRAFT_FPS
+        i = max(j for j, (st, _, _) in enumerate(marks) if st <= t + 1e-9)
+        st, dur, fx = marks[i]
+        prev = marks[i - 1][2] if i else 0.5
+        k = smooth((t - st) / 0.8)
+        x = prev + (fx - prev) * k
+        zoom = 1.0 + 0.12 * smooth((t - st) / dur) + (0.04 if i % 2 else 0)
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, W, H)
+        c = cairo.Context(surf)
+        s = base * zoom
+        half = W / (2 * s)                               # камера не выходит за край листа — без чёрных полос
+        cx = min(max(x * iw, half), iw - half)
+        c.translate(W / 2, H * 0.62)
+        c.scale(s, s)
+        c.translate(-cx, -0.62 * ih)
+        c.set_source_surface(img, 0, 0)
+        c.paint()
+        surf.flush()
+        yield bytes(surf.get_data())
+
+
+def draft(plan, work):
+    """Черновик мультика без Qwen: проверить идею, слова, длину и музыку. Ничего не тратит."""
+    from PIL import Image
+
+    work = pathlib.Path(work)
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
+    ensure_font()
+    hero = ST.hero_file("doodle")
+    if not hero:
+        raise DoodleError("нет листа героев для черновика")
+    png = work / "hero.png"
+    Image.open(hero).convert("RGB").save(png)
+    qm.VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+    out = qm.VIDEO_DIR / "{}-черновик-{}.mp4".format(time.strftime("%Y%m%d-%H%M%S"),
+                                                   re.sub(r"[^\w-]+", "-", plan["title"]).strip("-")[:40])
+    return _encode(draft_frames(plan, png), plan, out, work, fps=DRAFT_FPS, stamp=True)
 
 
 def ensure_font():
@@ -340,13 +442,15 @@ def ensure_font():
         return False
 
 
-def make(plan, work, progress=print):
-    """Весь мультик по готовому плану. Возвращает путь к mp4 в «Видео/Chloe»."""
+def make(plan, work, progress=print, quality="high"):
+    """Весь мультик по готовому плану. Возвращает путь к mp4 в «Видео/Chloe». quality=draft — черновик без Qwen."""
+    if quality == "draft":
+        return draft(plan, work)
     work = pathlib.Path(work)
     work.mkdir(parents=True, exist_ok=True)
     (work / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
     ensure_font()
-    clips = chain(plan, work, progress)
+    clips = chain(plan, work, progress, QUALITY.get(quality, QUALITY["high"])[0])
     progress("Собираю: сглаживаю до 48 кадров, слова, музыка…")
     qm.VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     out = qm.VIDEO_DIR / "{}-{}.mp4".format(time.strftime("%Y%m%d-%H%M%S"), re.sub(r"[^\w-]+", "-", plan["title"]).strip("-")[:40])

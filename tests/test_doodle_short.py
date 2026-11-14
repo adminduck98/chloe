@@ -48,6 +48,8 @@ class Plan(unittest.TestCase):
         self.assertTrue(all(0 < at < 3 for at, _, ln in words if ln == 0))
         self.assertTrue(all(3 < at < 6 for at, _, ln in words if ln == 1))
         self.assertAlmostEqual(DS.cost_percent(PLAN), DS.IMAGE_PERCENT + 6 * DS.VIDEO_PERCENT_PER_SEC)
+        self.assertAlmostEqual(DS.cost_percent(PLAN, "normal"), DS.IMAGE_PERCENT + 3 * DS.VIDEO_PERCENT_PER_SEC)
+        self.assertEqual(DS.cost_percent(PLAN, "draft"), 0)
 
 
 class Music(unittest.TestCase):
@@ -68,7 +70,7 @@ class Chain(unittest.TestCase):
         subprocess.run([studio.ffmpeg(), "-v", "error", "-f", "lavfi", "-i", "color=c=white:s=180x320", "-frames:v", "1", str(hero_img)], check=True)
         starts = []
         with mock.patch.object(DS.qm, "image", return_value=[str(hero_img)]) as draw, \
-                mock.patch.object(DS.qm, "video_start", side_effect=lambda p, source, seconds: starts.append(source) or "t%d" % len(starts)), \
+                mock.patch.object(DS.qm, "video_start", side_effect=lambda p, source, seconds, resolution="720P": starts.append(source) or "t%d" % len(starts)), \
                 mock.patch.object(DS.qm, "video_wait", side_effect=lambda task, name: str(made[task])):
             clips = DS.chain(PLAN, work, progress=lambda t: None)
             DS.chain(PLAN, work, progress=lambda t: None)                    # второй раз — готовое не переделывается
@@ -91,6 +93,26 @@ class Assemble(unittest.TestCase):
         self.assertIn("48 fps", info)
         self.assertIn("Audio", info)
         self.assertAlmostEqual(studio.duration(out), 6.0, delta=0.3)          # встык: без повторного кадра и без переходов
+
+
+class Draft(unittest.TestCase):
+    def test_draft_without_qwen(self):
+        work = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, work, True)
+        with mock.patch.object(DS.qm, "VIDEO_DIR", work / "out"), mock.patch.object(DS.qm, "image") as img, \
+                mock.patch.object(DS.qm, "video_start") as vid:
+            out = DS.make(PLAN, work / "w", quality="draft")
+        img.assert_not_called()
+        vid.assert_not_called()
+        info = subprocess.run([studio.ffmpeg(), "-i", str(out)], capture_output=True, text=True).stderr
+        self.assertIn("1080x1920", info)
+        self.assertIn("Audio", info)
+        self.assertIn("черновик", out.name)
+        self.assertAlmostEqual(studio.duration(out), 6.0, delta=0.3)
+
+    def test_focus(self):
+        self.assertLess(DS.focus_of({"motion": "Peach sips coffee"}), 0.5)
+        self.assertGreater(DS.focus_of({"motion": "Puff turns offended"}), 0.5)
 
 
 class Tool(unittest.TestCase):

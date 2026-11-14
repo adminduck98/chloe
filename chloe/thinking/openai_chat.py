@@ -169,6 +169,18 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
 
     messages = keep_last_images(messages)
     models = backups(model)
+    allowed = [m for m in models if not usage.over_limit(m)]
+    for m in models:
+        hit = usage.over_limit(m)
+        if hit:
+            tell_day_limit(*hit)
+    if not allowed:
+        from types import SimpleNamespace
+
+        name, limit = usage.over_limit(models[0])
+        return SimpleNamespace(content="Дневной лимит на мышление исчерпан ({} — ${:.2f}). Продолжу завтра; поднять лимит — "
+                                       "CHLOE_DAY_LIMIT в ~/.bashrc.".format(name, limit), tool_calls=None), LIMIT
+    models = allowed
     for i, m in enumerate(models):
         provider = provider_of(m)
         try:
@@ -203,6 +215,26 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
             if i == len(models) - 1:
                 raise
             print("[{} недоступна ({}), пропускаю её на {} с, пробую {}]".format(m, code or ("отказ" if refused else "нет связи"), wait, models[i + 1]))
+
+
+LIMIT = "day-limit"
+_limit_told = set()
+
+
+def tell_day_limit(name, limit):
+    """Один раз в день на провайдера: его дневной лимит в долларах исчерпан — дальше отвечают другие."""
+    key = (name, time.strftime("%Y-%m-%d"))
+    if key in _limit_told:
+        return
+    _limit_told.add(key)
+    text = "Дневной лимит {} ${:.2f} исчерпан — сегодня он больше не отвечает.".format(
+        {"deepseek": "DeepSeek", "anthropic": "Claude"}.get(name, name), limit)
+    print("[{}]".format(text))
+    try:
+        from ..journal import journal
+        journal.add("system", "Мышление", text, ok=False)
+    except Exception:
+        pass
 
 
 def tell_quota_over(next_model):
@@ -276,6 +308,8 @@ def think_openai(clients, messages, user_text, route):
         msg, _model = chat(clients, messages, route.model)
         if interrupt.is_set():   # ответ пришёл после «стоп» — не выполняем его
             break
+        if _model == LIMIT:
+            return msg.content
         calls = msg.tool_calls or []
         if calls and route.redo_for([c.function.name for c in calls]):
             continue   # быстрый мозг взялся за сложное — этот шаг заново делает сильный

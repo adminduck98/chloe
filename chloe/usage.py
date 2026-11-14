@@ -4,6 +4,7 @@
 точный счёт — в кабинетах console.anthropic.com и platform.deepseek.com. Хранится в ~/.chloe/usage.json.
 """
 import json
+import os
 import threading
 import time
 
@@ -107,5 +108,38 @@ def tool_brain_usage(a):
 
 
 def tool_qwen_credits(a):
-    from . import qwen_plan
-    return qwen_plan.status_text()
+    from . import media_budget, qwen_plan
+    return qwen_plan.status_text() + "\n" + media_budget.status_text()
+
+
+# --- дневные лимиты в долларах (14.11.2026, режим тестов): CHLOE_DAY_LIMIT="deepseek=0.3,anthropic=0.3";
+# пусто или «off» — без лимитов. Qwen по подписке денег не тратит — у него лимита нет.
+def day_limits():
+    raw = os.environ.get("CHLOE_DAY_LIMIT", "deepseek=0.3,anthropic=0.3")
+    out = {}
+    for part in raw.split(","):
+        name, _, value = part.partition("=")
+        try:
+            out[name.strip().lower()] = float(value)
+        except ValueError:
+            pass
+    return out
+
+
+def provider(model):
+    m = str(model or "")
+    return "anthropic" if m.startswith("claude") else "deepseek" if m.startswith("deepseek") else m.split("-")[0]
+
+
+def spent_today(name, now=None):
+    day = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
+    return sum(m.get("usd", 0.0) for model, m in load().get(day, {}).items() if provider(model) == name)
+
+
+def over_limit(model, now=None):
+    """Лимит этого провайдера на сегодня уже потрачен: (провайдер, лимит) или None."""
+    name = provider(model)
+    limit = day_limits().get(name)
+    if limit is None or spent_today(name, now) < limit:
+        return None
+    return name, limit
