@@ -112,10 +112,10 @@ def tool_qwen_credits(a):
     return qwen_plan.status_text() + "\n" + media_budget.status_text()
 
 
-# --- дневные лимиты в долларах (14.11.2026, режим тестов): CHLOE_DAY_LIMIT="deepseek=0.3,anthropic=0.3";
+# --- дневные лимиты в долларах (14.11.2026): CHLOE_DAY_LIMIT="anthropic=0.3" — только Claude, DeepSeek дешёвый;
 # пусто или «off» — без лимитов. Qwen по подписке денег не тратит — у него лимита нет.
 def day_limits():
-    raw = os.environ.get("CHLOE_DAY_LIMIT", "deepseek=0.3,anthropic=0.3")
+    raw = os.environ.get("CHLOE_DAY_LIMIT", "anthropic=0.3")
     out = {}
     for part in raw.split(","):
         name, _, value = part.partition("=")
