@@ -120,7 +120,19 @@ def calendar(days=14, today=None):
 
 
 def search(query):
-    return _call("GET", "/search?q=" + urllib.parse.quote(str(query)[:200]))
+    """Сначала общий поиск (медиатека и что можно запросить); пусто — новые фильмы и сериалы прямо в TMDB:
+    с версии 1.1.4 общий поиск отвечает только по медиатеке (14.11.2026 «Интерстеллар» не находился)."""
+    q = urllib.parse.quote(str(query)[:200])
+    found = _call("GET", "/search?q=" + q)
+    if not isinstance(found, dict) or found.get("titles") or found.get("more"):
+        return found
+    out = {"library": [], "movies": [], "shows": []}
+    for key, path in (("movies", "/metadata/search?q="), ("shows", "/shows/lookup?term=")):
+        try:
+            out[key] = (_call("GET", path + q) or {}).get(key, [])[:6]
+        except HolyArrsError:
+            pass
+    return out
 
 
 def library(name, kind="all"):

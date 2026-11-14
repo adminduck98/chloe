@@ -50,7 +50,7 @@ class Reads(WithKey):
     def test_search_quotes_query(self):
         with mock.patch("chloe.holyarrs.requests.request", return_value=Resp({"results": []})) as req:
             run_tool("holyarrs", {"action": "search", "query": "космос 2014"})
-        self.assertTrue(req.call_args[0][1].endswith("/api/v1/search?q=%D0%BA%D0%BE%D1%81%D0%BC%D0%BE%D1%81%202014"))
+        self.assertTrue(req.call_args_list[0][0][1].endswith("/api/v1/search?q=%D0%BA%D0%BE%D1%81%D0%BC%D0%BE%D1%81%202014"))
 
     def test_bad_key_explained(self):
         with mock.patch("chloe.holyarrs.requests.request", return_value=Resp({"error": "API key not accepted"}, 401)):
@@ -300,6 +300,26 @@ class Summary(unittest.TestCase):
         self.assertNotIn("{", text)
         with mock.patch.object(H, "health", side_effect=H.HolyArrsError("нет связи")):
             self.assertIn("не отвечает", H.summary())
+
+
+class SearchFallback(unittest.TestCase):
+    def test_empty_general_search_asks_tmdb(self):
+        from unittest import mock
+
+        from chloe import holyarrs as H
+
+        answers = {"/search?q=": {"titles": [], "more": []},
+                   "/metadata/search?q=": {"movies": [{"name": "Interstellar", "year": 2014, "ids": {"tmdb": "157336"}}]},
+                   "/shows/lookup?term=": {"shows": []}}
+
+        def call(method, path, body=None):
+            return next(v for k, v in answers.items() if path.startswith(k))
+        with mock.patch.object(H, "_call", side_effect=call):
+            out = H.search("Интерстеллар")
+        self.assertEqual(out["movies"][0]["ids"]["tmdb"], "157336")
+        with mock.patch.object(H, "_call", return_value={"titles": [{"name": "Есть"}], "more": []}) as c:
+            H.search("Есть")
+        self.assertEqual(c.call_count, 1)                                   # нашлось в медиатеке — TMDB не нужен
 
 if __name__ == "__main__":
     unittest.main()
