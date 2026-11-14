@@ -813,7 +813,17 @@ def main():
             for s in skillbook.all_skills():   # навыки Claude — тоже нейроны
                 brain.ensure(s["name"], s["description"][:200], "Навыки")
         threading.Thread(target=wait_ready, daemon=True).start()
+        if not watching:                     # видно ли окно: свёрнутое — анимация на паузе, на фоне — реже кадры
+            from . import window_watch
 
+            def send_view(st, full):
+                if not brain.ready:
+                    return False
+                brain._run("window.chloeView && window.chloeView({}, {})".format(json.dumps(st), "true" if full else "false"))
+                return True
+            watching.append(window_watch.start(send_view))
+
+    watching = []
     window = webview.create_window("Chloe", serve_ui(), js_api=api, width=520, height=900,
                                    background_color="#04101a", fullscreen=args.fullscreen)
     brain.window = window

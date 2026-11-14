@@ -3978,6 +3978,7 @@
     somaGlow.visible = level > 0;   // свечение нейронов — только когда компьютер тянет
     axLod(level);
     haze.forEach(function (h) { h.visible = level > 0; });
+    if (lite) { lite = false; setLite(true); }   // в покое качество сменилось — облегчённый вид остаётся
     resize();
   }
   function trackQuality(frameMs) {
@@ -4351,7 +4352,7 @@
   window.chloePerf = function () {   // замер скорости: кадров в секунду, мс JS на кадр, уровень качества
     return { fps: Math.round(quality.fps * 10) / 10, jsMs: Math.round(perf.js * 100) / 100, level: quality.level, neurons: nCount,
              links: lCount, drawn: drawn, quiet: Math.round(now() - lastActivity), state: STATE.name, focus: document.hasFocus(),
-             gap: lastGap, signals: signals.length, flashes: synFlashes.length, dragging: !!dragging, playing: !!playing, replaying: !!replaying,
+             gap: lastGap, view: VIEW.state, paused: VIEW.paused, lite: lite, signals: signals.length, flashes: synFlashes.length, dragging: !!dragging, playing: !!playing, replaying: !!replaying,
              badShaders: (renderer.info.programs || []).filter(function (p) { return p.diagnostics && !p.diagnostics.runnable; }).length };
   };
   window.chloeSnapshot = function () {   // кадр мозга картинкой — для проверки вида без снимка экрана (CHLOE_PROFILE_SHOT)
@@ -4373,8 +4374,32 @@
   };
   // в покое незачем 60 кадров: 30, во сне 20 — меньше нагрев и батарея; любое действие сразу возвращает полную частоту
   var lastDraw = 0, drawn = 0, lastGap = 0, lastHands = -1e9;   // drawn — сколько кадров нарисовано (замер нагрузки: chloePerf)
+  // видно ли окно (говорит Chloe, window_watch.py): hidden — свёрнуто, на другом столе или закрыто окнами — кадров нет;
+  // background — видно, но работают в другом окне; full — CHLOE_ANIM=full: в покое без экономии (пауза остаётся)
+  var VIEW = { state: "front", full: false, paused: 0 };
+  window.chloeView = function (state, full) {
+    var was = VIEW.state;
+    VIEW.state = state; VIEW.full = !!full;
+    if (was === "hidden" && state !== "hidden") { last = now(); lastFrame = performance.now(); }   // без скачка после паузы
+  };
+  // покой: меньше эффектов (пыль, дымка, свечение нейронов) — работа или разговор сразу возвращают всё
+  var lite = false;
+  function setLite(on) {
+    if (on === lite) return;
+    lite = on;
+    var lv = quality.level;
+    dustGeo.setDrawRange(0, on ? Math.min(120, [150, 300, DUST][lv]) : [150, 300, DUST][lv]);
+    somaGlow.visible = !on && lv > 0;
+    haze.forEach(function (h) { h.visible = !on && lv > 0; });
+  }
+  // следующий кадр: при ограниченной частоте — таймер до нужного момента, а не requestAnimationFrame на каждый
+  // кадр экрана (замер 14.11.2026: даже пропущенный кадр будит WebKit 60 раз в секунду — 45–60 % ядра в покое)
+  function nextFrame(delay) {
+    if (delay > 12) setTimeout(function () { requestAnimationFrame(animate); }, delay - 4);
+    else requestAnimationFrame(animate);
+  }
   function animate() {
-    requestAnimationFrame(animate);
+    if (VIEW.state === "hidden" || document.hidden) { VIEW.paused++; nextFrame(300); return; }   // окна не видно — не рисуем совсем
     var nowMs = performance.now();
     var quiet = now() - lastActivity;
     var calm = !signals.length && !synFlashes.length && !dragging && !playing && !replaying && quiet > 4 &&
@@ -4385,15 +4410,20 @@
     // 60 к/с — только пока мозг крутят или приближают рукой (там задержка заметна)
     var hands = dragging || nowMs - lastHands < 1200;
     var gap = hands ? 0 : 33;
-    if (calm) {
-      gap = 33;
-      if (quiet > 60) gap = 66;
-      if (STATE.name === "sleeping" || !document.hasFocus()) gap = 125;
-    }
+    // покой (14.11.2026, просьба пользователя: меньше нагрузки, но мозг живой): сразу 15 к/с, через полминуты
+    // тишины — 10, сон или окно на фоне — 6; слушает, думает, говорит — полные 30 и все эффекты
+    var saving = calm && !VIEW.full;
+    if (saving) {
+      gap = 66;
+      if (quiet > 30) gap = 100;
+      if (STATE.name === "sleeping" || VIEW.state === "background" || !document.hasFocus()) gap = 166;
+    } else if (calm) gap = 33;
+    setLite(saving && quiet > 10);
     lastGap = gap;
-    if (gap && nowMs - lastDraw < gap - 4) return;
+    if (gap && nowMs - lastDraw < gap - 4) { nextFrame(gap - (nowMs - lastDraw)); return; }
     lastDraw = nowMs;
     drawn++;
+    nextFrame(gap);
     frame(nowMs, false, calm);   // ограниченная частота — не повод менять качество
   }
   function frame(nowMs, bench, calm) {
