@@ -36,16 +36,51 @@ NAMES = {"image": ("Картинка", "готова", "не получилас�
          "shorts": ("Shorts", "готовы (названия — в shorts.txt рядом)", "не получились"),
          "human3d": ("3D-человек", "готов", "не получился"),
          "publish": ("Пакет к публикации", "готов (обложки, название, описание, теги и субтитры — в папке рядом с видео)", "не получился"),
+         "doodle": ("Мультик «Персик и Пушок»", "готов (без голоса, со своей музыкой — можно выкладывать в Reels и Shorts)", "не получился"),
          "clips": ("Нарезка Shorts", "готова (названия и описания — в clips.txt рядом)", "не получилась"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
 
 
+def tool_doodle_short(a):
+    """Мультик «Персик и Пушок»: план от модели → цена и «да» → в фоне первый кадр, цепочка видео Qwen, сборка."""
+    from .. import doodle_short as DS
+
+    if not qm.available():
+        return "Нет ключа Qwen — мультик рисовать не на чем."
+    idea = str(a.get("idea") or "").strip()
+    if not idea:
+        return "Нужна идея (idea): что происходит и что говорят — своими словами пользователя."
+    seconds = max(6, min(int(a.get("seconds") or 12), 20))
+    try:
+        plan = DS.make_plan(idea, seconds)
+    except DS.DoodleError as e:
+        return "Не получилось: {}.".format(e)
+    except Exception as e:                                            # noqa: BLE001 — модель недоступна
+        return "Не вышел план: {}.".format(str(e)[:120])
+    total = sum(b["seconds"] for b in plan["beats"])
+    beats = "; ".join("«{}»".format(b["words"]) for b in plan["beats"] if b["words"])
+    if not confirm("Мультик «{}»: {} с, {}. Это примерно {:.0f} % месячного пакета Qwen. Делать?".format(
+            plan["title"], total, beats or "без слов", DS.cost_percent(plan))):
+        return "Не делаю мультик. План был: {}.".format(beats)
+    work = qm.VIDEO_DIR / "doodle" / "{}-{}".format(time.strftime("%Y%m%d-%H%M%S"), qm._slug(plan["title"]))
+    holder = {}
+
+    def progress(text):
+        job = jobs.get(holder.get("id"))
+        if job:
+            job["step"] = str(text)
+    holder["id"] = _start("doodle", plan["title"], lambda: DS.make(plan, work, progress), a.get("open", True) is not False)
+    return ("Делаю мультик «{}» (#{}): {} с, моменты: {}. Это 5–12 минут: Qwen оживляет сцены по очереди, потом сборка. "
+            "Скажу, когда будет готово.".format(plan["title"], holder["id"], total, beats))
+
+
 def _shorts_error():
     from ..clipper import ClipperError
+    from ..doodle_short import DoodleError
     from ..human3d import Human3DError
     from ..shorts import ShortsError
 
-    return (ShortsError, Human3DError, ClipperError)
+    return (ShortsError, Human3DError, ClipperError, DoodleError)
 
 
 def _run(job_id, kind, work, open_result=True):
