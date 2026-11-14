@@ -11,7 +11,7 @@ import time
 
 from . import config
 from .brain import brain
-from . import ducking, remote, skillbook, snapshots
+from . import remote, skillbook, snapshots
 from .changes import changes
 from .ears import ears, has_wake, is_wake_word
 from .ears import install as ears_install
@@ -202,7 +202,6 @@ def assistant(args):
                 command, woke = strip_wake(heard)
                 if not woke and began > state["listen_until"]:
                     print("[не Хлое — окно закрылось: {}]".format(heard[:60]))   # не «Вы:» — ответа не будет
-                    ducking.release()
                     go_idle()
                     continue   # не обращались к Хлое
                 if not woke:                    # окно без «Хлоя»: вдруг человек говорит другому помощнику или в созвоне
@@ -214,7 +213,6 @@ def assistant(args):
                         print("[не Хлое — {}: {}]".format(why, heard[:60]))
                         journal.add("overheard", "Слух", heard, {"why": why})
                         state["listen_until"] = 0
-                        ducking.release()
                         go_idle()
                         continue
                 print("Вы:", heard)
