@@ -88,9 +88,9 @@ class Chain(unittest.TestCase):
         made = {"t1": clip(src / "a.mp4", "red"), "t2": clip(src / "b.mp4", "blue")}
         hero_img = src / "frame.png"
         subprocess.run([studio.ffmpeg(), "-v", "error", "-f", "lavfi", "-i", "color=c=white:s=180x320", "-frames:v", "1", str(hero_img)], check=True)
-        starts = []
+        starts, prompts = [], []
         with mock.patch.object(DS.qm, "image", return_value=[str(hero_img)]) as draw, \
-                mock.patch.object(DS.qm, "video_start", side_effect=lambda p, source, seconds, resolution="720P": starts.append(source) or "t%d" % len(starts)), \
+                mock.patch.object(DS.qm, "video_start", side_effect=lambda p, source, seconds, resolution="720P": prompts.append(p) or starts.append(source) or "t%d" % len(starts)), \
                 mock.patch.object(DS.qm, "video_wait", side_effect=lambda task, name: str(made[task])):
             clips = DS.chain(PLAN, work, progress=lambda t: None)
             DS.chain(PLAN, work, progress=lambda t: None)                    # второй раз — готовое не переделывается
@@ -100,6 +100,7 @@ class Chain(unittest.TestCase):
         self.assertTrue(starts[0].endswith("frame0.png"))
         self.assertTrue(starts[1].endswith("part1-last.png"))                # второе видео — с конца первого
         self.assertIn("source", draw.call_args.kwargs)                       # первый кадр — по листу героев
+        self.assertTrue(all("Peach has NO ears" in p for p in prompts))     # паспорт героев в каждом моменте
 
 
 class Assemble(unittest.TestCase):

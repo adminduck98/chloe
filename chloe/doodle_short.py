@@ -301,6 +301,14 @@ def first_frame(plan, work):
     return path
 
 
+def characters():
+    """Паспорт героев в каждом моменте: видео рисуется с последнего кадра, и без описания герои «плывут»
+    (15.11.2026, «Интернет пропал»: у Персика выросли уши, Пушок их потерял, листик упал на пол)."""
+    return ("Keep both characters exactly as in the first frame, never changing their shape, size, colors or parts: "
+            + ST.STYLES["doodle"]["anchor"] + ". Peach has NO ears, only the one green leaf that stays on top of its head; "
+            "Puff always keeps its two small rounded ears. ")
+
+
 def chain(plan, work, progress=print, resolution="720P"):
     """Цепочка видео Qwen: каждое начинается с последнего кадра предыдущего. Готовое не переделывается."""
     work = pathlib.Path(work)
@@ -310,7 +318,7 @@ def chain(plan, work, progress=print, resolution="720P"):
         clip = work / "part{}.mp4".format(i + 1)
         if not clip.exists():
             progress("Оживляю момент {} из {}…".format(i + 1, len(plan["beats"])))
-            task = qm.video_start(STYLE + b["motion"], source=str(start), seconds=b["seconds"],
+            task = qm.video_start(STYLE + characters() + b["motion"], source=str(start), seconds=b["seconds"],
                                    resolution=resolution)
             shutil.copyfile(qm.video_wait(task, "{}-{}".format(plan["title"], i + 1)), clip)
         clips.append(clip)
