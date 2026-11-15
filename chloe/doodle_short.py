@@ -130,7 +130,7 @@ def layout_rows(c, words_list, max_w=W * 0.86):
     full = " ".join(words_list)
     size = 118
     c.set_font_size(size)
-    while c.text_extents(full).x_advance > max_w and size > 84:
+    while c.text_extents(full).x_advance > max_w and size > 100:
         size -= 6
         c.set_font_size(size)
     if c.text_extents(full).x_advance <= max_w or len(words_list) < 2:
