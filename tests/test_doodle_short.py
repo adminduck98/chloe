@@ -52,6 +52,26 @@ class Plan(unittest.TestCase):
         self.assertEqual(DS.cost_percent(PLAN, "draft"), 0)
 
 
+class LongEpisode(unittest.TestCase):
+    def test_45_seconds_keeps_up_to_12_moments(self):
+        beats = [{"words": "реплика %d" % i, "seconds": 4, "motion": "m"} for i in range(12)]
+        p = DS.parse_plan(json.dumps({"scene": "s", "beats": beats}), 45)
+        self.assertEqual(len(p["beats"]), 12)
+        self.assertEqual(DS.beats_hint(45), "9–12")
+        self.assertEqual(DS.beats_hint(12), "2–4")
+
+    def test_long_line_wraps_in_two_rows(self):
+        import cairo
+
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, DS.W, DS.H)
+        c = cairo.Context(surf)
+        c.select_font_face("Caveat", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        rows = DS.layout_rows(c, "Интернет восстановлен. Жизнь отменяется. Совсем-совсем навсегда".split())
+        self.assertEqual(len(rows), 2)
+        self.assertLessEqual(max(c.text_extents(" ".join(r)).x_advance for r in rows), DS.W * 0.86 + 1)
+        self.assertEqual(len(DS.layout_rows(c, ["Привет"])), 1)
+
+
 class Music(unittest.TestCase):
     def test_own_tune_has_sound_and_length(self):
         m = DS.music(4.0)
