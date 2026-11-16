@@ -9,7 +9,12 @@ import os
 import threading
 import time
 
-FULL = os.environ.get("CHLOE_ANIM", "auto").lower() == "full"
+# уровень анимации: low (слабый компьютер), medium (по умолчанию), high (без экономии в покое; full — старое имя)
+_level = os.environ.get("CHLOE_ANIM", "medium").strip().lower()
+LEVEL = {"full": "high", "auto": "medium", "min": "low", "max": "high"}.get(_level, _level)
+if LEVEL not in ("low", "medium", "high"):
+    LEVEL = "medium"
+FULL = LEVEL
 GRID = 6        # окно закрыто, если все точки сетки 6×6 под другими окнами
 
 

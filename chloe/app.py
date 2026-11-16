@@ -828,7 +828,7 @@ def main():
             def send_view(st, full):
                 if not brain.ready:
                     return False
-                brain._run("window.chloeView && window.chloeView({}, {})".format(json.dumps(st), "true" if full else "false"))
+                brain._run("window.chloeView && window.chloeView({}, {})".format(json.dumps(st), json.dumps(full)))
                 return True
             watching.append(window_watch.start(send_view))
 
