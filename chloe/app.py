@@ -134,7 +134,10 @@ def assistant(args):
     if voice.enabled and not args.text:
         threading.Thread(target=recorder, daemon=True, name="recorder").start()
         threading.Thread(target=listener, daemon=True, name="listener").start()
-    from . import mediapause
+    from . import mediapause, voiceprint
+
+    if voiceprint.MODE != "name" and not voiceprint.MODEL.exists():   # узнавание голоса: модель — один раз, в фоне
+        threading.Thread(target=voiceprint.install, daemon=True, name="voiceprint-install").start()
 
     def announce(text):   # важное само по себе (напоминание, готово, новость): музыка и видео — на паузу, потом сказать
         mediapause.announce(voice.say, text)

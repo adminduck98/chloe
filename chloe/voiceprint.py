@@ -147,3 +147,26 @@ def status_text():
         return ("Голос владельца ещё не запомнила: {} из {} фраз. Скажите «Хлоя, запомни мой голос» и говорите 20 секунд "
                 "или просто обращайтесь ко мне по имени — запомню по ходу.".format(n, MIN_SAMPLES))
     return "Голос владельца знаю ({} фраз): на него отвечаю без «Хлоя», чужие голоса — только по имени.".format(n)
+
+
+def install(timeout=300):
+    """Скачать модель отпечатка (~26 МБ, GitHub k2-fsa/sherpa-onnx) в ~/.chloe/voiceprint, если её нет."""
+    import urllib.request
+
+    if MODEL.exists():
+        return True
+    FOLDER.mkdir(parents=True, exist_ok=True)
+    tmp = MODEL.with_suffix(".part")
+    try:
+        with urllib.request.urlopen(MODEL_URL, timeout=timeout) as r, open(tmp, "wb") as f:
+            while True:
+                chunk = r.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+        tmp.replace(MODEL)
+        return True
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        print("[отпечаток голоса: модель не скачалась — {}]".format(e))
+        return False

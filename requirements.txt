@@ -17,6 +17,7 @@ google-genai
 openai  # Qwen (QwenCloud) и DeepSeek — OpenAI-совместимые API
 piper-tts
 vosk
+sherpa-onnx
 telethon
 # для навыков Anthropic (pdf, docx, xlsx, pptx)
 pypdf
