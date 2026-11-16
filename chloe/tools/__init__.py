@@ -699,7 +699,7 @@ def run_tool(name, args):
     if verdict and verdict[0] == "ask":
         from ..voice import confirm
 
-        verdict = None if confirm(verdict[1]) else ("declined", "")
+        verdict = None if confirm(verdict[1], force=True) else ("declined", "")
     if verdict and verdict[0] == "block":
         out, is_error = ("Отказано: {}. Не пытайся получить то же другим инструментом или обходным путём — "
                          "скажи пользователю, что это закрыто в карте прав.".format(verdict[1])), False

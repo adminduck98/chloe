@@ -150,7 +150,9 @@ VOICES_DIR = DATA / "voices"                                       # модел�
 EARS_DIR = DATA / "ears"                                           # офлайн-слух Vosk: слово «Хлоя» без интернета
 EARS_MODEL = os.environ.get("CHLOE_EARS_MODEL", "vosk-model-small-ru-0.22")
 WAKE_OFFLINE = os.environ.get("CHLOE_WAKE", "offline") != "cloud"   # cloud — как раньше: вся речь в Google
-CONFIRM = os.environ.get("CHLOE_CONFIRM", "safe")                # safe — спрашивать перед необратимым; off — не спрашивать
+# delete (по умолчанию, правило владельца 16.11.2026: «попросил — значит, делай») — спрашивать только перед удалением
+# и ослаблением защиты; safe — спрашивать перед всем необратимым (как было); off — не спрашивать совсем
+CONFIRM = os.environ.get("CHLOE_CONFIRM", "delete")
 KEEP_SCREENS = int(os.environ.get("CHLOE_KEEP_SCREENS", "7"))    # сколько дней хранить скриншоты в журнале; 0 — не хранить
 WAKE_WORDS = ("хлоя", "хлои", "хлое", "хлою", "хлоей", "хлоэ", "хлоё", "клоя", "клои", "клое", "клою", "клоэ", "флоэ", "флоя",
               "chloe", "chloé")   # только целые слова; похожие (одна буква не та) — см. ears.is_wake_word

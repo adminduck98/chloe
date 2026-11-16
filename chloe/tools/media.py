@@ -28,7 +28,9 @@ def _say(text):
     from ..voice import voice
 
     print("[медиа] " + text)
-    voice.say(text)
+    from ..mediapause import announce
+
+    announce(voice.say, text)   # готово мультик или видео — музыку на паузу, сказать, продолжить
 
 
 NAMES = {"image": ("Картинка", "готова", "не получилась"), "video": ("Видео", "готово", "не получилось"),

@@ -130,7 +130,8 @@ def tool_run_command(a):
                 print("[песочница] " + note)
         except Exception as e:                 # проверка не должна мешать самой команде
             print("[песочница: {}]".format(type(e).__name__))
-        if not confirm("Выполнить команду: " + cmd + "?" + (" " + note if note else "")):
+        # команда может что угодно (и удалить), а её текст мог подсунуть сайт — спрашиваем всегда (кроме только смотрящих)
+        if not confirm("Выполнить команду: " + cmd + "?" + (" " + note if note else ""), force=True):
             return "Пользователь отклонил команду."
     try:
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)

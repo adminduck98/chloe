@@ -134,20 +134,24 @@ def assistant(args):
     if voice.enabled and not args.text:
         threading.Thread(target=recorder, daemon=True, name="recorder").start()
         threading.Thread(target=listener, daemon=True, name="listener").start()
-    threading.Thread(target=reminder_watcher, args=(voice.say,), daemon=True, name="reminders").start()
+    from . import mediapause
+
+    def announce(text):   # важное само по себе (напоминание, готово, новость): музыка и видео — на паузу, потом сказать
+        mediapause.announce(voice.say, text)
+    threading.Thread(target=reminder_watcher, args=(announce,), daemon=True, name="reminders").start()
     from .tools import social as social_tool
 
-    social_tool.start(voice.say)   # запланированные посты: одобренные — в канал, остальные — напоминание и пакет
+    social_tool.start(announce)   # запланированные посты: одобренные — в канал, остальные — напоминание и пакет
     from . import workflows as wf
 
     wf.start()                     # автоматизации: по расписанию и по событиям — как обычные просьбы, со всеми проверками
     from . import missions, proactive
 
-    proactive.start(voice.say)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
+    proactive.start(announce)     # подсказки: в режиме «Сама предлагает» — иногда вслух, по правилам
     from . import holyarrs
 
-    holyarrs.start(voice.say)      # HolyArrs: запрошенное скачалось — сказать один раз (не ночью, не посреди разговора)
-    missions.start(voice.say)      # задания: шаги по одному, когда Chloe свободна; прерванные — по слову «продолжи задание»
+    holyarrs.start(announce)      # HolyArrs: запрошенное скачалось — сказать один раз (не ночью, не посреди разговора)
+    missions.start(announce)      # задания: шаги по одному, когда Chloe свободна; прерванные — по слову «продолжи задание»
     from .voice import warm_phrases
 
     threading.Thread(target=warm_phrases, daemon=True, name="voice-phrases").start()   # «Да?» — сразу, без сервера

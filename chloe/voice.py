@@ -695,9 +695,26 @@ def listener():
             heard_q.put(Heard(text, started))
 
 
-def confirm(question):
+# что спрашивать всегда, даже когда владелец сказал «не переспрашивай»: удаление и ослабление защиты
+# и то, где теряются данные или работа: выключение, перезагрузка, «закрыть все окна», «забыть» из памяти
+ALWAYS_ASK = re.compile(r"удал|стере|стира|сотр|очист|корзин|снест|снес|уничтож|форматир|delete|remove|\brm\b|"
+                        r"ослаб|vault|хранилищ|защит|пароль|выключ|перезагруз|закрыть все|забыть", re.IGNORECASE)
+
+
+def must_ask(question, force=False):
+    if force:
+        return True                 # владелец сам поставил «спрашивать» в карте прав — это его настройка безопасности
     if config.CONFIRM == "off":
-        journal.add("confirm", "Подтверждение", question + " — без вопроса (CHLOE_CONFIRM=off)")
+        return False
+    if config.CONFIRM == "delete":
+        return bool(ALWAYS_ASK.search(question or ""))
+    return True
+
+
+def confirm(question, force=False):
+    if not must_ask(question, force):
+        journal.add("confirm", "Подтверждение", question + " — без вопроса: владелец попросил, значит, делаю (CHLOE_CONFIRM={})"
+                    .format(config.CONFIRM))
         return True
     yes = voice.ask_yes_no(question)
     state["declined"] = state["declined"] or not yes
