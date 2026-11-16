@@ -72,6 +72,18 @@ class LongEpisode(unittest.TestCase):
         self.assertEqual(len(DS.layout_rows(c, ["Привет"])), 1)
 
 
+class Canon(unittest.TestCase):
+    def test_bible_in_plan_and_every_video(self):
+        seen = {}
+        DS.make_plan("Последний кусочек торта", 20, ask=lambda prompt, *a: seen.setdefault("p", prompt) and json.dumps(PLAN))
+        self.assertIn("ПЕРСИК И ПУШОК", seen["p"])                 # вся библия владельца — в сценарии
+        self.assertIn("4–5", seen["p"])                            # 20 с — 4–5 моментов
+        c = DS.characters()
+        self.assertIn("absolutely no ears", c)
+        self.assertIn("deadpan stares", c)                         # стиль движений Пушка
+        self.assertIn("no 3D", DS.STYLE)
+
+
 class Music(unittest.TestCase):
     def test_own_tune_has_sound_and_length(self):
         m = DS.music(4.0)

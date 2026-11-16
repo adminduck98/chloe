@@ -34,15 +34,30 @@ QUALITY = {"normal": ("480P", 0.5), "high": ("720P", 1.0)}
 RED = (0.88, 0.33, 0.30)
 STYLE = ("Hand-drawn 2D cartoon animation, smooth and expressive like anime, keep the exact same marker and colored pencil drawing "
          "style, paper texture, colors and background, static camera, no zoom, no cuts, the same two characters only, "
-         "no new objects, no text. ")
-PLAN_PROMPT = """Ты режиссёр коротких милых мультиков для Reels и Shorts. Герои: Персик (Peach — маленький круглый
-персиковый, с листиком на макушке, жизнерадостный) и Пушок (Puff — сиреневый, повыше, с ушками, спокойный и ироничный).
-Голосов нет: реплики появляются на экране словами. Сделай из идеи пользователя сценку на {seconds} секунд.
+         "no new objects, no text; no 3D, no photorealism, no gloss, no gradients, no neon colors, no clothes. ")
+# библия владельца: характеры, эмоции, движения, сценарная система, правила Chloe — Chloe её хранитель, менять нельзя
+BIBLE_FILE = pathlib.Path(__file__).resolve().parent / "assets" / "styles" / "doodle-bible.md"
+
+
+def bible():
+    try:
+        return BIBLE_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+PLAN_PROMPT = """Ты режиссёр мультсериала «Персик и Пушок» для Reels и Shorts и хранитель его канона. Строго следуй
+библии сериала ниже: внешность, характеры, фирменные фразы, эмоции (листик Персика, уши Пушка), стиль движений
+(Персик — быстрый и пружинистый, Пушок — медленный, паузы и невозмутимый взгляд), отношения и сценарная система
+(крючок → развитие → осложнение → реакция Пушка → панчлайн; одна реплика до шести слов на момент). Ничего в каноне
+не меняй. Голосов нет: реплики появляются на экране словами. Сделай из идеи пользователя серию на {seconds} секунд.
+
+БИБЛИЯ СЕРИАЛА:
+{bible}
+
 Ответь ТОЛЬКО JSON:
 {{"title": "короткое название по-русски",
  "scene": "место и что в кадре в начале, по-английски, 1–2 предложения (Peach on the left, Puff on the right)",
  "beats": [{{"words": "что появляется на экране по-русски, 1–6 слов", "seconds": 3–5,
-             "motion": "по-английски: что делают оба героя в эти секунды — движение и яркие эмоции лица, как в мультфильме"}}]}}
+             "motion": "по-английски: что делают оба героя в эти секунды — движение в их стиле и эмоция по канону (leaf / ears)"}}]}}
 Моментов {beats}, сумма seconds ≈ {seconds}. Последний момент — смешная или трогательная реакция второго героя.
 Реплики короткие и смешные, без кавычек. Если пользователь дал готовый сценарий по секундам — иди по нему: те же сцены
 по порядку, реплики дословно (длинную можно чуть сократить), надписи на экране телефона — тоже в words.
@@ -60,11 +75,15 @@ MAX_BEATS = 12
 
 
 def max_beats(seconds):
-    return max(4, min(MAX_BEATS, -(-int(seconds) // 4)))
+    return max(5 if seconds >= 16 else 4, min(MAX_BEATS, -(-int(seconds) // 4)))
 
 
 def beats_hint(seconds):
-    return "2–4" if seconds <= 20 else "{}–{}".format(max(4, int(seconds) // 5), max_beats(seconds))
+    if seconds < 16:
+        return "2–4"
+    if seconds <= 20:
+        return "4–5"                                   # стандартная серия по библии: 20 с, 4–5 моментов
+    return "{}–{}".format(max(4, int(seconds) // 5), max_beats(seconds))
 
 
 # --- план ---
@@ -94,9 +113,9 @@ def make_plan(idea, seconds=12, ask=None):
     if ask is None:
         from .screenplay import model_ask as ask
     try:
-        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds)), False)
+        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds), bible=bible()), False)
     except TypeError:
-        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds)))
+        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds), bible=bible()))
     return parse_plan(reply, seconds)
 
 
@@ -306,7 +325,8 @@ def characters():
     (15.11.2026, «Интернет пропал»: у Персика выросли уши, Пушок их потерял, листик упал на пол)."""
     return ("Keep both characters exactly as in the first frame, never changing their shape, size, colors or parts: "
             + ST.STYLES["doodle"]["anchor"] + ". Peach has NO ears, only the one green leaf that stays on top of its head; "
-            "Puff always keeps its two small rounded ears. ")
+            "Puff always keeps its two small round ears, no extra ears, horns or tails. Peach moves fast, bouncy and elastic; "
+            "Puff moves slowly with long pauses, subtle head tilts and deadpan stares. ")
 
 
 def chain(plan, work, progress=print, resolution="720P"):

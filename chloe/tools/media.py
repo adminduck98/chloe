@@ -66,7 +66,7 @@ def tool_doodle_short(a):
         idea = str(a.get("idea") or "").strip()
         if not idea:
             return "Нужна идея (idea): что происходит и что говорят — своими словами пользователя."
-        seconds = max(6, min(int(a.get("seconds") or 12), DS.MAX_SECONDS))
+        seconds = max(6, min(int(a.get("seconds") or 20), DS.MAX_SECONDS))   # стандартная серия — 20 с (библия)
         try:
             plan = DS.make_plan(idea, seconds)
         except DS.DoodleError as e:
