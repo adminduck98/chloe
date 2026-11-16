@@ -13,10 +13,11 @@ from ..signals import seen_text, state
 from . import access, calendar, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, youtube as youtube_mod, mediaserver, remind, replay, screen, skill, system, talk, tg, undo, weather, web
 from ..secret import redact
 from .. import usage as usage_mod
+from .. import report as report_mod
 from .. import vision as vision_mod
 
 HANDLERS = {name[5:]: getattr(mod, name)
-            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, youtube_mod, mediaserver) for name in dir(mod) if name.startswith("tool_")}
+            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, report_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, youtube_mod, mediaserver) for name in dir(mod) if name.startswith("tool_")}
 
 
 # Навыки в мозге для каждого инструмента: (имя, описание, зона)
@@ -111,6 +112,7 @@ SKILLS = {
     "forget_lesson": ("Обучение", "", "Навыки"),
     "learned_list": ("Обучение", "", "Навыки"),
     "brain_usage": ("Мышление", "Сколько запросов и денег уходит на каждую модель", "Память"),
+    "owner_report": ("Отчёт", "Отчёт владельцу за неделю или месяц: деньги, что сделано, что не вышло", "Память"),
     "projects": ("Проекты", "Ваши проекты на компьютере и GitHub: что изменилось, что не отправлено, что зависло", "Компьютер"),
     "weather": ("Погода", "Погода и прогноз для вашего города", "Интернет"),
     "set_city": ("Погода", "", "Интернет"),
@@ -577,6 +579,11 @@ TOOLS = [
                                          "подходящую под него задачу.", "input_schema": schema({"name": S}, ["name"])},
     {"name": "read_skill_file", "description": "Прочитать файл из папки навыка (справка, шаблон, скрипт), путь — как в списке файлов навыка.",
      "input_schema": schema({"name": S, "path": S}, ["name", "path"])},
+    {"name": "owner_report", "description": "Полный отчёт владельцу: «отчёт за неделю», «сколько потратили», «что ты сделала за "
+                                            "месяц». Деньги (мышление по моделям, картинки и видео Qwen), сколько просьб, что "
+                                            "делала чаще всего, что не вышло. period: week (по умолчанию) или month. "
+                                            "Перескажи подробно и по-человечески.",
+     "input_schema": schema({"period": {"type": "string", "enum": ["week", "month"]}}, [])},
     {"name": "brain_usage", "description": "Сколько потрачено на мышление: запросы, токены и примерная стоимость по каждой "
                                          "модели (DeepSeek, Claude) за сегодня или за days дней.",
      "input_schema": schema({"days": {"type": "integer"}})},
