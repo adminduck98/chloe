@@ -74,7 +74,25 @@ class Voiceprint(unittest.TestCase):
         voice.enroll_until = time.time() + 5
         with mock.patch("chloe.voice.threading.Thread") as th:
             self.assertEqual(route_phrase(Audio("owner", "раз два три"), time.time()), "skip")
-        self.assertIs(th.call_args.kwargs["target"], VP.learn)
+        from chloe.voice import learn_if_speech
+
+        self.assertIs(th.call_args.kwargs["target"], learn_if_speech)
+
+    def test_enroll_learns_only_speech(self):
+        from chloe.voice import learn_if_speech
+
+        learn_if_speech(Audio("owner", ""))                       # шум: слов нет — не запоминать
+        learn_if_speech(Audio("owner", "ну"))                     # одно слово — тоже нет
+        self.assertEqual(len(VP.samples()), 0)
+        learn_if_speech(Audio("owner", "раз два три"))
+        self.assertEqual(len(VP.samples()), 1)
+
+    def test_recognised_phrase_does_not_feed_profile(self):
+        """16.11.2026: дописывание узнанного превратило шум комнаты в «хозяина»."""
+        self.learn_owner()
+        with mock.patch("chloe.voice.threading.Thread") as th:
+            route_phrase(Audio("owner", "какая погода"), time.time())
+        th.assert_not_called()
 
     def test_name_mode_switch(self):
         self.learn_owner()

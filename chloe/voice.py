@@ -614,7 +614,7 @@ def route_phrase(audio, started):
         return "cloud"                                   # ответ «да/нет» на её вопрос
     working = busy.is_set() or overlapped
     if not working and time.time() < voice.enroll_until:
-        threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
+        threading.Thread(target=learn_if_speech, args=(audio,), daemon=True).start()
         return "skip"                                    # «запомни мой голос»: сейчас только слушает и запоминает
     if not working and voiceprint.ready():               # голос владельца — первым: и в окне, и в продолжении
         mine, sc = voiceprint.is_owner(audio)
@@ -623,8 +623,7 @@ def route_phrase(audio, started):
         if mine:
             voice.reason = "owner"
             voice.owner_at = time.time()                 # фраза из кусков: хватит одного узнанного куска
-            if sc >= voiceprint.THRESHOLD + 0.08:         # узнала уверенно — отпечаток привыкает к микрофону и комнате
-                threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
+            # узнанное в отпечаток НЕ добавляем: 16.11.2026 так в него попал шум комнаты, и шум стал «хозяином»
             return "cloud"                               # голос владельца — ей, без «Хлоя»
     if not working and time.time() < state["listen_until"] and addressee.window_open_for(voice.last_said):
         voice.reason = "window"
@@ -643,13 +642,20 @@ def route_phrase(audio, started):
         return "cloud" if seconds <= SHORT_PHRASE else "skip"
     if has_wake(local):
         voice.reason = "wake"
-        if voiceprint.available():                       # «Хлоя» — голос владельца: пополнить отпечаток
+        if voiceprint.available() and len(words(local)) >= 2:   # «Хлоя …» — голос владельца: пополнить отпечаток
             threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
         return "cloud"
     if local:   # шум без слов не печатаем — его слишком много
         print("[не Хлое — не отправлено: {}]".format(local[:60]))
         overheard(local)
     return "skip"
+
+
+def learn_if_speech(audio):
+    """В отпечаток — только речь: офлайн-слух расслышал хотя бы два слова (шум, вентилятор, эхо — нет)."""
+    local = ears.hear(audio)
+    if local and len(words(local)) >= 2:
+        voiceprint.learn(audio)
 
 
 def overheard(text):
