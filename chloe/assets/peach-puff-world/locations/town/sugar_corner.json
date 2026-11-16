@@ -1,0 +1,15 @@
+{
+ "id": "sugar_corner",
+ "name": "Магазин сладостей «Сахарок»",
+ "about": "Sugar Corner",
+ "keywords": [
+  "сахарок",
+  "магазин сладостей",
+  "конфет",
+  "sugar"
+ ],
+ "prompt": "A charming tiny candy shop called Sugar Corner. A large display window, shelves filled with colorful candy jars, cookies, chocolate, cakes, lollipops and pastries. A small wooden counter and simple cash register. Pastel pink, cream and soft yellow palette. Hand-drawn colored pencil storybook illustration on warm textured paper. Keep the architecture and arrangement consistent.",
+ "fixed": [
+  "Пушок напоминает Персику о бюджете"
+ ]
+}

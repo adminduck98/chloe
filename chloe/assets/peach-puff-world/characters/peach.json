@@ -1,0 +1,17 @@
+{
+ "name": "Персик",
+ "canon": "Peach is a tiny round chubby peach-shaped creature, warm peach-pink body, one small green leaf on top of its head, tiny dot eyes, a cute cat-like smile, rosy cheeks, absolutely no ears, simple soft organic silhouette, hand-drawn black uneven outline, pastel colored pencil texture.",
+ "movement": "Fast, bouncy, exaggerated, elastic movements. Peach jumps when excited, rolls when rushing, squashes when disappointed, and stretches slightly during surprise. Every movement feels playful and energetic.",
+ "check": [
+  "exactly one green leaf on top",
+  "zero ears",
+  "round peach body"
+ ],
+ "phrases": [
+  "Это не я!",
+  "У меня есть идея!",
+  "Легкотня!",
+  "Я всё контролирую!",
+  "Ненавижу понедельники!"
+ ]
+}

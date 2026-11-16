@@ -1,0 +1,17 @@
+{
+ "id": "peach_room",
+ "name": "Комната Персика",
+ "about": "Творческий беспорядок",
+ "keywords": [
+  "комната персика",
+  "peach room",
+  "рисунки",
+  "шедевр"
+ ],
+ "prompt": "A small playful bedroom belonging to Peach, a tiny round peach-shaped creature. Pastel peach, soft pink, light yellow and gentle green accents. A small bed, messy creative desk, colored pencils, sketchbooks, paper sheets, toy boxes, drawings on the walls and a small shelf with sweets. One especially big drawing on the wall that Peach calls his masterpiece. The room feels energetic, creative and slightly messy. Hand-drawn children's storybook illustration, warm paper texture, imperfect black outlines, colored pencil strokes. Preserve the exact room layout and furniture.",
+ "fixed": [
+  "беспорядок на столе",
+  "большой рисунок-«шедевр» на стене",
+  "полка со сладостями"
+ ]
+}

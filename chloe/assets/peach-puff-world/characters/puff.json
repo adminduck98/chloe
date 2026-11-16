@@ -1,0 +1,17 @@
+{
+ "name": "Пушок",
+ "canon": "Puff is a slightly taller soft lavender bean-shaped creature, two small round ears on top of its head, tiny dot eyes, a small straight-line mouth, rosy cheeks, smooth simple silhouette, hand-drawn black uneven outline, pastel colored pencil texture.",
+ "movement": "Slow, smooth, minimal movements. Puff rarely moves unnecessarily. Long pauses, subtle head tilts and deadpan stares are essential. Sudden ear movements create unexpected comedy.",
+ "check": [
+  "exactly two small round ears",
+  "no horns, tails or extra ears",
+  "lavender bean body"
+ ],
+ "phrases": [
+  "Понятно...",
+  "Я так и знал.",
+  "И что могло пойти не так?",
+  "Персик...",
+  "Это был плохой план."
+ ]
+}

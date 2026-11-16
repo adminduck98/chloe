@@ -23,6 +23,7 @@ import numpy as np
 
 from . import qwen_media as qm
 from . import stickman_styles as ST
+from . import peach_world as world
 
 W, H, FPS = 1080, 1920, 48
 SR = 44100
@@ -53,8 +54,18 @@ PLAN_PROMPT = """Ты режиссёр мультсериала «Персик �
 БИБЛИЯ СЕРИАЛА:
 {bible}
 
+МИР (Peach & Puff World, городок Тихолесье). Место действия выбери ТОЛЬКО из утверждённых (id — название: что
+неизменно), герои перемещаются между местами физически, мебель на своих местах:
+{places}
+
+ПАМЯТЬ МИРА:
+{memory}
+
 Ответь ТОЛЬКО JSON:
 {{"title": "короткое название по-русски",
+ "location": "id места из списка выше",
+ "world_changes": ["что в мире изменилось и останется до уборки, по-русски: «кухня: пятно от крема на столе»; нет — []"],
+ "world_fixed": ["какие прошлые изменения в этой серии убрали; нет — []"],
  "scene": "место и что в кадре в начале, по-английски, 1–2 предложения (Peach on the left, Puff on the right)",
  "beats": [{{"words": "что появляется на экране по-русски, 1–6 слов", "seconds": 3–5,
              "motion": "по-английски: что делают оба героя в эти секунды — движение в их стиле и эмоция по канону (leaf / ears)"}}]}}
@@ -105,17 +116,24 @@ def parse_plan(text, seconds):
         raise DoodleError("не вышел план сценки — попробуйте сказать идею иначе")
     while sum(b["seconds"] for b in beats) > max(seconds, 6) + max(2, seconds * 0.1) and len(beats) > 2:
         beats.pop(-2)                                                 # слишком длинно — убираем средний момент
-    return {"title": str(data.get("title") or "Персик и Пушок").strip()[:60], "scene": str(data["scene"]).strip()[:500],
-            "beats": beats[:max_beats(seconds)]}
+    title, scene = str(data.get("title") or "Персик и Пушок").strip()[:60], str(data["scene"]).strip()[:500]
+    loc = str(data.get("location") or "").strip()
+    if loc not in world.locations():
+        loc = world.guess(title + " " + scene)       # не из утверждённой карты — ближайшее по словам, иначе гостиная
+    return {"title": title, "scene": scene, "beats": beats[:max_beats(seconds)], "location": loc,
+            "world_changes": [str(x)[:120] for x in (data.get("world_changes") or []) if str(x).strip()][:5],
+            "world_fixed": [str(x)[:120] for x in (data.get("world_fixed") or []) if str(x).strip()][:5]}
 
 
 def make_plan(idea, seconds=12, ask=None):
     if ask is None:
         from .screenplay import model_ask as ask
     try:
-        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds), bible=bible()), False)
+        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds), bible=bible(),
+                                       places=world.menu(), memory=world.continuity()), False)
     except TypeError:
-        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds), bible=bible()))
+        reply = ask(PLAN_PROMPT.format(idea=idea, seconds=seconds, beats=beats_hint(seconds), bible=bible(),
+                                       places=world.menu(), memory=world.continuity()))
     return parse_plan(reply, seconds)
 
 
@@ -314,7 +332,9 @@ def first_frame(plan, work):
     if path.exists():
         return path
     hero = ST.hero_file("doodle")
-    prompt = ST.frame(plan["scene"] + ". The top quarter of the picture is empty paper for text", "doodle")
+    place = world.location(plan.get("location"))     # утверждённая локация: та же мебель, цвета и расположение
+    prompt = ST.frame("Location — {}: {} {} The top quarter of the picture is empty paper for text".format(
+        place["name"], place["prompt"], plan["scene"].rstrip(".") + "."), "doodle")
     made = qm.image(HERO_SCENE.format(prompt), "9:16", source=str(hero) if hero else None)[0]
     shutil.copyfile(made, path)
     return path
@@ -517,4 +537,6 @@ def make(plan, work, progress=print, quality="high"):
     progress("Собираю: сглаживаю до 48 кадров, слова, музыка…")
     qm.VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     out = qm.VIDEO_DIR / "{}-{}.mp4".format(time.strftime("%Y%m%d-%H%M%S"), re.sub(r"[^\w-]+", "-", plan["title"]).strip("-")[:40])
-    return assemble(clips, plan, out, work)
+    out = assemble(clips, plan, out, work)
+    world.record(plan, out)                          # мир помнит серию и что в нём изменилось
+    return out

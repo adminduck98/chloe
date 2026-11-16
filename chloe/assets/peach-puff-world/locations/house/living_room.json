@@ -1,0 +1,21 @@
+{
+ "id": "living_room",
+ "name": "Гостиная",
+ "about": "Главная сцена сериала",
+ "keywords": [
+  "гостиная",
+  "диван",
+  "телевизор",
+  "living room",
+  "зал"
+ ],
+ "prompt": "A cozy small cartoon living room in a warm storybook house. A large soft cream-colored sofa facing a low television cabinet, two decorative cushions, a small wooden coffee table in front of the sofa, a bookshelf to the left of the television, a window with curtains to the right of the sofa, a small rug, a floor lamp and a wall clock. Two mugs often sit on the coffee table. Warm cream, pastel peach and light wood colors. Hand-drawn marker and colored pencil illustration on warm textured paper. Keep the exact furniture layout and object positions consistent.",
+ "fixed": [
+  "диван напротив телевизора",
+  "столик перед диваном",
+  "книжная полка слева от телевизора",
+  "окно справа от дивана",
+  "на полке рисунки Персика и настолки Пушка",
+  "две кружки на столике"
+ ]
+}

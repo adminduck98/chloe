@@ -1,0 +1,22 @@
+{
+ "id": "kitchen",
+ "name": "Кухня",
+ "about": "Сладости и кулинарные катастрофы",
+ "keywords": [
+  "кухня",
+  "kitchen",
+  "холодильник",
+  "плита",
+  "торт",
+  "печенье",
+  "завтрак",
+  "чай"
+ ],
+ "prompt": "A small cozy cartoon kitchen with cream walls, pastel mint cabinets, pale yellow accents and light wooden furniture. A refrigerator, kitchen cupboards, sink, stove, oven, dining table with exactly two chairs, kettle, cups, plates, cookie jar and a small sweets container. A few cute children's drawings and handwritten notes attached to the refrigerator. Traditional hand-drawn colored pencil illustration on warm paper. Preserve the exact layout and furniture positions.",
+ "fixed": [
+  "ровно два стула",
+  "на холодильнике рисунки Персика и записки Пушка",
+  "чай всегда на одной полке",
+  "банка печенья Пушка"
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "id": "town_map",
+ "name": "Карта Тихолесья",
+ "about": "Little Whimsy Town",
+ "keywords": [
+  "город",
+  "карта",
+  "town",
+  "тихолесье"
+ ],
+ "prompt": "A small charming illustrated storybook town called Little Whimsy Town, drawn as a simple map from above. A central square with a little fountain and the post office; the cozy two-story cottage of Peach and Puff in the residential area to the north; a peaceful park with a pond to the east and a tiny library next to it; a cozy cafe and a small bakery near the square; a sweets shop on the main street; a little grocery market on the south street; a small playground. Curved pedestrian paths, flower beds, small trees, wooden benches. Traditional marker and colored pencil drawing on warm textured paper. Simple readable geography, consistent building designs and recognizable locations. No modern skyscrapers, no photorealism, no 3D, no gradients, no text labels.",
+ "fixed": [
+  "дом — север",
+  "парк — восток, библиотека рядом",
+  "кафе и пекарня у площади",
+  "почта на площади",
+  "магазин сладостей на главной улице",
+  "продуктовый — юг"
+ ]
+}
