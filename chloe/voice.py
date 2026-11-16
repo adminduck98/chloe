@@ -127,6 +127,7 @@ class Voice:
         self.open_until = 0.0     # до этого времени части начатой просьбы идут на распознавание без слова «Хлоя»
         self.open_origin = 0.0    # когда началась эта просьба
         self.reason = ""          # почему последняя фраза ушла на распознавание
+        self.owner_at = 0.0       # когда последний раз узнала голос владельца
         self.enroll_until = 0.0   # до этого времени — «запомни мой голос»: фразы идут в отпечаток, не в работу
         self.asr_down_until = 0.0  # до этого времени распознавание Qwen не трогаем (было недоступно)
         self.qwen_down_until = 0.0  # и голос Qwen
@@ -621,6 +622,7 @@ def route_phrase(audio, started):
             print("[голос: {:.2f} — {}]".format(sc, "хозяин" if mine else "не хозяин"))
         if mine:
             voice.reason = "owner"
+            voice.owner_at = time.time()                 # фраза из кусков: хватит одного узнанного куска
             if sc >= voiceprint.THRESHOLD + 0.08:         # узнала уверенно — отпечаток привыкает к микрофону и комнате
                 threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
             return "cloud"                               # голос владельца — ей, без «Хлоя»

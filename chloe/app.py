@@ -207,7 +207,8 @@ def assistant(args):
                 began = min(getattr(heard, "started", None) or time.time(), time.time())
                 heard = finish_speech(heard)
                 command, woke = strip_wake(heard)
-                woke = woke or getattr(heard, "owner", False)   # голос владельца узнан — ей и без «Хлоя»
+                # голос владельца узнан — ей и без «Хлоя»; фраза из кусков — хватит одного узнанного куска
+                woke = woke or getattr(heard, "owner", False) or voice.owner_at >= began - 1.0
                 if not woke and began > state["listen_until"]:
                     print("[не Хлое — окно закрылось: {}]".format(heard[:60]))   # не «Вы:» — ответа не будет
                     go_idle()
