@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import addressee, config, persona, phrase_cache, qwen_audio, speech_stream
+from . import addressee, config, voiceprint, persona, phrase_cache, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -127,6 +127,7 @@ class Voice:
         self.open_until = 0.0     # до этого времени части начатой просьбы идут на распознавание без слова «Хлоя»
         self.open_origin = 0.0    # когда началась эта просьба
         self.reason = ""          # почему последняя фраза ушла на распознавание
+        self.enroll_until = 0.0   # до этого времени — «запомни мой голос»: фразы идут в отпечаток, не в работу
         self.asr_down_until = 0.0  # до этого времени распознавание Qwen не трогаем (было недоступно)
         self.qwen_down_until = 0.0  # и голос Qwen
 
@@ -617,6 +618,14 @@ def route_phrase(audio, started):
     if not working and started < voice.open_until:
         voice.reason = "continue"
         return "cloud"                                   # продолжение начатой просьбы
+    if not working and time.time() < voice.enroll_until:
+        threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
+        return "skip"                                    # «запомни мой голос»: сейчас только слушает и запоминает
+    if not working and voiceprint.ready():
+        mine, sc = voiceprint.is_owner(audio)
+        if mine:
+            voice.reason = "owner"
+            return "cloud"                               # голос владельца — ей, без «Хлоя»
     local = ears.hear(audio)
     if local is None:
         return "cloud"                                   # офлайн-слуха нет — как раньше
@@ -628,6 +637,8 @@ def route_phrase(audio, started):
         return "cloud" if seconds <= SHORT_PHRASE else "skip"
     if has_wake(local):
         voice.reason = "wake"
+        if voiceprint.available():                       # «Хлоя» — голос владельца: пополнить отпечаток
+            threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
         return "cloud"
     if local:   # шум без слов не печатаем — его слишком много
         print("[не Хлое — не отправлено: {}]".format(local[:60]))
@@ -646,7 +657,7 @@ def open_continuation(now=None):
     """Фраза ушла на распознавание: следующая часть той же просьбы тоже уйдёт, но не дольше CONTINUE_MAX от её начала —
     иначе непрерывная речь (телевизор, видео) держала бы окно открытым бесконечно."""
     now = now or time.time()
-    if voice.reason in ("wake", "window"):
+    if voice.reason in ("wake", "window", "owner"):
         voice.open_origin = now
     voice.open_until = min(now + PAUSE + LONG_PAUSE_EXTRA + 1.5, voice.open_origin + CONTINUE_MAX)
     voice.reason = ""
@@ -672,6 +683,7 @@ def listener():
                 if not busy.is_set() and time.time() > state["listen_until"]:
                     brain.state("idle")
                 continue
+            owner = voice.reason == "owner"
             open_continuation()
             if not busy.is_set() or voice.awaiting:
                 brain.voice(0.7, "user")
@@ -692,7 +704,7 @@ def listener():
             if is_stop(text) and not (set(words(text)) & set(STOP_WORDS) & own):
                 interrupt_now(text)
         else:
-            heard_q.put(Heard(text, started))
+            heard_q.put(Heard(text, started, owner))
 
 
 # что спрашивать всегда, даже когда владелец сказал «не переспрашивай»: удаление и ослабление защиты

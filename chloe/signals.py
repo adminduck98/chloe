@@ -27,9 +27,10 @@ class Heard(str):
     """Распознанная фраза и когда её НАЧАЛИ говорить: окно «без Хлоя» проверяется по началу речи,
     а не по концу распознавания (Qwen думает до 4,5 с — фраза, начатая в окне, иначе терялась)."""
 
-    def __new__(cls, text, started=None):
+    def __new__(cls, text, started=None, owner=False):
         obj = super().__new__(cls, text)
         obj.started = started
+        obj.owner = owner          # сказано голосом владельца (узнан по отпечатку) — ей, даже без «Хлоя»
         return obj
 
 
