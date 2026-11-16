@@ -7,22 +7,18 @@ from unittest import mock
 from chloe import media_budget as MB
 from chloe import usage
 from chloe.settings import settings
-from chloe.tools import run_tool
 from chloe.voice import voice
 
 voice.enabled = False
-PLAN = {"title": "Кофе", "scene": "cafe", "beats": [{"words": "Я люблю кофе", "seconds": 3, "motion": "Peach sips"},
-                                                   {"words": "а я?", "seconds": 3, "motion": "Puff offended"}]}
 
 
 class Budget(unittest.TestCase):
     def setUp(self):
-        self.saved = settings.get(MB.KEY), settings.get("doodle_draft")
+        self.saved = settings.get(MB.KEY)
         settings.set(MB.KEY, [])
 
     def tearDown(self):
-        settings.set(MB.KEY, self.saved[0])
-        settings.set("doodle_draft", self.saved[1])
+        settings.set(MB.KEY, self.saved)
 
     def test_one_video_per_week(self):
         self.assertIsNone(MB.video_block())
@@ -42,26 +38,6 @@ class Budget(unittest.TestCase):
         self.assertIsNone(MB.video_block(key="/films/a"))
         self.assertIsNotNone(MB.video_block(key="/films/b"))
 
-    def test_cartoon_blocked_but_draft_free(self):
-        from chloe import doodle_short as DS
-
-        MB.spend("video", 5, "уже было")
-        with mock.patch.object(DS.qm, "available", return_value=True), mock.patch.object(DS, "make_plan", return_value=PLAN), \
-                mock.patch("chloe.tools.media.confirm") as ask, mock.patch("chloe.tools.media._start", return_value=7) as start:
-            out, _, _ = run_tool("doodle_short", {"idea": "кофе"})
-            self.assertIn("Лимит", out)
-            ask.assert_not_called()
-            out, _, _ = run_tool("doodle_short", {"idea": "кофе", "quality": "draft"})
-            self.assertIn("черновик", out)
-            self.assertEqual(start.call_args[0][0], "doodle_draft")
-            ask.assert_not_called()                                     # черновик бесплатный — без вопроса о цене
-            self.assertEqual(settings.get("doodle_draft")["plan"], PLAN)
-            ask.return_value = True
-            out, _, _ = run_tool("doodle_short", {"from_draft": True, "over_limit": True})
-        self.assertIn("480P", ask.call_args[0][0])
-        self.assertIn("ушло около", ask.call_args[0][0])
-        self.assertEqual(start.call_args[0][0], "doodle")
-
 
 class Refund(unittest.TestCase):
     def setUp(self):
@@ -71,22 +47,16 @@ class Refund(unittest.TestCase):
     def tearDown(self):
         settings.set(MB.KEY, self.saved)
 
-    def test_failed_cartoon_does_not_take_the_week(self):
-        from chloe import doodle_short as DS
+    def test_failed_video_does_not_take_the_week(self):
         from chloe.tools import media
 
-        ran = {}
+        at = MB.spend("video", 5, "проба")
+        self.assertEqual(MB.week_videos(), 1)                           # пока делается — неделя занята
 
-        def start(kind, title, work, open_result=True):
-            ran["work"] = work
-            return 1
-        with mock.patch.object(DS.qm, "available", return_value=True), mock.patch.object(DS, "make_plan", return_value=PLAN), \
-                mock.patch("chloe.tools.media.confirm", return_value=True), mock.patch.object(media, "_start", side_effect=start), \
-                mock.patch.object(DS, "make", side_effect=DS.qm.MediaError("кредиты Qwen закончились")):
-            run_tool("doodle_short", {"idea": "кофе"})
-            self.assertEqual(MB.week_videos(), 1)                       # пока делается — неделя занята
-            with self.assertRaises(DS.qm.MediaError):
-                ran["work"]()                                           # упал, ни одного кадра
+        def fail():
+            raise RuntimeError("кредиты Qwen закончились")
+        with self.assertRaises(RuntimeError):
+            media._paid(fail, at)()                                     # упал, ничего не сделав
         self.assertEqual(MB.week_videos(), 0)                           # неделя свободна
         self.assertIsNone(MB.video_block())
 

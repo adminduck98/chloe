@@ -38,71 +38,8 @@ NAMES = {"image": ("Картинка", "готова", "не получилас�
          "shorts": ("Shorts", "готовы (названия — в shorts.txt рядом)", "не получились"),
          "human3d": ("3D-человек", "готов", "не получился"),
          "publish": ("Пакет к публикации", "готов (обложки, название, описание, теги и субтитры — в папке рядом с видео)", "не получился"),
-         "doodle": ("Мультик «Персик и Пушок»", "готов (без голоса, со своей музыкой — можно выкладывать в Reels и Shorts)", "не получился"),
-         "doodle_draft": ("Черновик мультика", "готов (без Qwen, бесплатно) — скажите «делай мультик по черновику», если нравится", "не получился"),
          "clips": ("Нарезка Shorts", "готова (названия и описания — в clips.txt рядом)", "не получилась"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
-
-
-def tool_doodle_short(a):
-    """Мультик «Персик и Пушок»: план от модели → цена и «да» → в фоне первый кадр, цепочка видео Qwen, сборка.
-    quality: draft — черновик без Qwen (бесплатно), normal — 480P (по умолчанию), high — 720P («качественно»).
-    from_draft — сделать настоящий мультик по плану последнего черновика."""
-    from .. import doodle_short as DS
-    from .. import media_budget as MB
-    from ..settings import settings
-
-    quality = a.get("quality") if a.get("quality") in ("draft", "normal", "high") else "normal"
-    if quality != "draft" and not qm.available():
-        return "Нет ключа Qwen — настоящий мультик рисовать не на чем. Могу сделать черновик без Qwen (quality=draft)."
-    if a.get("from_draft"):
-        last = settings.get("doodle_draft") or {}
-        if not last.get("plan"):
-            return "Черновика ещё нет — сначала сделайте черновик или скажите идею."
-        plan = last["plan"]
-        if quality == "draft":
-            quality = "normal"
-    else:
-        idea = str(a.get("idea") or "").strip()
-        if not idea:
-            return "Нужна идея (idea): что происходит и что говорят — своими словами пользователя."
-        seconds = max(6, min(int(a.get("seconds") or 20), DS.MAX_SECONDS))   # стандартная серия — 20 с (библия)
-        try:
-            plan = DS.make_plan(idea, seconds)
-        except DS.DoodleError as e:
-            return "Не получилось: {}.".format(e)
-        except Exception as e:                                        # noqa: BLE001 — модель недоступна
-            return "Не вышел план: {}.".format(str(e)[:120])
-    total = sum(b["seconds"] for b in plan["beats"])
-    beats = "; ".join("«{}»".format(b["words"]) for b in plan["beats"] if b["words"])
-    work = qm.VIDEO_DIR / "doodle" / "{}-{}".format(time.strftime("%Y%m%d-%H%M%S"), qm._slug(plan["title"]))
-    holder = {}
-
-    def progress(text):
-        job = jobs.get(holder.get("id"))
-        if job:
-            job["step"] = str(text)
-    if quality == "draft":
-        settings.set("doodle_draft", {"plan": plan, "at": time.time()})
-        holder["id"] = _start("doodle_draft", plan["title"], lambda: DS.make(plan, work, progress, "draft"),
-                              a.get("open", True) is not False)
-        return ("Делаю черновик мультика «{}» (#{}) без Qwen — бесплатно: лист героев, плавная камера, слова и музыка, "
-                "{} с, моменты: {}. Меньше минуты. Понравится — скажите «делай мультик по черновику».".format(
-                    plan["title"], holder["id"], total, beats))
-    blocked = MB.video_block(bool(a.get("over_limit")))
-    if blocked:
-        return "Не делаю настоящий мультик: " + blocked
-    cost = DS.cost_percent(plan, quality)
-    res = DS.QUALITY[quality][0]
-    if not confirm("Мультик «{}»: {} с, {}, {}{}. Это примерно {:.0f} % месячного пакета Qwen. {} Делать?".format(
-            plan["title"], total, beats or "без слов", res, " (сверх недельного лимита)" if MB.video_block() else "",
-            cost, MB.note(cost))):
-        return "Не делаю мультик. План был: {}.".format(beats)
-    at = MB.spend("video", cost, plan["title"])
-    holder["id"] = _start("doodle", plan["title"], _paid(lambda: DS.make(plan, work, progress, quality), at,
-                                                         lambda: any(work.glob("part*.mp4"))), a.get("open", True) is not False)
-    return ("Делаю мультик «{}» (#{}, {}): {} с, моменты: {}. Это 5–12 минут: Qwen оживляет сцены по очереди, потом сборка. "
-            "Скажу, когда будет готово.".format(plan["title"], holder["id"], res, total, beats))
 
 
 def _paid(work, at, made=lambda: False):
@@ -123,11 +60,10 @@ def _paid(work, at, made=lambda: False):
 
 def _shorts_error():
     from ..clipper import ClipperError
-    from ..doodle_short import DoodleError
     from ..human3d import Human3DError
     from ..shorts import ShortsError
 
-    return (ShortsError, Human3DError, ClipperError, DoodleError)
+    return (ShortsError, Human3DError, ClipperError)
 
 
 def _run(job_id, kind, work, open_result=True):

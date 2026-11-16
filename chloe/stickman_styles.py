@@ -97,31 +97,13 @@ STYLES = {
                   "only red, orange and blue as small concept accents; no text, no photo details, no 3D, no textures"),
         "music": "тихое пианино или без музыки",
     },
-    "doodle": {
-        "name": "Рисованный: Персик и Пушок",
-        "when": "милые короткие сценки, чувства, юмор, отношения, мемы, Reels и Shorts — как нарисовано от руки в скетчбуке",
-        # канон внешности — дословно из библии владельца (assets/styles/doodle-bible.md, 16.11.2026); менять — только с его «да»
-        "anchor": ("two original cute characters. Peach is a tiny round chubby peach-shaped creature, warm peach-pink body, one small "
-                   "green leaf on top of its head, tiny dot eyes, a cute cat-like smile, rosy cheeks, absolutely no ears, simple "
-                   "soft organic silhouette. Puff is a slightly taller soft lavender bean-shaped creature, two small round ears on "
-                   "top of its head, tiny dot eyes, a small straight-line mouth, rosy cheeks, smooth simple silhouette. Both have a "
-                   "hand-drawn black uneven outline and pastel colored pencil texture"),
-        "world": ("hand-drawn doodle on slightly textured warm off-white paper: wobbly black felt-tip marker outlines with uneven line "
-                  "weight, flat pastel colors filled loosely with visible colored-pencil strokes, color a little outside the lines, "
-                  "cozy sketchbook look, muted olive and beige for places and objects; no 3D, no gradients, no photo details"),
-        "music": "весёлая укулеле и колокольчики",
-        # лист героев: по этому рисунку Qwen рисует каждую сцену — Персик и Пушок везде одни и те же (сам лист уже готов)
-        "hero": "assets/styles/doodle-hero.jpg",
-    },
 }
 DEFAULT = "classic_light"
 ALIASES = {"3d": "action3d", "3д": "action3d", "объём": "action3d", "объем": "action3d", "манекен": "action3d", "экшен": "action", "драк": "action", "боевик": "action", "доск": "whiteboard", "маркер": "whiteboard", "от руки": "whiteboard", "рисует": "whiteboard", "whiteboard": "whiteboard",
            "тёмн": "classic_dark", "темн": "classic_dark", "чёрн": "classic_dark", "черн": "classic_dark",
            "светл": "classic_light", "бел": "classic_light", "классик": "classic_light", "неон": "neon_desktop",
            "компьютер": "neon_desktop", "экран": "neon_desktop", "шапк": "beanie", "студи": "beanie", "уют": "cozy",
-           "истори": "historical", "пещер": "prehistoric", "древн": "prehistoric",
-           "рисованн": "doodle", "персик": "doodle", "пушок": "doodle", "пушк": "doodle", "карандаш": "doodle", "скетч": "doodle",
-           "doodle": "doodle"}   # основы слов: «в тёмном стиле»
+           "истори": "historical", "пещер": "prehistoric", "древн": "prehistoric"}   # основы слов: «в тёмном стиле»
 
 
 def find(text):
