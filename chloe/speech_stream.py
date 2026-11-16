@@ -92,6 +92,7 @@ class Download:
             self.done = True
             self.cond.notify_all()
         if problem is not None:
+            failures.append(time.time())
             print("[голос: {} — {}]".format("не ответил" if self.failed else "оборвался", type(problem).__name__))
 
     def read(self, n):
@@ -199,6 +200,17 @@ class Player:
     def buffered(self):
         with self.lock:
             return len(self.pcm) / BYTES_PER_SECOND
+
+
+failures = []   # когда Светлана не ответила или оборвалась (Microsoft иногда ограничивает бесплатный сервис)
+FLAKY_COUNT, FLAKY_WINDOW = 2, 300
+
+
+def flaky(now=None):
+    """Светлана сбоила FLAKY_COUNT раз за FLAKY_WINDOW секунд — лучше сразу запасной голос, без обрывов и ожидания."""
+    now = now or time.time()
+    del failures[:-20]
+    return sum(1 for t in failures if now - t < FLAKY_WINDOW) >= FLAKY_COUNT
 
 
 def speak(parts, voice_name, interrupt, make=None):

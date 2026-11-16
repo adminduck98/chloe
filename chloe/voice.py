@@ -371,6 +371,11 @@ class Voice:
             return True
         if time.time() < self.voice_down_until:
             return False
+        if speech_stream.flaky():                               # Светлана сбоит — 10 минут говорит запасная Ирина
+            self.voice_down_until = time.time() + 600
+            speech_stream.failures.clear()
+            print("[голос: Светлана сбоит — 10 минут говорю запасным голосом]")
+            return False
         if phrase_cache.worth(text):                            # частая или повторилась: один раз с сервера — и в запас
             data = voice_mp3(text, timeout=15)
             if not data:                                        # voice_mp3 уже пробовал 5 раз — сервер недоступен
