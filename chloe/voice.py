@@ -612,20 +612,24 @@ def route_phrase(audio, started):
     if voice.awaiting and not overlapped:
         return "cloud"                                   # ответ «да/нет» на её вопрос
     working = busy.is_set() or overlapped
+    if not working and time.time() < voice.enroll_until:
+        threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
+        return "skip"                                    # «запомни мой голос»: сейчас только слушает и запоминает
+    if not working and voiceprint.ready():               # голос владельца — первым: и в окне, и в продолжении
+        mine, sc = voiceprint.is_owner(audio)
+        if sc is not None:
+            print("[голос: {:.2f} — {}]".format(sc, "хозяин" if mine else "не хозяин"))
+        if mine:
+            voice.reason = "owner"
+            if sc >= voiceprint.THRESHOLD + 0.08:         # узнала уверенно — отпечаток привыкает к микрофону и комнате
+                threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
+            return "cloud"                               # голос владельца — ей, без «Хлоя»
     if not working and time.time() < state["listen_until"] and addressee.window_open_for(voice.last_said):
         voice.reason = "window"
         return "cloud"                                   # окно после её вопроса: ответ без «Хлоя»
     if not working and started < voice.open_until:
         voice.reason = "continue"
         return "cloud"                                   # продолжение начатой просьбы
-    if not working and time.time() < voice.enroll_until:
-        threading.Thread(target=voiceprint.learn, args=(audio,), daemon=True).start()
-        return "skip"                                    # «запомни мой голос»: сейчас только слушает и запоминает
-    if not working and voiceprint.ready():
-        mine, sc = voiceprint.is_owner(audio)
-        if mine:
-            voice.reason = "owner"
-            return "cloud"                               # голос владельца — ей, без «Хлоя»
     local = ears.hear(audio)
     if local is None:
         return "cloud"                                   # офлайн-слуха нет — как раньше

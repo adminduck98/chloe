@@ -58,6 +58,13 @@ class Voiceprint(unittest.TestCase):
         self.assertEqual(route_phrase(Audio("guest", "какая погода"), time.time()), "skip")
         self.assertEqual(route_phrase(Audio("guest", "хлоя какая погода"), time.time()), "cloud")
 
+    def test_owner_recognised_in_continuation_too(self):
+        """Журнал 16.11.2026: фраза сразу после прошлой шла как «продолжение» мимо узнавания и отбрасывалась."""
+        self.learn_owner()
+        voice.open_until = time.time() + 5
+        self.assertEqual(route_phrase(Audio("owner", "какая погода"), time.time()), "cloud")
+        self.assertEqual(voice.reason, "owner")
+
     def test_guest_saying_name_does_not_pollute_profile(self):
         self.learn_owner()
         self.assertFalse(VP.learn(Audio("guest", "хлоя привет")))
