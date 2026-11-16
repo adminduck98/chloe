@@ -19,7 +19,7 @@ HARD_TOOLS = {"screenshot", "mouse_click", "type_text", "press_keys", "scroll", 
 # экран, мышь и клавиатура: с «глазами» (config.MODEL_EYES) это их работа, а не сильного мозга
 SCREEN_TOOLS = {"screenshot", "mouse_click", "type_text", "press_keys", "scroll"}
 SCREEN_WORDS = re.compile(r"\b(экран|кликн|нажми|напечатай|введи|браузер|firefox|хром|chrome|сайт|страниц|вкладк|прокрут|"
-                          r"листай|что видишь|посмотри)", re.IGNORECASE)
+                          r"листай|что видишь)", re.IGNORECASE)   # «посмотри» убрано: «посмотри новости» — не про экран
 MAX_EYES_STEPS = 12
 # пользователь учит: сценарий, навык, правило — это понимает сильный мозг (быстрый норовит сразу выполнять)
 TEACH_WORDS = re.compile(r"(когда я (говорю|скажу)|если я (говорю|скажу)|запомни,? как|научись|выучи|впредь|"

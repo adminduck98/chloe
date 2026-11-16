@@ -53,6 +53,8 @@ def resume(paused):
 def announce(say, text):
     """Важное сообщение: пауза — сказать — продолжить."""
     paused = pause_all()
+    if paused:
+        print("[пауза: {} — говорю, потом продолжу]".format(", ".join(n.rsplit(".", 1)[-1] for n in paused)))
     try:
         say(text)
     finally:

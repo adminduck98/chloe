@@ -5,7 +5,7 @@
 путь — «Хлоя, запомни мой голос»: следующие ENROLL_SECONDS секунд Chloe только слушает и запоминает.
 Работает с MIN_SAMPLES фраз. Всё на этом компьютере: модель WeSpeaker ResNet34 (sherpa-onnx), отпечаток —
 ~/.chloe/voiceprint/owner.npy; ни голос, ни отпечаток никуда не уходят.
-CHLOE_VOICE_MATCH — порог сходства (0..1, по умолчанию 0.62); CHLOE_WAKE=name — снова только по имени.
+CHLOE_VOICE_MATCH — порог сходства (0..1, по умолчанию 0.78); CHLOE_WAKE=name — снова только по имени.
 """
 import os
 import threading
@@ -19,7 +19,8 @@ MODEL = FOLDER / "wespeaker_en_voxceleb_resnet34.onnx"
 PROFILE = FOLDER / "owner.npy"
 MODEL_URL = ("https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/"
              "wespeaker_en_voxceleb_resnet34.onnx")
-THRESHOLD = float(os.environ.get("CHLOE_VOICE_MATCH", "0.62"))
+# порог 0.78 (16.11.2026): голос владельца в комнате — 0.84–0.92, голоса из аниме в браузере — 0.58–0.72
+THRESHOLD = float(os.environ.get("CHLOE_VOICE_MATCH", "0.78"))
 MODE = os.environ.get("CHLOE_WAKE", "voice").strip().lower()      # voice — узнавать голос; name — только «Хлоя»
 MIN_SAMPLES = 4
 MAX_SAMPLES = 40
