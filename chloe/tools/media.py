@@ -39,6 +39,7 @@ NAMES = {"image": ("Картинка", "готова", "не получилас�
          "human3d": ("3D-человек", "готов", "не получился"),
          "publish": ("Пакет к публикации", "готов (обложки, название, описание, теги и субтитры — в папке рядом с видео)", "не получился"),
          "clips": ("Нарезка Shorts", "готова (названия и описания — в clips.txt рядом)", "не получилась"),
+         "live": ("Живая сцена", "готова (петля 6 с для Reels и Shorts; картинка Qwen — рядом в «Изображения/Chloe»)", "не получилась"),
          "preview": ("Пробный кусок ролика", "готов — посмотрите и скажите «делай весь ролик» или что поправить", "не получился")}
 
 
@@ -58,12 +59,38 @@ def _paid(work, at, made=lambda: False):
     return run
 
 
+def tool_live_scene(a):
+    """Живая сцена в стиле канала: код строит сцену в Blender, Qwen только улучшает качество кадра, код оживляет в петлю."""
+    from .. import live_scene as LS
+    from .. import media_budget as MB
+
+    idea = (a.get("idea") or "").strip()
+    source = (a.get("image") or "").strip() or None
+    if source and not pathlib.Path(source).expanduser().exists():
+        return "Не нахожу картинку: " + source
+    better = a.get("enhance", True) is not False
+    if better and not qm.available():
+        return "Нет ключа Qwen (DASHSCOPE_API_KEY в ~/.config/chloe/keys.env) — рисовать не на чем."
+    kind = LS.particles_for(idea, a.get("particles"))
+    seconds = max(3.0, min(float(a.get("seconds") or 6), 15.0))
+    if better:
+        MB.spend("image", 0.3, "живая сцена: " + (idea or "остров"))
+    src = str(pathlib.Path(source).expanduser()) if source else None
+    job = _start("live", idea or "остров", lambda: LS.make(idea, kind, seconds, src, better), a.get("open", True) is not False)
+    return ("Делаю живую сцену (#{}): {}{}потом оживляю — частицы: {}, петля {:.0f} с. Скажу, когда будет готово "
+            "(обычно 3–6 минут).".format(job, "беру вашу картинку, " if source else "строю остров в Blender (около минуты), ",
+                                          "Qwen улучшает качество кадра (одна картинка, ~$0.04; видео-лимит недели не тратится), "
+                                          if better else "", kind, seconds))
+
+
 def _shorts_error():
     from ..clipper import ClipperError
     from ..human3d import Human3DError
     from ..shorts import ShortsError
 
-    return (ShortsError, Human3DError, ClipperError)
+    from ..live_scene import SceneError
+
+    return (ShortsError, Human3DError, ClipperError, SceneError)
 
 
 def _run(job_id, kind, work, open_result=True):
