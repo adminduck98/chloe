@@ -438,7 +438,10 @@ if HERO3D:                                                              # гер
     ONLY = {int(x) for x in os.environ.get("VOX_ONLY_FRAMES", "").split(",") if x}   # проверка — только эти кадры
     H3_STEPS, H3_TOTAL = hero3d.plan([m for m in os.environ.get("VOX_HERO3D_MOVES", "idle,wave,jump").split(",") if m])
     FRAMES = int(round(H3_TOTAL * 15))
+    FULL = bool(os.environ.get("VOX_HERO3D_FULL"))                    # кадр целиком: остров и героиня вместе
     for ob in scene.objects:                                           # остров — только ловит её тень, сам прозрачный
+        if FULL:
+            break
         if ob.type == "MESH" and ob.name == "island":
             ob.is_shadow_catcher = True
         elif ob.type == "MESH" and (ob.name in ("water", "tufts") or ob.name.startswith("petal")):
