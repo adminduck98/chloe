@@ -12,6 +12,7 @@ import sys
 import bpy
 from mathutils import Euler, Vector
 
+MODEL = os.environ.get("HERO_MODEL", "voxel")                          # voxel — код, trellis — модель нейросети
 GLB = os.path.join(os.path.dirname(__file__), "..", "assets", "heroine", "heroine.glb")
 # кости: голова, хвост, родитель (координаты модели; сторона персонажа: левая = +X)
 BONES = {
@@ -69,19 +70,25 @@ def _weights(mesh):
 
 def build(parent=None, location=(0, 0, 0), height=1.0, yaw=0.0):
     """Загрузить героиню, поставить скелет и веса. Возвращает (armature, mesh). Ноги — в точке location."""
-    before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=os.path.abspath(GLB))
-    new = [o for o in bpy.data.objects if o not in before]
-    mesh = [o for o in new if o.type == "MESH"][0]
-    mw = mesh.matrix_world.copy()
-    mesh.parent = None
-    mesh.matrix_world = mw
-    bpy.context.view_layer.objects.active = mesh
-    for o in new:
-        if o is not mesh:
-            bpy.data.objects.remove(o, do_unlink=True)
-    mesh.select_set(True)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    if MODEL == "voxel":                                               # модель строит код (hero_voxel.py)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import hero_voxel
+
+        mesh = hero_voxel.make_mesh(list(BONES))
+    else:                                                              # запасной вариант: модель TRELLIS
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=os.path.abspath(GLB))
+        new = [o for o in bpy.data.objects if o not in before]
+        mesh = [o for o in new if o.type == "MESH"][0]
+        mw = mesh.matrix_world.copy()
+        mesh.parent = None
+        mesh.matrix_world = mw
+        bpy.context.view_layer.objects.active = mesh
+        for o in new:
+            if o is not mesh:
+                bpy.data.objects.remove(o, do_unlink=True)
+        mesh.select_set(True)
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     arm_data = bpy.data.armatures.new("hero_rig")
     arm = bpy.data.objects.new("hero_rig", arm_data)
     bpy.context.scene.collection.objects.link(arm)
@@ -95,7 +102,8 @@ def build(parent=None, location=(0, 0, 0), height=1.0, yaw=0.0):
             b.parent = arm_data.edit_bones[par]
             b.use_connect = Vector(h) == Vector(BONES[par][1])
     bpy.ops.object.mode_set(mode="OBJECT")
-    _weights(mesh)
+    if MODEL != "voxel":
+        _weights(mesh)
     mesh.parent = arm
     mod = mesh.modifiers.new("rig", "ARMATURE")
     mod.object = arm
@@ -251,7 +259,7 @@ def load(location=(0, 0, 0), height=1.0, yaw=0.0, parent=None, path=BLEND):
         dst.actions = list(src.actions)
     for o in dst.objects:
         bpy.context.scene.collection.objects.link(o)
-    root = [o for o in dst.objects if o.name.startswith("Mia")][0]
+    root = [o for o in dst.objects if o.type == "EMPTY" and o.name.startswith("Mia")][0]
     root.location, root.scale, root.rotation_euler = Vector(location), (height,) * 3, (0, 0, yaw)
     if parent:
         root.parent = parent
