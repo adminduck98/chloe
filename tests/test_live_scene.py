@@ -123,3 +123,51 @@ class Tool(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Moves(unittest.TestCase):
+    def setUp(self):
+        self.saved = settings.get(MB.KEY)
+        settings.set(MB.KEY, [])
+
+    def tearDown(self):
+        settings.set(MB.KEY, self.saved)
+
+    def test_plan_fits_five_seconds(self):
+        self.assertEqual(LS.moves_plan(["wave", "jump", "dance", "walk"]), ["wave", "jump"])   # 3,6 с; ещё 2 — уже больше 5
+        self.assertEqual(LS.moves_plan([]), ["idle", "wave", "jump"])
+        self.assertEqual(LS.moves_plan(["fly", "dance"]), ["dance"])
+
+    def test_code_moves_qwen_frame_vace_repaints(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+
+            def fake_render(plan, season, out):
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=pink:s=72x128:d=1", str(out)], check=True)
+                return Path(out)
+            raw = d / "raw.mp4"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=72x128:d=1", str(raw)], check=True)
+            ref = picture(d / "ref.png")
+            with mock.patch.object(LS, "render_moves", side_effect=fake_render) as render, \
+                    mock.patch.object(LS, "enhance", return_value=(ref, True)) as better, \
+                    mock.patch.object(LS.qm, "vace_repaint", return_value="t1") as vace, \
+                    mock.patch.object(LS.qm, "VIDEO_DIR", d):
+                video, pic = LS.make_moves(["wave"], "остров зимой", wait=lambda task, title: raw)
+            self.assertEqual(render.call_args[0][:2], (["wave"], "winter"))
+            self.assertEqual(better.call_args[0][1], "winter")
+            self.assertEqual(vace.call_args[0][2], ref)                   # образец — улучшенный первый кадр
+            self.assertIn("headphones", vace.call_args[0][1])
+            info = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                                   str(video)], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(info, "1080,1920")
+
+    def test_tool_respects_weekly_video_limit(self):
+        MB.spend("video", 5, "неделя занята")
+        with mock.patch("chloe.qwen_media.available", return_value=True), \
+                mock.patch("chloe.tools.media._start", return_value=5) as start:
+            out, _, _ = run_tool("live_scene", {"moves": ["wave", "jump"]})
+            self.assertIn("Не делаю", out)
+            start.assert_not_called()
+            out, _, _ = run_tool("live_scene", {"moves": "wave, jump", "over_limit": True})
+        self.assertIn("#5", out)
+        self.assertIn("wave, jump", out)

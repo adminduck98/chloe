@@ -3,6 +3,7 @@
 import itertools
 import os
 import pathlib
+import re
 import json
 import subprocess
 import threading
@@ -71,6 +72,26 @@ def tool_live_scene(a):
     better = a.get("enhance", True) is not False
     if better and not qm.available():
         return "Нет ключа Qwen (DASHSCOPE_API_KEY в ~/.config/chloe/keys.env) — рисовать не на чем."
+    moves = a.get("moves")
+    if moves:                                                          # движения героини: код двигает, Qwen-видео — качество
+        if isinstance(moves, str):
+            moves = [m for m in re.split(r"[,\s]+", moves) if m]
+        plan = LS.moves_plan(moves)
+        if not qm.available():
+            return "Нет ключа Qwen — перерисовать движения не на чем."
+        blocked = MB.video_block(bool(a.get("over_limit")))
+        if blocked:
+            return "Не делаю ролик с движениями: " + blocked
+        if not confirm("Сделать ролик с движениями ({}): Blender, потом Qwen перерисует его по образцу — это видео, около $0.55. {}"
+                       .format(", ".join(plan), MB.note(2.8))):
+            return "Не делаю ролик с движениями."
+        MB.spend("image", 0.3, "движения: кадр-образец")
+        at = MB.spend("video", 2.5, "движения: " + ", ".join(plan))
+        job = _start("live", "движения: " + ", ".join(plan), _paid(lambda: LS.make_moves(plan, idea), at),
+                     a.get("open", True) is not False)
+        return ("Делаю ролик с движениями (#{}): {}. Blender двигает героиню (около 10 минут), Qwen доводит первый кадр до "
+                "образца, Wan VACE перерисовывает ролик с тем же движением (около 5 минут). Скажу, когда будет готово."
+                .format(job, ", ".join(plan)))
     kind = LS.particles_for(idea, a.get("particles"))
     seconds = max(3.0, min(float(a.get("seconds") or 6), 15.0))
     if better:

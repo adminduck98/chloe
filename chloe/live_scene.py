@@ -61,39 +61,121 @@ def particles_for(idea, wanted=None):
     return "petals"
 
 
-def render_island(season, out_png, samples=64):
-    """Blender строит и рисует остров кодом (без окна), код подкладывает небо. Возвращает путь к кадру 928×1664."""
-    import cv2
-    from PIL import Image
-
+def _blender(env, out_dir):
     exe = shutil.which("blender")
     if not exe:
         raise SceneError("нет Blender — поставьте: sudo apt install blender")
-    with tempfile.TemporaryDirectory() as d:
-        env = dict(os.environ, VOX_FRAMES="1", VOX_W="928", VOX_H="1664", VOX_SEASON=season, VOX_SAMPLES=str(samples))
-        run = subprocess.run([exe, "-b", "-P", str(ISLAND), "--", d], env=env, capture_output=True, text=True, timeout=1800)
-        frame = Path(d) / "v000.png"
-        if run.returncode or not frame.exists():
-            raise SceneError("Blender не нарисовал остров: " + (run.stderr or run.stdout)[-200:])
-        rgba = np.array(Image.open(frame).convert("RGBA")).astype(np.float32)
-    h, w = rgba.shape[:2]
+    run = subprocess.run([exe, "-b", "-P", str(ISLAND), "--", str(out_dir)], env=dict(os.environ, **env),
+                         capture_output=True, text=True, timeout=7200)
+    frames = sorted(Path(out_dir).glob("v*.png"))
+    if run.returncode or not frames:
+        raise SceneError("Blender не нарисовал остров: " + (run.stderr or run.stdout)[-200:])
+    return frames
+
+
+def sky(season, w, h):
+    """Небо кодом: градиент времени года и мягкие облака."""
+    import cv2
+
     top, mid, bot = (np.array(c, np.float32) for c in SKY.get(season, SKY["spring"]))
     yy = np.linspace(0, 1, h)[:, None, None]
-    sky = np.where(yy < 0.55, top + (mid - top) * (yy / 0.55), mid + (bot - mid) * ((yy - 0.55) / 0.45))
-    sky = np.repeat(sky, w, axis=1)
+    out = np.where(yy < 0.55, top + (mid - top) * (yy / 0.55), mid + (bot - mid) * ((yy - 0.55) / 0.45))
+    out = np.repeat(out, w, axis=1)
     rng = np.random.default_rng(2)
-    for _ in range(6):                                                 # мягкие облака
+    k = w / 928
+    for _ in range(6):
         m = np.zeros((h, w), np.float32)
         cx, cy = int(rng.integers(0, w)), int(rng.integers(h // 2, h))
         for _ in range(8):
-            cv2.ellipse(m, (cx + int(rng.integers(-150, 150)), cy + int(rng.integers(-25, 25))),
-                        (int(rng.integers(50, 120)), int(rng.integers(25, 50))), 0, 0, 360, 1.0, -1)
-        m = cv2.GaussianBlur(m, (0, 0), 18)[..., None] * (0.15 if season == "night" else 0.4)
-        sky = sky * (1 - m) + np.array((255, 236, 236), np.float32) * m
+            cv2.ellipse(m, (cx + int(rng.integers(-150, 150) * k), cy + int(rng.integers(-25, 25) * k)),
+                        (int(rng.integers(50, 120) * k), int(rng.integers(25, 50) * k)), 0, 0, 360, 1.0, -1)
+        m = cv2.GaussianBlur(m, (0, 0), 18 * k)[..., None] * (0.15 if season == "night" else 0.4)
+        out = out * (1 - m) + np.array((255, 236, 236), np.float32) * m
+    return out
+
+
+def _on_sky(frame, back):
+    from PIL import Image
+
+    rgba = np.array(Image.open(frame).convert("RGBA")).astype(np.float32)
     al = rgba[..., 3:] / 255
-    out = sky * (1 - al) + rgba[..., :3] * al
-    Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).save(out_png)
+    return np.clip(back * (1 - al) + rgba[..., :3] * al, 0, 255).astype(np.uint8)
+
+
+def render_island(season, out_png, samples=64):
+    """Blender строит и рисует остров кодом (без окна), код подкладывает небо. Возвращает путь к кадру 928×1664."""
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as d:
+        frame = _blender(dict(VOX_FRAMES="1", VOX_W="928", VOX_H="1664", VOX_SEASON=season, VOX_SAMPLES=str(samples)), d)[0]
+        Image.fromarray(_on_sky(frame, sky(season, 928, 1664))).save(out_png)
     return Path(out_png)
+
+
+MOVES = ("idle", "wave", "jump", "walk", "dance")
+MOVE_SECONDS = {"idle": 1.5, "wave": 2.0, "jump": 1.6, "walk": 1.6, "dance": 2.0}   # как в voxel_island.py
+VACE_SECONDS = 5.0                                                     # больше Wan VACE не перерисовывает
+VACE_PROMPT = ("Repaint the video in the exact look of the reference image: high quality isometric voxel diorama, soft "
+               "beautiful light, lush tree, grass with tiny flowers, clear pond with stones, and the same cute voxel girl as in "
+               "the reference — white oversized hoodie with light blue trim, long white hair with light blue tips, dark navy "
+               "over-ear headphones with glowing cyan rings, navy shorts, white striped socks, white sneakers. Keep the motion "
+               "of the input video exactly.")
+
+
+def moves_plan(moves):
+    """Список движений, который уместится в 5 с (VACE): лишнее отрезаем, пустой — помахать и прыгнуть."""
+    plan, total = [], 0.0
+    for m in [m.strip() for m in (moves or []) if m.strip() in MOVE_SECONDS] or ["idle", "wave", "jump"]:
+        if total + MOVE_SECONDS[m] > VACE_SECONDS + 0.2 and plan:
+            break
+        plan.append(m)
+        total += MOVE_SECONDS[m]
+    return plan
+
+
+def render_moves(plan, season, out_mp4, samples=32):
+    """Blender двигает героиню по плану (камера ближе, без пустого неба внизу), код подкладывает небо → ролик 720×1280."""
+    from .studio import ffmpeg
+
+    with tempfile.TemporaryDirectory() as d:
+        frames = _blender(dict(VOX_MOVES=",".join(plan), VOX_W="540", VOX_H="960", VOX_SEASON=season,
+                               VOX_SAMPLES=str(samples), VOX_CLOSE="1"), d)
+        back = sky(season, 540, 960)
+        ff = subprocess.Popen([ffmpeg(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "540x960", "-r", "15",
+                               "-i", "-", "-t", str(VACE_SECONDS), "-vf", "scale=720:1280:flags=lanczos,fps=16", "-c:v",
+                               "libx264", "-crf", "16", "-pix_fmt", "yuv420p", str(out_mp4)], stdin=subprocess.PIPE)
+        for f in frames:
+            ff.stdin.write(_on_sky(f, back).tobytes())
+        ff.stdin.close()
+        ff.wait()
+    if ff.returncode:
+        raise SceneError("ffmpeg не собрал ролик движений")
+    return Path(out_mp4)
+
+
+def make_moves(moves=None, idea="", wait=None):
+    """Движения героини: код (Blender) задаёт движение → Qwen доводит первый кадр до образца → Wan VACE перерисовывает
+    весь ролик по этому кадру, сохраняя движение → 1080×1920. Возвращает [ролик, кадр-образец]."""
+    from .studio import ffmpeg
+
+    plan = moves_plan(moves)
+    season = SEASON_OF.get(particles_for(idea), "spring")
+    stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
+    qm.VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as d:
+        clip = render_moves(plan, season, Path(d) / "moves.mp4")
+        first = Path(d) / "first.png"
+        subprocess.run([ffmpeg(), "-v", "error", "-y", "-i", str(clip), "-frames:v", "1", "-vf", "scale=928:1664", str(first)],
+                       check=True)
+        ref, _ = enhance(first, season)
+        task = qm.vace_repaint(clip, VACE_PROMPT + " " + SEASON_TEXT.get(season, ""), ref)
+        raw = (wait or qm.video_wait)(task, "dvizheniya-{}".format("-".join(plan)))
+    out = qm.VIDEO_DIR / "{}-dvizheniya-{}.mp4".format(stamp, "-".join(plan))
+    run = subprocess.run([ffmpeg(), "-v", "error", "-y", "-i", str(raw), "-vf", "scale=1080:1920:flags=lanczos,unsharp=5:5:0.5",
+                          "-c:v", "libx264", "-crf", "15", "-pix_fmt", "yuv420p", str(out)])
+    if run.returncode:
+        raise SceneError("не увеличился ролик до 1080×1920")
+    return [out, Path(ref)]
 
 
 def _share(path, kind):

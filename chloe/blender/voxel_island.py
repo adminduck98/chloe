@@ -238,10 +238,12 @@ for z in range(10, 16):                                                # дли�
         hero[(x, 3, z)] = jitter(TIP if z < 13 else HAIR, 0.02)
 for x in range(-5, 5):                                                 # наушники: дуга и чашки
     hero[(x, 0, 24)] = jitter(NAVY, 0.02)
-for sx in (-5, 4):
-    for y in range(-1, 2):
-        for z in range(18, 21):
-            hero[(sx, y, z)] = jitter(CYAN if (y == 0 and z == 19) else NAVY, 0.02)
+for sx, out in ((-5, -6), (4, 5)):                                    # чашки наушников, крупные — их видно
+    for y in range(-2, 3):
+        for z in range(17, 22):
+            hero[(sx, y, z)] = jitter(NAVY, 0.02)
+            if abs(y) <= 1 and 18 <= z <= 20:
+                hero[(out, y, z)] = jitter(CYAN if (y == 0 or z == 19) else NAVY, 0.02)
     hero[(sx, 0, 21)] = jitter(NAVY)
     hero[(sx, 0, 22)] = jitter(NAVY)
     hero[(sx, 0, 23)] = jitter(NAVY)
@@ -328,6 +330,10 @@ scene.collection.objects.link(cam)
 target = Vector((0, 0, 6))
 cam.location = target + Vector((-58, -58, 40))
 cam_data.dof.focus_distance = (cam.location - Vector((3, -3, 10))).length
+if os.environ.get("VOX_CLOSE"):                                        # движения: камера ближе к героине, остров снизу
+    target = Vector((1.5, -1.5, 9.5))                                  # без пустого неба (17.11.2026: VACE рисовал там озеро)
+    cam.location = target + Vector((-30, -30, 17))
+    cam_data.dof.focus_distance = (cam.location - Vector((3, -3, 10))).length
 cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
 scene.camera = cam
 r = scene.render
