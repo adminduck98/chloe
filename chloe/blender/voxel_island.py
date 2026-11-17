@@ -275,7 +275,7 @@ def part_of(x, y, z):
 # суставы в координатах героини (единицы S) и родитель
 JOINTS = {"torso": ((0, 0, 7), None), "head": ((0, 0, 16), "torso"), "arm_l": ((-5, 0, 15), "torso"),
           "arm_r": ((5, 0, 15), "torso"), "leg_l": ((-2, 0, 7), None), "leg_r": ((2, 0, 7), None)}
-hx, hy = 3, -3
+hx, hy = (0, -6) if os.environ.get("VOX_HERO3D") else (3, -3)      # 3D-героиня — на открытой траве, не у пруда
 HX, HY, HZ = hx * 1.0 + 0.5, hy * 1.0 + 0.5, tops[(hx, hy)] + 1
 hero_obj = bpy.data.objects.new("hero", None)
 scene.collection.objects.link(hero_obj)
@@ -296,7 +296,9 @@ for name in JOINTS:
     jx, jy, jz = JOINTS[name][0]
     voxel_mesh("hero_" + name, vox, S, origin=(jx * S, jy * S, jz * S), parent=BODY[name])
 pivot = BODY["arm_r"]
-NO_HERO = bool(os.environ.get("VOX_NO_HERO"))                         # место отдельно: героиню рисует код поверх
+ONLY = set()
+HERO3D = bool(os.environ.get("VOX_HERO3D"))                           # 3D-героиня: рисуется только она и её тень
+NO_HERO = bool(os.environ.get("VOX_NO_HERO")) or HERO3D               # место отдельно: героиню рисует код поверх
 if NO_HERO:
     for ob in list(scene.collection.objects):
         if ob.name.startswith("hero_"):
@@ -426,6 +428,23 @@ def pose(t):
     hero_obj.location = (HX, HY, HZ + lift)
 
 
+if HERO3D:                                                              # героиня в той же сцене и том же свете
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import hero3d
+
+    H3_ARM, _ = hero3d.build(height=24 * S)
+    H3_ARM.parent = root
+    H3_LOC, H3_YAW = Vector((HX, HY, HZ)), math.radians(-45)
+    ONLY = {int(x) for x in os.environ.get("VOX_ONLY_FRAMES", "").split(",") if x}   # проверка — только эти кадры
+    H3_STEPS, H3_TOTAL = hero3d.plan([m for m in os.environ.get("VOX_HERO3D_MOVES", "idle,wave,jump").split(",") if m])
+    FRAMES = int(round(H3_TOTAL * 15))
+    for ob in scene.objects:                                           # остров — только ловит её тень, сам прозрачный
+        if ob.type == "MESH" and ob.name == "island":
+            ob.is_shadow_catcher = True
+        elif ob.type == "MESH" and (ob.name in ("water", "tufts") or ob.name.startswith("petal")):
+            ob.hide_render = True                                      # травинки давали пятна теней по всему острову
+    cam_data.dof.focus_distance = (cam.location - (root.matrix_world @ H3_LOC)).length
+
 if NO_HERO:                                                             # где стоит героиня и какого она роста в кадре
     import json
     from bpy_extras.object_utils import world_to_camera_view
@@ -439,7 +458,11 @@ if NO_HERO:                                                             # где
 
 for f in range(FRAMES):
     u = f / FRAMES
-    if MOVES:
+    if HERO3D:
+        if ONLY and f not in ONLY:
+            continue
+        hero3d.pose_at(H3_ARM, f / 15, H3_STEPS, base_loc=H3_LOC + Vector((0, 0, 12 * S)), base_yaw=H3_YAW)
+    elif MOVES:
         pose(f / 15)                                                    # камера стоит, героиня двигается
         root.location = (0, 0, 0.3 * math.sin(2 * math.pi * u))
     else:

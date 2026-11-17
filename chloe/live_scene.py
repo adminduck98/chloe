@@ -164,64 +164,105 @@ def top_box(path, season):
     return np.array([x, y, x + w, y + h], np.float64) / [232, 416, 232, 416]
 
 
-def follow_spot(spot, before, after, season):
-    """Qwen перерисовывает место и может сдвинуть или уменьшить остров (17.11.2026: героиня повисла в воздухе) —
-    место героини пересчитывается по переднему краю и ширине верха острова на обеих картинках."""
+def island_map(before, after, season):
+    """Как Qwen сдвинул и масштабировал остров: (k, dx, dy) в долях кадра, x' = k·x + dx, y' = k·y + dy
+    (по переднему краю и ширине верха острова). Не нашёл — без сдвига."""
     a, b = top_box(before, season), top_box(after, season)
     if a is None or b is None:
-        return spot
+        return 1.0, 0.0, 0.0
     k = (b[2] - b[0]) / (a[2] - a[0])
-    x = b[0] + (spot["x"] - a[0]) * k
-    y = b[3] - (a[3] - spot["y"]) * k
-    return {"x": float(x), "y": float(y), "top": float(y - (spot["y"] - spot["top"]) * k)}
+    return float(k), float(b[0] - a[0] * k), float(b[3] - a[3] * k)
 
 
-def heroine_overlay(steps, spot, size):
-    """Героиня отдельно: кукла кода (chloe/heroine.py) в нужном месте и росте. Возвращает функцию кадра для animate."""
-    from . import heroine as HR
+def follow_spot(spot, before, after, season):
+    """Точка героини на картинке, которую Qwen перерисовал (17.11.2026: героиня повисла в воздухе)."""
+    k, dx, dy = island_map(before, after, season)
+    if (k, dx, dy) == (1.0, 0.0, 0.0):
+        return spot
+    return {"x": k * spot["x"] + dx, "y": k * spot["y"] + dy, "top": k * spot["top"] + dy}
 
-    w, h = size
-    height_px = (spot["y"] - spot["top"]) * h                          # рост героини на картинке места
-    k = height_px / HR.HEIGHT
+
+def render_heroine(moves, season, out_dir=None, samples=32):
+    """3D-героиня (chloe/blender/hero3d.py) в сцене острова: тот же свет и камера; рисуется только она и её тень
+    на острове, фон прозрачный. Кадры 15 в секунду, 464×832. Готовые кадры хранятся в «Видео/Chloe/work»:
+    героиня не зависит от картинки места, и повторная сборка не ждёт Blender."""
+    work = Path(out_dir) if out_dir else qm.VIDEO_DIR / "work" / "geroinya-{}-{}".format("-".join(moves), season)
+    frames = sorted(work.glob("v*.png")) if work.exists() else []
+    from . import heroine3d as H3
+
+    need = int(round(H3.plan(moves)[1] * 15))
+    if len(frames) >= need:
+        return frames[:need]
+    work.mkdir(parents=True, exist_ok=True)
+    return _blender(dict(VOX_HERO3D="1", VOX_HERO3D_MOVES=",".join(moves), VOX_W="464", VOX_H="832",
+                         VOX_SEASON=season, VOX_SAMPLES=str(samples)), work)
+
+
+def clean_heroine(rgba):
+    """Кадр героини: убрать шум рендера (NLM, края целы) и оставить тень только у ног — тени, пойманные
+    островом кода в других местах, на картинке Qwen легли бы не туда (17.11.2026: серая полоса в небе)."""
+    import cv2
+
+    a = rgba[..., 3]
+    body = a > 240
+    if body.any():
+        ys, xs = np.nonzero(body)
+        x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+        w, h = x1 - x0, y1 - y0
+        keep = np.zeros_like(body)
+        cy, cx = y1, (x0 + x1) // 2
+        cv2.ellipse(keep.view(np.uint8), (int(cx), int(cy)), (int(w * 0.9 + 6), int(h * 0.18 + 6)), 0, 0, 360, 1, -1)
+        keep |= body
+        a = np.where(keep, a, 0).astype(np.uint8)
+        a = cv2.GaussianBlur(a.astype(np.float32), (0, 0), 0.6).clip(0, 255).astype(np.uint8) * (~body) + a * body
+    den = cv2.fastNlMeansDenoisingColored(np.ascontiguousarray(rgba[..., :3]), None, 4, 4, 5, 11)
+    rgb = ((den.astype(np.float32) + rgba[..., :3].astype(np.float32)) / 2).astype(np.uint8)   # пополам: зерно меньше,
+                                                                                               # бледные детали худи целы
+    return np.dstack([rgb, a.astype(np.uint8)])
+
+
+def heroine_overlay(frames, mapping):
+    """Кадры героини → функция для animate: кладёт нужный кадр на картинку места с учётом сдвига от Qwen."""
+    import cv2
+    from PIL import Image
+
+    k, dx, dy = mapping
+    cache = {}
 
     def draw(t, base, s):
-        """Нарисовать героиню на base (картинка места, увеличенная в s раз) в момент t, с тенью."""
-        import cv2
-
-        canvas, (fx, fy), up = HR.render(t, steps, k * s)
-        x0, y0 = int(round(spot["x"] * w * s - fx)), int(round(spot["y"] * h * s - fy))
-        sx, sy = int(spot["x"] * w * s), int(spot["y"] * h * s)
-        rw = max(4, int(0.22 * height_px * s * (1 - min(0.5, up / (height_px * s + 1)))))
-        shadow = np.zeros(base.shape[:2], np.float32)
-        cv2.ellipse(shadow, (sx, sy), (rw, max(2, rw // 4)), 0, 0, 360, 0.35, -1)
-        shadow = cv2.GaussianBlur(shadow, (0, 0), max(1.0, rw / 6))[..., None]
-        base[:] = base * (1 - shadow) + np.array((40, 40, 70), np.float32) * shadow
-        ch, cw = canvas.shape[:2]
-        xa, ya, xb, yb = max(0, x0), max(0, y0), min(base.shape[1], x0 + cw), min(base.shape[0], y0 + ch)
-        if xa < xb and ya < yb:
-            part = canvas[ya - y0:yb - y0, xa - x0:xb - x0]
-            a = part[..., 3:] / 255
-            base[ya:yb, xa:xb] = base[ya:yb, xa:xb] * (1 - a) + part[..., :3] * a
+        i = min(len(frames) - 1, int(t * 15))
+        if i not in cache:
+            cache.clear()
+            cache[i] = clean_heroine(np.array(Image.open(frames[i]).convert("RGBA"))).astype(np.float32)
+        h = cache[i]
+        bh, bw = base.shape[:2]
+        M = np.float32([[k * bw / h.shape[1], 0, dx * bw], [0, k * bh / h.shape[0], dy * bh]])
+        w = cv2.warpAffine(h, M, (bw, bh), flags=cv2.INTER_LINEAR)
+        a = w[..., 3:] / 255
+        base[:] = base * (1 - a) + w[..., :3] * a
     return draw
 
 
 def make_with_heroine(moves=None, idea="", better=True):
-    """Персонаж и место отдельно: Blender строит место без героини → Qwen доводит место до образца → код ставит
-    героиню-куклу (рисунок Qwen по образцу) и двигает её по списку движений → ролик 1080×1920. [ролик, место]."""
-    from . import heroine as HR
+    """Персонаж и место отдельно: Blender строит место без героини → Qwen доводит место до образца → Blender рисует
+    3D-героиню (TRELLIS по рисунку-образцу) с движениями кодом в том же свете → код кладёт её на место туда, куда Qwen
+    сдвинул остров → ролик 1080×1920. Возвращает [ролик, место]."""
+    from . import heroine3d as H3
 
     kind = particles_for(idea)
     season = SEASON_OF.get(kind, "spring")
+    steps, total = H3.plan(moves)
+    names = [m for m, _, _ in steps]
     qm.IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     qm.VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     stamp = __import__("time").strftime("%Y%m%d-%H%M%S")
-    place, spot = render_place(season, qm.IMAGE_DIR / "{}-mesto-{}.png".format(stamp, season))
+    place, _ = render_place(season, qm.IMAGE_DIR / "{}-mesto-{}.png".format(stamp, season))
     pic, ok = enhance(place, season, PLACE_TEXT) if better else (place, False)
-    if ok:
-        spot = follow_spot(spot, place, pic, season)
-    steps, total = HR.plan(moves)
-    out = qm.VIDEO_DIR / "{}-geroinya-{}.mp4".format(stamp, "-".join(m for m, _, _ in steps))
-    return [animate(pic, out, total, kind, overlay=heroine_overlay(steps, spot, (928, 1664))), pic]
+    mapping = island_map(place, pic, season) if ok else (1.0, 0.0, 0.0)
+    out = qm.VIDEO_DIR / "{}-geroinya-{}.mp4".format(stamp, "-".join(names))
+    frames = render_heroine(names, season)
+    animate(pic, out, total, kind, overlay=heroine_overlay(frames, mapping))
+    return [out, pic]
 
 
 def _share(path, kind):

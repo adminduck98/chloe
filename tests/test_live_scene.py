@@ -133,35 +133,45 @@ class Heroine(unittest.TestCase):
     def tearDown(self):
         settings.set(MB.KEY, self.saved)
 
-    def test_puppet_moves_and_keeps_the_drawing(self):
-        from chloe import heroine as HR
+    def test_moves_plan(self):
+        from chloe import heroine3d as H3
 
-        steps, total = HR.plan(["wave", "jump", "fly"])
-        self.assertEqual([m for m, _, _ in steps], ["wave", "jump"])
-        self.assertAlmostEqual(total, 3.6)
-        still, _, _ = HR.render(0.0, [], 0.25)
-        wave, _, _ = HR.render(1.0, steps, 0.25)                        # рука поднята
-        jump, _, up = HR.render(2.0 + 0.7, steps, 0.25)                 # вершина прыжка
-        self.assertGreater(np.abs(wave - still).mean(), 1.0)
-        self.assertGreater(up, 50)
-        self.assertEqual(HR.pose(1.22, steps)["eyes"], "closed")       # моргает
+        steps, total = H3.plan(["wave", "jump", "fly", "turn"])
+        self.assertEqual([m for m, _, _ in steps], ["wave", "jump", "turn"])
+        self.assertAlmostEqual(total, 5.6)
+        blender_side = (Path(LS.__file__).parent / "blender" / "hero3d.py").read_text()
+        for m, sec in H3.SECONDS.items():                                     # длины совпадают с позами в Blender
+            self.assertIn('"{}": {}'.format(m, sec), blender_side)
 
     def test_place_and_heroine_are_separate(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             place = picture(d / "place.png", 93, 166)
-            spot = {"x": 0.6, "y": 0.5, "top": 0.3}
-            with mock.patch.object(LS, "render_place", return_value=(place, spot)) as render, \
+            hero = d / "v000.png"
+            Image.new("RGBA", (46, 83), (0, 0, 0, 0)).save(hero)
+            with mock.patch.object(LS, "render_place", return_value=(place, {})) as render, \
                     mock.patch.object(LS, "enhance", return_value=(place, True)) as better, \
+                    mock.patch.object(LS, "render_heroine", return_value=[hero]) as h3, \
                     mock.patch.object(LS.qm, "VIDEO_DIR", d), mock.patch.object(LS.qm, "IMAGE_DIR", d), \
-                    mock.patch("chloe.heroine.SECONDS", {"wave": 0.4}):
+                    mock.patch("chloe.heroine3d.SECONDS", {"wave": 0.4}):
                 video, pic = LS.make_with_heroine(["wave"], "остров зимой")
             self.assertEqual(render.call_args[0][0], "winter")
             self.assertEqual(better.call_args[0][2], LS.PLACE_TEXT)       # место улучшают без героини
-            self.assertIn("no character", LS.PLACE_TEXT)
+            self.assertEqual(h3.call_args[0][:2], (["wave"], "winter"))   # героиня — в том же времени года и свете
+
             info = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0",
                                    str(video)], capture_output=True, text=True).stdout.strip()
             self.assertEqual(info, "1080,1920")
+
+    def test_shadow_only_near_feet(self):
+        rgba = np.zeros((200, 100, 4), np.uint8)
+        rgba[60:150, 40:60] = (240, 240, 250, 255)                       # героиня
+        rgba[150:158, 30:70, 3] = 120                                     # её тень у ног
+        rgba[10:40, 5:15, 3] = 120                                        # чужая тень далеко — убрать
+        out = LS.clean_heroine(rgba)
+        self.assertGreater(out[153, 50, 3], 60)
+        self.assertEqual(out[20, 10, 3], 0)
+        self.assertEqual(out[100, 50, 3], 255)
 
     def test_heroine_follows_the_island_qwen_moved(self):
         with tempfile.TemporaryDirectory() as d:

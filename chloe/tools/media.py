@@ -74,7 +74,7 @@ def tool_live_scene(a):
         return "Нет ключа Qwen (DASHSCOPE_API_KEY в ~/.config/chloe/keys.env) — рисовать не на чем."
     moves = a.get("moves")
     if moves:                                                          # персонаж и место отдельно: код двигает героиню
-        from .. import heroine as HR
+        from .. import heroine3d as HR
 
         if isinstance(moves, str):
             moves = [m for m in re.split(r"[,\s]+", moves) if m]
@@ -86,9 +86,9 @@ def tool_live_scene(a):
             MB.spend("image", 0.3, "героиня на месте: " + ", ".join(moves))
         job = _start("live", "героиня: " + ", ".join(moves), lambda: LS.make_with_heroine(moves, idea, better),
                      a.get("open", True) is not False)
-        return ("Делаю ролик с героиней (#{}): {}. Blender строит место (около минуты), Qwen доводит его до образца "
-                "(одна картинка, ~$0.04, видео-лимит не тратится), код ставит героиню и двигает её. Скажу, когда будет "
-                "готово (обычно 4–6 минут).".format(job, ", ".join(moves)))
+        return ("Делаю ролик с героиней (#{}): {}. Blender строит место, Qwen доводит его до образца (одна картинка, "
+                "~$0.04, видео-лимит не тратится), потом Blender двигает 3D-героиню в том же свете и код кладёт её на "
+                "место. Скажу, когда будет готово (обычно 15–25 минут).".format(job, ", ".join(moves)))
     kind = LS.particles_for(idea, a.get("particles"))
     seconds = max(3.0, min(float(a.get("seconds") or 6), 15.0))
     if better:
