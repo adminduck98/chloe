@@ -211,21 +211,25 @@ box(-3, 3, -1, 2, 7, 9, lambda x, y, z: TRIM if x in (-3, 2) else SHORT)   # ш�
 box(-4, 4, -2, 2, 9, 15, lambda x, y, z: TRIM if z == 9 else HOOD)      # худи
 for x, z in ((-1, 13), (-1, 12), (0, 13), (0, 12)):
     pass
-hero[(-1, -3, 13)] = jitter(HOOD)                                      # шнурки
-hero[(0, -3, 12)] = jitter(HOOD)
+for z in range(11, 15):                                                # шнурки худи — две полоски
+    hero[(-2, -3, z)] = jitter(hexc("#dfe6f2"))
+    hero[(1, -3, z)] = jitter(hexc("#dfe6f2"))
 box(-3, 3, -2, 1, 15, 16, SKIN)                                        # шея/воротник
+INK = hexc("#1b2140")
 for z in range(16, 24):                                                # голова 8×8×8
     for x in range(-4, 4):
         for y in range(-4, 4):
             front = y == -4
             if front and z <= 21 and -3 <= x <= 2:
                 c = SKIN                                               # лицо
-                if z in (18, 19) and x in (-3, -2, 1, 2):
-                    c = EYE if z == 19 else EYE2
-                if z == 19 and x in (-3, 1):
-                    c = (1, 1, 1)                                      # блик в глазу
-                if z == 17 and x in (-1, 0):
+                if x in (-3, -2, 1, 2) and 17 <= z <= 20:              # крупные аниме-глаза 2×4
+                    c = {20: INK, 19: EYE, 18: EYE2, 17: hexc("#a9d8ff")}[z]
+                    if z == 19 and x in (-3, 1):
+                        c = (1, 1, 1)                                  # блик
+                if z == 16 and x in (-1, 0):
                     c = hexc("#e2787f")                                # ротик
+                if z == 16 and x in (-3, 2):
+                    c = hexc("#ffb3c2")                                # румянец
             else:
                 c = TIP if z <= 17 and not front else HAIR             # волосы, кончики голубые
             hero[(x, y, z)] = jitter(c, 0.02)
@@ -233,9 +237,12 @@ for x in range(-4, 4):                                                 # чёл�
     if x % 3 != 0:
         hero[(x, -5, 21)] = jitter(HAIR, 0.02)
     hero[(x, -5, 22)] = jitter(HAIR, 0.02)
-for z in range(10, 16):                                                # длинные волосы сзади
+for z in range(8, 16):                                                 # длинные волосы сзади до пояса
     for x in range(-4, 4):
-        hero[(x, 3, z)] = jitter(TIP if z < 13 else HAIR, 0.02)
+        hero[(x, 3, z)] = jitter(TIP if z < 12 else HAIR, 0.02)
+for sx in (-4, 3):                                                     # пряди спереди на плечах, кончики голубые
+    for z in range(11, 22):
+        hero[(sx, -3, z)] = jitter(TIP if z < 14 else HAIR, 0.02)
 for x in range(-5, 5):                                                 # наушники: дуга и чашки
     hero[(x, 0, 24)] = jitter(NAVY, 0.02)
 for sx, out in ((-5, -6), (4, 5)):                                    # чашки наушников, крупные — их видно
@@ -254,7 +261,7 @@ box(4, 6, -1, 1, 9, 15, sleeve)                                        # пра�
 
 def part_of(x, y, z):
     """Какой части тела принадлежит кубик: голова (с волосами и наушниками), руки, ноги, туловище."""
-    if z >= 16 or (y == 3 and z >= 10):
+    if z >= 16 or (y == 3 and z >= 8) or (y == -3 and x in (-4, 3) and z >= 11):
         return "head"
     if x <= -5 and 9 <= z <= 14:
         return "arm_l"
@@ -289,6 +296,11 @@ for name in JOINTS:
     jx, jy, jz = JOINTS[name][0]
     voxel_mesh("hero_" + name, vox, S, origin=(jx * S, jy * S, jz * S), parent=BODY[name])
 pivot = BODY["arm_r"]
+NO_HERO = bool(os.environ.get("VOX_NO_HERO"))                         # место отдельно: героиню рисует код поверх
+if NO_HERO:
+    for ob in list(scene.collection.objects):
+        if ob.name.startswith("hero_"):
+            ob.hide_render = True
 
 # --- лепестки ---
 petals = []
@@ -413,6 +425,17 @@ def pose(t):
     BODY["torso"].scale = (1, 1, squash * (1 + 0.012 * breath))
     hero_obj.location = (HX, HY, HZ + lift)
 
+
+if NO_HERO:                                                             # где стоит героиня и какого она роста в кадре
+    import json
+    from bpy_extras.object_utils import world_to_camera_view
+
+    bpy.context.view_layer.update()
+    feet = hero_obj.matrix_world.translation.copy()
+    v0 = world_to_camera_view(scene, cam, feet)
+    v1 = world_to_camera_view(scene, cam, feet + Vector((0, 0, 24 * S)))
+    with open(os.path.join(OUT, "spot.json"), "w") as fh:
+        json.dump({"x": v0.x, "y": 1 - v0.y, "top": 1 - v1.y}, fh)
 
 for f in range(FRAMES):
     u = f / FRAMES

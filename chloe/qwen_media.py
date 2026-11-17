@@ -178,54 +178,6 @@ def video_start(prompt, source=None, seconds=5, resolution="720P", ratio="16:9",
     return task
 
 
-VACE_MODEL = "wan2.1-vace-plus"
-
-
-def upload(path, model=VACE_MODEL):
-    """Положить файл во временное хранилище Alibaba (для видео-моделей, которым нужна ссылка). Возвращает oss://…
-    Запросы с такой ссылкой — с заголовком X-DashScope-OssResourceResolve: enable."""
-    import requests
-
-    p = pathlib.Path(os.path.expanduser(str(path)))
-    if not p.is_file():
-        raise MediaError("нет файла {}".format(p))
-    req = urllib.request.Request(native_base() + "/api/v1/uploads?action=getPolicy&model=" + model,
-                                 headers={"Authorization": "Bearer " + (config.QWEN_KEY or "")})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            pol = json.loads(r.read().decode())["data"]
-    except urllib.error.HTTPError as e:
-        raise MediaError(_explain(e.code, e.read().decode("utf-8", "replace"))) from None
-    except (urllib.error.URLError, TimeoutError, OSError, KeyError, ValueError) as e:
-        raise MediaError("хранилище Alibaba не отвечает ({})".format(e)) from None
-    key = "{}/{}".format(pol["upload_dir"], p.name)
-    with open(p, "rb") as fh:
-        r = requests.post(pol["upload_host"], timeout=300, files={"file": (p.name, fh, mimetypes.guess_type(p.name)[0] or "application/octet-stream")},
-                          data={"OSSAccessKeyId": pol["oss_access_key_id"], "Signature": pol["signature"], "policy": pol["policy"],
-                                "x-oss-object-acl": pol["x_oss_object_acl"], "x-oss-forbid-overwrite": pol["x_oss_forbid_overwrite"],
-                                "key": key, "success_action_status": "200"})
-    if r.status_code != 200:
-        raise MediaError("файл не загрузился в Alibaba (HTTP {})".format(r.status_code))
-    return "oss://" + key
-
-
-def vace_repaint(video, prompt, ref=None, control="depth"):
-    """Wan VACE: перерисовать видео (≤5 с), сохранив движение и формы (карта глубины), по описанию и картинке-образцу.
-    Формат проверен 17.11.2026: obj_or_bg — в parameters, по одному на каждый образец. Возвращает id задачи."""
-    inp = {"function": "video_repainting", "prompt": prompt, "video_url": upload(video)}
-    params = {"control_condition": control, "prompt_extend": False}
-    if ref:
-        inp["ref_images_url"] = [upload(ref)]
-        params["obj_or_bg"] = ["bg"]
-    out = _http("POST", "/api/v1/services/aigc/video-generation/video-synthesis",
-                {"model": VACE_MODEL, "input": inp, "parameters": params},
-                headers={"X-DashScope-Async": "enable", "X-DashScope-OssResourceResolve": "enable"}, timeout=60)
-    task = (out.get("output") or {}).get("task_id")
-    if not task:
-        raise MediaError("Alibaba не приняла задачу ({})".format(json.dumps(out, ensure_ascii=False)[:200]))
-    return task
-
-
 def video_status(task):
     """(status, video_url или None, причина ошибки или None). status: PENDING / RUNNING / SUCCEEDED / FAILED / …"""
     out = (_http("GET", "/api/v1/tasks/" + task, timeout=30).get("output") or {})

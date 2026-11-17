@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from chloe import live_scene as LS
 from chloe import media_budget as MB
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class Moves(unittest.TestCase):
+class Heroine(unittest.TestCase):
     def setUp(self):
         self.saved = settings.get(MB.KEY)
         settings.set(MB.KEY, [])
@@ -133,41 +133,65 @@ class Moves(unittest.TestCase):
     def tearDown(self):
         settings.set(MB.KEY, self.saved)
 
-    def test_plan_fits_five_seconds(self):
-        self.assertEqual(LS.moves_plan(["wave", "jump", "dance", "walk"]), ["wave", "jump"])   # 3,6 с; ещё 2 — уже больше 5
-        self.assertEqual(LS.moves_plan([]), ["idle", "wave", "jump"])
-        self.assertEqual(LS.moves_plan(["fly", "dance"]), ["dance"])
+    def test_puppet_moves_and_keeps_the_drawing(self):
+        from chloe import heroine as HR
 
-    def test_code_moves_qwen_frame_vace_repaints(self):
+        steps, total = HR.plan(["wave", "jump", "fly"])
+        self.assertEqual([m for m, _, _ in steps], ["wave", "jump"])
+        self.assertAlmostEqual(total, 3.6)
+        still, _, _ = HR.render(0.0, [], 0.25)
+        wave, _, _ = HR.render(1.0, steps, 0.25)                        # рука поднята
+        jump, _, up = HR.render(2.0 + 0.7, steps, 0.25)                 # вершина прыжка
+        self.assertGreater(np.abs(wave - still).mean(), 1.0)
+        self.assertGreater(up, 50)
+        self.assertEqual(HR.pose(1.22, steps)["eyes"], "closed")       # моргает
+
+    def test_place_and_heroine_are_separate(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
-
-            def fake_render(plan, season, out):
-                subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=pink:s=72x128:d=1", str(out)], check=True)
-                return Path(out)
-            raw = d / "raw.mp4"
-            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=72x128:d=1", str(raw)], check=True)
-            ref = picture(d / "ref.png")
-            with mock.patch.object(LS, "render_moves", side_effect=fake_render) as render, \
-                    mock.patch.object(LS, "enhance", return_value=(ref, True)) as better, \
-                    mock.patch.object(LS.qm, "vace_repaint", return_value="t1") as vace, \
-                    mock.patch.object(LS.qm, "VIDEO_DIR", d):
-                video, pic = LS.make_moves(["wave"], "остров зимой", wait=lambda task, title: raw)
-            self.assertEqual(render.call_args[0][:2], (["wave"], "winter"))
-            self.assertEqual(better.call_args[0][1], "winter")
-            self.assertEqual(vace.call_args[0][2], ref)                   # образец — улучшенный первый кадр
-            self.assertIn("headphones", vace.call_args[0][1])
+            place = picture(d / "place.png", 93, 166)
+            spot = {"x": 0.6, "y": 0.5, "top": 0.3}
+            with mock.patch.object(LS, "render_place", return_value=(place, spot)) as render, \
+                    mock.patch.object(LS, "enhance", return_value=(place, True)) as better, \
+                    mock.patch.object(LS.qm, "VIDEO_DIR", d), mock.patch.object(LS.qm, "IMAGE_DIR", d), \
+                    mock.patch("chloe.heroine.SECONDS", {"wave": 0.4}):
+                video, pic = LS.make_with_heroine(["wave"], "остров зимой")
+            self.assertEqual(render.call_args[0][0], "winter")
+            self.assertEqual(better.call_args[0][2], LS.PLACE_TEXT)       # место улучшают без героини
+            self.assertIn("no character", LS.PLACE_TEXT)
             info = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0",
                                    str(video)], capture_output=True, text=True).stdout.strip()
             self.assertEqual(info, "1080,1920")
 
-    def test_tool_respects_weekly_video_limit(self):
+    def test_heroine_follows_the_island_qwen_moved(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            sky = (200, 160, 200)
+
+            def island(path, x0, y0, x1, y1):
+                im = Image.new("RGB", (232, 416), sky)
+                ImageDraw.Draw(im).rectangle([x0, y0, x1, y1], fill=(80, 190, 70))   # трава
+                im.save(path)
+            island(d / "a.png", 20, 150, 210, 250)
+            island(d / "b.png", 40, 230, 135, 280)                        # Qwen уменьшил вдвое и опустил остров
+            spot = {"x": 0.5, "y": 0.5, "top": 0.3}
+            moved = LS.follow_spot(spot, d / "a.png", d / "b.png", "spring")
+            self.assertAlmostEqual(moved["x"], (40 + (116 - 20) * 0.5) / 232, delta=0.02)
+            self.assertGreater(moved["y"], 0.5)
+            self.assertAlmostEqual(moved["y"] - moved["top"], 0.1, delta=0.01)   # и рост вдвое меньше
+            Image.new("RGB", (232, 416), sky).save(d / "c.png")
+            self.assertEqual(LS.follow_spot(spot, d / "a.png", d / "c.png", "spring"), spot)   # не нашёл — как было
+
+    def test_tool_counts_one_picture_and_no_video_limit(self):
         MB.spend("video", 5, "неделя занята")
         with mock.patch("chloe.qwen_media.available", return_value=True), \
                 mock.patch("chloe.tools.media._start", return_value=5) as start:
-            out, _, _ = run_tool("live_scene", {"moves": ["wave", "jump"]})
-            self.assertIn("Не делаю", out)
-            start.assert_not_called()
-            out, _, _ = run_tool("live_scene", {"moves": "wave, jump", "over_limit": True})
+            out, _, _ = run_tool("live_scene", {"moves": "wave, jump"})
         self.assertIn("#5", out)
         self.assertIn("wave, jump", out)
+        self.assertEqual(start.call_args[0][0], "live")
+        self.assertEqual([e["percent"] for e in settings.get(MB.KEY) if e.get("kind") == "image"], [0.3])
+
+
+if __name__ == "__main__":
+    unittest.main()
