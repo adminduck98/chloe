@@ -15,19 +15,21 @@ from . import qwen_media as qm
 
 W, H, FPS = 1080, 1920, 30
 ISLAND = Path(__file__).parent / "blender" / "voxel_island.py"
-ENHANCE = ("Enhance this exact image to high quality. Keep the same composition, camera angle, objects, their positions and "
-           "sizes, the same colors and palette, and the same character exactly. Only improve quality: sharper detail, refined "
-           "voxel cubes with soft rounded edges, realistic soft lighting and shadows, richer textures on grass, blossoms and "
-           "water, a cleaner character face. Do not add or remove anything. No text, no watermark.")
+SAMPLE = Path(__file__).parent / "assets" / "styles" / "live-scene-sample.jpg"   # утверждённый образец качества
+ENHANCE = ("Image 1 is the layout made by our code; image 2 is the approved quality and style sample. Redraw image 1 in the "
+           "exact rendering quality and art style of image 2: lush detailed voxel foliage, rich grass with tiny flowers, clear "
+           "water with stones, beautiful soft light, soft clouds, and the cute detailed voxel girl exactly like in image 2 "
+           "(long white hair with light blue tips, big blue eyes, glowing cyan headphones, white hoodie, navy shorts, striped "
+           "socks). Keep from image 1: the island shape and camera angle, where the tree, the pond and the girl stand, her "
+           "pose, and the season and time of day. Do not copy the layout of image 2. No text, no watermark.")
 SEASON_OF = {"snow": "winter", "leaves": "autumn", "stars": "night"}
 SEASON_TEXT = {  # Qwen любит «улучшать» зиму в весну (17.11.2026) — время года называем прямо
     "winter": "It is a WINTER scene: the ground, the grass and the tree crown are covered with white snow. Keep all the snow "
               "and the white colors; do not turn it into spring or summer.",
     "autumn": "It is an AUTUMN scene: orange and red foliage and yellowish grass. Keep these autumn colors.",
     "night": "It is NIGHT: a dark blue sky and cool moonlight. Keep it dark; do not turn it into day.",
-    "spring": "Spring: pink cherry blossoms and mint-green moss. Keep these colors.",
+    "spring": "Spring: pink cherry blossoms. Keep the blossoms pink.",
 }
-MAX_DRIFT = 18.0      # средняя разница цвета миниатюр: хорошее улучшение ≈ 15, подмена сцены ≈ 22
 SKY = {  # верх, середина, низ
     "spring": ((48, 64, 136), (214, 140, 172), (255, 208, 172)),
     "autumn": ((60, 58, 120), (226, 132, 104), (255, 204, 140)),
@@ -94,24 +96,39 @@ def render_island(season, out_png, samples=64):
     return Path(out_png)
 
 
-def drift(a, b):
-    """Насколько картинка b ушла от a (средняя разница цвета миниатюр 32×56)."""
+def _share(path, kind):
+    """Доля пикселей «примет» времени года: снег, розовый цвет, оранжевая листва — и средняя яркость для ночи."""
     from PIL import Image
 
-    def thumb(p):
-        return np.array(Image.open(p).convert("RGB").resize((32, 56), Image.BOX)).astype(np.float32)
-    return float(np.abs(thumb(a) - thumb(b)).mean())
+    a = np.array(Image.open(path).convert("RGB").resize((64, 112), Image.BOX)).astype(np.float32)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    if kind == "winter":
+        return float(((a.min(-1) > 215) & (a.max(-1) - a.min(-1) < 25)).mean())
+    if kind == "spring":
+        return float(((r > 200) & (b > 140) & (r - g > 40)).mean())
+    if kind == "autumn":
+        return float(((r > 180) & (g > 70) & (g < 175) & (b < 110) & (r - b > 90)).mean())
+    return float((r * 0.3 + g * 0.59 + b * 0.11).mean())
+
+
+def season_kept(src, out, season):
+    """Qwen не подменил время года: снег, цветение, листва остались; ночь осталась тёмной (17.11.2026: зима → весна)."""
+    a, b = _share(src, season), _share(out, season)
+    if season == "night":
+        return b <= a + 25
+    return a < 0.01 or b >= a * (0.6 if season == "winter" else 0.4)
 
 
 def enhance(path, season="spring", tries=2):
-    """Qwen улучшает качество готового кадра — та же композиция, те же цвета, тот же персонаж. Если Qwen всё же
-    поменял сцену (drift больше MAX_DRIFT) — ещё раз, потом остаётся кадр кода. Возвращает (кадр, улучшен ли)."""
+    """Qwen перерисовывает кадр кода в качестве утверждённого образца, сохраняя раскладку, позу и время года.
+    Подменил время года — ещё раз, потом остаётся кадр кода. Возвращает (кадр, улучшен ли)."""
     text = ENHANCE + " " + SEASON_TEXT.get(season, "")
+    refs = (str(SAMPLE),) if SAMPLE.exists() else ()
     for _ in range(tries):
-        better = qm.image(text, "9:16", 1, source=str(path))[0]
-        d = drift(path, better)
-        print("[живая сцена: Qwen изменил кадр на {:.1f} из допустимых {:.0f}]".format(d, MAX_DRIFT))
-        if d <= MAX_DRIFT:
+        better = qm.image(text, "9:16", 1, source=str(path), refs=refs)[0]
+        ok = season_kept(path, better, season)
+        print("[живая сцена: время года {}]".format("сохранено" if ok else "подменено — ещё раз"))
+        if ok:
             return Path(better), True
     return Path(path), False
 

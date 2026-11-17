@@ -129,12 +129,13 @@ def _image_ref(src):
 
 
 # --- картинки ---
-def image(prompt, ratio=None, n=1, source=None, model=None):
+def image(prompt, ratio=None, n=1, source=None, model=None, refs=()):
     """Нарисовать (или изменить картинку source по описанию). Возвращает список сохранённых файлов.
-    ratio при правке картинки — только если форму кадра надо задать (сцены ролика); не задан — форма как у исходной."""
+    ratio при правке картинки — только если форму кадра надо задать (сцены ролика); не задан — форма как у исходной.
+    refs — ещё картинки-образцы (стиль, качество): идут после source, в запросе это «image 2», «image 3»."""
     if not prompt.strip():
         raise MediaError("нужно описание картинки")
-    content = ([{"image": _image_ref(source)}] if source else []) + [{"text": prompt}]
+    content = ([{"image": _image_ref(source)}] if source else []) + [{"image": _image_ref(r)} for r in refs] + [{"text": prompt}]
     params = {"n": max(1, min(int(n or 1), 4)), "watermark": False}
     # по образцу без размера Alibaba выбирает форму сама (12.11.2026: вертикальная вместо 16:9) — для сцен ролика задаём
     if ratio or not source:

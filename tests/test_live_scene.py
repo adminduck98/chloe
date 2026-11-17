@@ -32,10 +32,20 @@ class Choice(unittest.TestCase):
         self.assertEqual(LS.particles_for("зимой", "none"), "none")
         self.assertEqual(LS.SEASON_OF["snow"], "winter")
 
-    def test_enhance_keeps_the_frame(self):
-        self.assertIn("same composition", LS.ENHANCE)
-        self.assertIn("same colors", LS.ENHANCE)
-        self.assertIn("Do not add or remove", LS.ENHANCE)
+    def test_enhance_keeps_layout_and_uses_the_sample(self):
+        self.assertIn("Keep from image 1", LS.ENHANCE)
+        self.assertIn("quality and style sample", LS.ENHANCE)
+        self.assertTrue(LS.SAMPLE.exists())
+
+    def test_season_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            snow, green = d / "snow.png", d / "green.png"
+            Image.new("RGB", (64, 112), (240, 244, 250)).save(snow)
+            Image.new("RGB", (64, 112), (90, 170, 80)).save(green)
+            self.assertTrue(LS.season_kept(snow, snow, "winter"))
+            self.assertFalse(LS.season_kept(snow, green, "winter"))
+            self.assertTrue(LS.season_kept(green, snow, "spring"))        # цветения не было — не проверяем
 
 
 class Pipeline(unittest.TestCase):
@@ -51,6 +61,7 @@ class Pipeline(unittest.TestCase):
                 video, pic = LS.make("остров зимой", seconds=1)
             self.assertEqual(render.call_args[0][0], "winter")
             self.assertEqual(qwen.call_args.kwargs["source"], str(built))       # Qwen получает наш кадр
+            self.assertEqual(qwen.call_args.kwargs["refs"], (str(LS.SAMPLE),))  # и образец качества
             self.assertEqual(pic, better)
             info = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height,nb_frames", "-of",
                                    "csv=p=0", str(video)], capture_output=True, text=True).stdout.strip()
@@ -59,9 +70,10 @@ class Pipeline(unittest.TestCase):
     def test_qwen_that_changes_the_scene_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
-            ours = picture(d / "ours.png")
+            ours = d / "ours.png"
+            Image.new("RGB", (225, 400), (240, 244, 250)).save(ours)    # снег
             other = d / "other.png"
-            Image.new("RGB", (225, 400), (250, 120, 200)).save(other)  # совсем другая картинка
+            Image.new("RGB", (225, 400), (90, 170, 80)).save(other)     # зелень — зима стала летом
             with mock.patch.object(LS.qm, "image", return_value=[other]) as qwen:
                 pic, ok = LS.enhance(ours, "winter")
             self.assertEqual((pic, ok), (ours, False))                  # остался кадр кода
