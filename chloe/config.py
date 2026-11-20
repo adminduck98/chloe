@@ -145,7 +145,7 @@ TTS = os.environ.get("CHLOE_TTS", "edge")                         # edge — С�
 # спрашивается вместе с Google (ждём его не дольше CHLOE_QWEN_ASR_WAIT), Google — запасной и сверка конца фразы;
 # google — только Google, быстрее (0,6–1,5 с), но грубее.
 # gigaam (по умолчанию с 20.11.2026) — GigaAM-v3 на компьютере: без интернета и оплаты, ~1 с, с запятыми и точками;
-# если модель не скачана или сбой — как qwen (python run.py --install-gigaam).
+# если модель не скачана или сбой — Google, бесплатно (python run.py --install-gigaam).
 ASR = os.environ.get("CHLOE_ASR", "gigaam")
 PIPER_VOICE = os.environ.get("CHLOE_PIPER_VOICE", "ru_RU-irina-medium")   # русские: irina (жен.), denis, dmitri, ruslan
 VOICES_DIR = DATA / "voices"                                       # модели Piper

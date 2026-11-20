@@ -211,8 +211,8 @@ class Voice:
                 brain.voice(0, "user")
                 return text
             except Exception as e:
-                print("[слух GigaAM: " + str(e)[:80] + " — распознаю через Qwen/Google]")
-        if config.ASR in ("qwen", "gigaam") and qwen_audio.available() and time.time() >= self.asr_down_until:
+                print("[слух GigaAM: " + str(e)[:80] + " — распознаю через Google]")
+        if config.ASR == "qwen" and qwen_audio.available() and time.time() >= self.asr_down_until:
             # гонка: Qwen точнее (английские названия посреди русской речи), но иногда отвечает 4–7 с.
             # Спрашиваем обоих сразу; ответ Qwen ждём не дольше QWEN_ASR_WAIT, иначе берём Google.
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as Late

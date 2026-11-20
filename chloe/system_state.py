@@ -90,7 +90,7 @@ def voice_ears():
 
         out.append(item("Слух", "Распознавание", "ok" if gigaam.available() else "warn",
                         "GigaAM на компьютере" if gigaam.available() else
-                        "модель GigaAM не скачана — слушаю через Qwen: python run.py --install-gigaam"))
+                        "модель GigaAM не скачана — слушаю через Google: python run.py --install-gigaam"))
     else:
         out.append(item("Слух", "Распознавание", "ok", {"google": "Google", "qwen": "Qwen"}.get(config.ASR, config.ASR)))
     return out
