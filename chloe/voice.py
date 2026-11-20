@@ -204,7 +204,10 @@ class Voice:
         if config.ASR == "gigaam" and gigaam.available():
             # слух на компьютере: без сети и оплаты; при сбое — как раньше (Qwen вместе с Google)
             try:
+                t0 = time.time()
                 text = gigaam.asr(audio.get_wav_data(convert_rate=16000, convert_width=2))
+                if text:
+                    print("[слух GigaAM · {:.1f} с]".format(time.time() - t0))
                 brain.voice(0, "user")
                 return text
             except Exception as e:

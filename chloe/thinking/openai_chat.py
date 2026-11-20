@@ -69,6 +69,24 @@ def _price(model):
     return (p[0] + p[3]) if p else 0.0
 COOLDOWN = {429: 60, 500: 120, 502: 120, 503: 120, 504: 120, 529: 120}   # 529 — Claude перегружен
 cooldown = {}   # модель → время, до которого её не трогаем
+# кончились деньги на счёте (DeepSeek: 402 «Insufficient Balance», Claude: 400 «credit balance is too low») —
+# весь этот провайдер отдыхает полчаса, отвечают другие (DeepSeek ↔ Claude); через полчаса пробуем снова сами
+NO_MONEY_WAIT = float(os.environ.get("CHLOE_NO_MONEY_WAIT", "1800"))
+NO_MONEY_WORDS = ("insufficient balance", "credit balance is too low", "insufficient_balance", "payment required",
+                  "billing", "arrearage", "exceeded your current quota", "insufficient funds")
+
+
+def is_no_money(e):
+    """Ошибка «на счёте нет денег» (а не «слишком часто» или «перегружен»)."""
+    if getattr(e, "status_code", None) == 402:
+        return True
+    text = str(getattr(e, "message", "") or e).lower()
+    body = getattr(e, "body", None)
+    if body:
+        import json
+
+        text += " " + json.dumps(body, ensure_ascii=False).lower()
+    return any(w in text for w in NO_MONEY_WORDS)
 
 
 def provider_of(model):
@@ -222,6 +240,18 @@ def chat(clients, messages, model, tools=True, max_tokens=1500):
                 anthropic.APIStatusError, anthropic.APIConnectionError, Refused) as e:
             code = getattr(e, "status_code", None)
             refused = isinstance(e, Refused)   # Claude отказался — пусть ответит другая модель
+            broke = not refused and is_no_money(e)
+            if broke:                          # нет денег у провайдера — пропускаем все его модели, отвечает другой
+                later = [x for x in models[i + 1:] if provider_of(x) != provider]
+                for x in set(models) | {config.MODEL_FAST, config.MODEL_STRONG, getattr(config, "MODEL_EYES", None)} - {None}:
+                    if provider_of(x) == provider:
+                        cooldown[x] = time.time() + NO_MONEY_WAIT
+                tell_no_money(provider, later[0] if later else None)
+                if not later:
+                    raise
+                models[i + 1:] = later
+                print("[{}: на счёте нет денег — {} мин отвечает {}]".format(m, int(NO_MONEY_WAIT // 60), later[0]))
+                continue
             if code is not None and code not in COOLDOWN or refused and i == len(models) - 1:
                 raise
             wait = 0 if refused else COOLDOWN.get(code, 60)
@@ -247,6 +277,27 @@ def tell_day_limit(name, limit):
     _limit_told.add(key)
     text = "Дневной лимит {} ${:.2f} исчерпан — сегодня он больше не отвечает.".format(
         {"deepseek": "DeepSeek", "anthropic": "Claude"}.get(name, name), limit)
+    print("[{}]".format(text))
+    try:
+        from ..journal import journal
+        journal.add("system", "Мышление", text, ok=False)
+    except Exception:
+        pass
+
+
+_money_told = {}
+
+
+def tell_no_money(provider, next_model):
+    """Раз в час на провайдера: на его счёте кончились деньги — кто отвечает дальше (в журнал и в консоль)."""
+    now = time.time()
+    if now - _money_told.get(provider, 0) < 3600:
+        return
+    _money_told[provider] = now
+    name = {"deepseek": "DeepSeek", "anthropic": "Claude", "qwen": "Qwen", "gemini": "Gemini"}.get(provider, provider)
+    text = "На счёте {} кончились деньги. ".format(name) + (
+        "Пока отвечаю через {}; {} попробую снова через {} мин.".format(next_model, name, int(NO_MONEY_WAIT // 60))
+        if next_model else "Запасного мозга с деньгами нет — пополните счёт.")
     print("[{}]".format(text))
     try:
         from ..journal import journal
