@@ -15,7 +15,7 @@ with warnings.catch_warnings():   # audioop помечен устаревшим,
     warnings.simplefilter("ignore", DeprecationWarning)
     import audioop
 
-from . import addressee, config, voiceprint, persona, phrase_cache, qwen_audio, speech_stream
+from . import addressee, config, gigaam, voiceprint, persona, phrase_cache, qwen_audio, speech_stream
 from .brain import brain
 from .ears import ears, has_wake
 from .config import DATA, LANG, NO_WORDS, PAUSE, PHRASE_LIMIT, PIPER_VOICE, STOP_WORDS, TTS, VOICES, VOICES_DIR, YES_WORDS
@@ -201,7 +201,15 @@ class Voice:
     def recognize(self, audio):
         import speech_recognition as sr
 
-        if config.ASR == "qwen" and qwen_audio.available() and time.time() >= self.asr_down_until:
+        if config.ASR == "gigaam" and gigaam.available():
+            # слух на компьютере: без сети и оплаты; при сбое — как раньше (Qwen вместе с Google)
+            try:
+                text = gigaam.asr(audio.get_wav_data(convert_rate=16000, convert_width=2))
+                brain.voice(0, "user")
+                return text
+            except Exception as e:
+                print("[слух GigaAM: " + str(e)[:80] + " — распознаю через Qwen/Google]")
+        if config.ASR in ("qwen", "gigaam") and qwen_audio.available() and time.time() >= self.asr_down_until:
             # гонка: Qwen точнее (английские названия посреди русской речи), но иногда отвечает 4–7 с.
             # Спрашиваем обоих сразу; ответ Qwen ждём не дольше QWEN_ASR_WAIT, иначе берём Google.
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as Late

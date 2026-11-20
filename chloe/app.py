@@ -741,6 +741,8 @@ def main():
     parser.add_argument("--restore", nargs="?", const="", metavar="ДЕНЬ",
                         help="вернуть мозг и память из копии (без дня — список копий) и выйти")
     parser.add_argument("--new-phone-key", action="store_true", help="новый код для телефона (старые телефоны отключатся) и выйти")
+    parser.add_argument("--install-gigaam", action="store_true",
+                        help="скачать слух GigaAM-v3 (~225 МБ): русская речь в текст на компьютере, без интернета и оплаты")
     parser.add_argument("--install-ears", action="store_true",
                         help="скачать офлайн-слух Vosk для слова «Хлоя» (~45 МБ) и выйти")
     parser.add_argument("--login-telegram", action="store_true",
@@ -777,6 +779,11 @@ def main():
     if args.add_skill:
         names = skillbook.add(args.add_skill)
         print("Добавлены навыки ({}): {}. Chloe увидит их при следующей просьбе.".format(len(names), ", ".join(names)))
+        return
+    if args.install_gigaam:
+        from .gigaam import install as gigaam_install
+
+        gigaam_install()
         return
     if args.install_ears:
         ears_install()
