@@ -27,7 +27,7 @@ BUILTIN = {"if", "for", "Audio", "while", "switch", "return", "function", "catch
            "calc", "env", "translate", "onArrive", "then", "cb", "onDone", "onThink", "after", "rng", "f", "Rec", "reply", "fn", "job", "done", "reopen", "fromApi",
            # workbench.js: браузерные функции, CSS внутри строк стиля, параметры-колбэки, «Chloe (python run.py)» в тексте
            "ResizeObserver", "getComputedStyle", "getSelection", "addEventListener", "var", "blur", "gradient", "media", "not",
-           "steps", "translateX", "ok", "cancel", "def", "Chloe"}
+           "steps", "translateX", "ok", "cancel", "def", "Chloe", "url"}
 
 
 class Bridge(unittest.TestCase):

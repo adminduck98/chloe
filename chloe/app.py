@@ -768,6 +768,42 @@ class Api:
 
         return save_buttons(items if isinstance(items, list) else [])
 
+    # Студия: серии канала — доска, идеи, шаги конвейера (только на компьютере)
+    def studio_board(self):
+        from . import studio_board as SB
+
+        return {"episodes": SB.episodes(), "ideas": SB.ideas()}
+
+    def studio_cover(self, folder, n=1):
+        from . import studio_board as SB
+
+        return SB.cover(str(folder), int(n or 1))
+
+    def studio_action(self, folder, what, arg=""):
+        from . import studio_board as SB
+
+        return SB.action(str(folder), str(what), str(arg or ""))
+
+    def studio_channel(self, fresh=False):
+        from . import studio_board as SB
+
+        return SB.channel(bool(fresh))
+
+    def studio_idea_add(self, text):
+        from . import studio_board as SB
+
+        return SB.add_idea(str(text), "владелец")
+
+    def studio_idea_remove(self, iid):
+        from . import studio_board as SB
+
+        return SB.remove_idea(int(iid))
+
+    def studio_make(self, iid, mode="anim", ratio="9:16", duration=20):
+        from . import studio_board as SB
+
+        return SB.make_from_idea(int(iid), str(mode), str(ratio), int(duration or 20))
+
     def undo_last(self):
         """Отменить последнее изменение файлов (кнопка в ленте «Сейчас»)."""
         for c in changes.list(20):

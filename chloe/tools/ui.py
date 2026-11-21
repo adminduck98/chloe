@@ -8,8 +8,8 @@
 from ..brain import brain
 from ..settings import settings
 
-WINDOWS = {"terminal": "терминал", "files": "файлы", "projects": "проекты", "inbox": "входящие", "palette": "поиск по функциям"}
-LAYOUTS = ("Работа", "Студия", "Тишина")
+WINDOWS = {"terminal": "терминал", "files": "файлы", "projects": "проекты", "inbox": "входящие", "studio": "студия", "palette": "поиск по функциям"}
+LAYOUTS = ("Работа", "Студия", "Тишина")   # Студия — окно серий канала и входящие
 MAX_BUTTONS = 12
 DEFAULT_BUTTONS = [
     {"label": "Утренний план", "request": "утренний план: что сегодня, сроки, задачи"},
