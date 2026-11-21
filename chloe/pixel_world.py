@@ -7,7 +7,9 @@
     мягкое свечение у светящихся вещей (порталы, монеты), параллакс в несколько слоёв, частицы;
   • герой — на скелете мультипликатора (chloe/animator.py): все его движения (ходьба, бег, прыжок, записи живых
     движений, эмоции) работают и здесь; рисуется заново — пикселями, с угловатыми плечами и круглой головой;
-  • мир — уровень-платформер: земля из плиток, ямы, платформы, блоки с «?», монеты, шипы, портал, HUD.
+  • мир — уровень-платформер: земля из плиток, ямы, платформы, блоки с «?», монеты, шипы, портал, HUD;
+  • темы: sakura (по умолчанию) — день, пастель, деревня с сакурой, холмы-террасы в дымке, лепестки
+    (планка — уютные воксельные сцены канала); night — звёзды, луна, горы.
 
 ВНИМАНИЕ: облик героя временный — по описанию (круглая голова, угловатые плечи). Когда владелец пришлёт рисунок
 своего стикмена, HERO перерисовывается точно по нему.
@@ -321,7 +323,8 @@ def draw_hero(layer, pose, x, ground, facing=1, emotion="neutral", t=0.0, scale=
         sub.c[by, bx:bx + 2] = P["white"]
     # контровой свет справа (от портала/неба) — тонкая полоска по краю
     rim = body & ~shift(body, -1, 0) & ~outline(body)
-    sub.c[rim] = np.minimum(1, sub.c[rim] * 0.6 + P["port2"] * 0.45)
+    rim_col = P["sun"] if THEME["name"] == "sakura" else P["port2"]
+    sub.c[rim] = np.minimum(1, sub.c[rim] * 0.6 + rim_col * 0.45)
     _blend(layer, sub, x0, y0, alpha)
     return pts
 
@@ -520,9 +523,12 @@ def draw_tiles(L, level, cam_x, cam_y, t):
     for r in range(max(0, r0), min(level.h, r1)):
         for c in range(max(0, c0), min(level.w, c1)):
             ch = level.at(c, r)
+            x, y = int(c * TILE - cam_x), int(r * TILE - cam_y)
+            if ch == "." and r >= level.ground_row and THEME["name"] == "sakura":
+                _blit(L, _pit(level, c, r), x, y)                                  # яма: тёмная глубина, стенки
+                continue
             if ch == ".":
                 continue
-            x, y = int(c * TILE - cam_x), int(r * TILE - cam_y)
             if ch == "?" and (c, r) in level.bumped:
                 dt = t - level.bumped[(c, r)]
                 if 0 <= dt < 0.25:
@@ -537,6 +543,8 @@ _tile_cache = {}
 
 
 def _tile(level, c, r, ch, t, xs, ys):
+    if ch == "#" and THEME["name"] == "sakura":
+        return sakura_tile(level, c, r, xs, ys)
     if ch == "#":
         top = not level.solid(c, r - 1)
         key = ("#", top, c % 4, r % 3)
@@ -635,6 +643,25 @@ def _tile(level, c, r, ch, t, xs, ys):
             _tile_cache[key] = T
         return _tile_cache[key]
     return None
+
+
+def _pit(level, c, r):
+    key = ("pit", r - level.ground_row, level.solid(c - 1, r), level.solid(c + 1, r))
+    if key in _tile_cache:
+        return _tile_cache[key]
+    T = Layer(TILE, TILE)
+    d = r - level.ground_row
+    ys = np.arange(TILE)[:, None] + d * TILE
+    k = np.clip(ys / 40.0, 0, 1)
+    col = P["soil0"] * (1 - k[..., None]) * 0.55 + P["ink"] * k[..., None]
+    T.c[:] = np.broadcast_to(col, (TILE, TILE, 3))
+    T.a[:] = 1
+    if level.solid(c - 1, r):                                                    # стенка ямы слева — в тени
+        T.c[:, :2] = P["soil0"] * 0.7
+    if level.solid(c + 1, r):
+        T.c[:, -2:] = P["soil1"] * 0.8
+    _tile_cache[key] = T
+    return T
 
 
 def _blit(L, T, x, y):
@@ -766,19 +793,324 @@ def upscale(frame, s=SCALE):
     return frame.repeat(s, 0).repeat(s, 1)
 
 
+# ================================================================ ТЕМА «САКУРА-ДЕРЕВНЯ» (день, пастель)
+# Планка — уютные воксельные сцены канала: мягкий дневной свет, дымка вдали, много мелких деталей.
+P.update({k: rgb(v) for k, v in {
+    "dsky0": "7f9cf0", "dsky1": "93aef3", "dsky2": "a9bdf4", "dsky3": "bfc8f3", "dsky4": "d3cdf0", "dsky5": "e6d6ef",
+    "haze": "cbc6ef", "dcloud0": "b7aee6", "dcloud1": "dcd6f6", "dcloud2": "fbf8ff",
+    "terr0": "8aa86a", "terr1": "a8c47e", "terr2": "c8db97", "sand0": "b99a74", "sand1": "d6bb90", "lilac0": "8f86b0", "lilac1": "aaa2c8",
+    "lgrass0": "3f8f3c", "lgrass1": "5fb44a", "lgrass2": "8fd65e", "lgrass3": "c4ef8a",
+    "soil0": "5a3524", "soil1": "7a4a30", "soil2": "98603c", "soil3": "b87d52",
+    "wall0": "c9b49a", "wall1": "ecdcc4", "wall2": "fff4e4", "timber": "6b3d2a", "timber2": "8c5236",
+    "win0": "e0a040", "win1": "ffd36b", "win2": "fff2b8",
+    "sak0": "d9779e", "sak1": "f19ec0", "sak2": "ffc6dc", "sak3": "ffe6f0", "bark0": "5a3324", "bark1": "7d4a33",
+    "path0": "d9bf9a", "path1": "efd9b6", "sun": "ffe3b0",
+    "fl_y": "ffe36b", "fl_p": "ff9fc8", "fl_b": "8fb8ff", "fl_w": "ffffff", "fl_v": "c48dff", "fl_o": "ffae5c",
+}.items()})
+ROOFS = [("3f5fb8", "5a7fdb", "86a6f2"), ("5b3f9a", "7a5cc4", "a389e6"), ("c8582f", "e8784a", "ffa274"),
+         ("3e7a4a", "57a063", "82c78a"), ("a83a48", "cf5463", "f07f8a"), ("4f5466", "6c7287", "9399ad")]
+ROOFS = [tuple(rgb(c) for c in r) for r in ROOFS]
+FLOWERS = ("fl_y", "fl_p", "fl_b", "fl_w", "fl_v", "fl_o")
+THEME = {"name": "sakura"}
+
+
+def _haze(L, k):
+    """Воздушная перспектива: чем дальше слой, тем больше он растворяется в цвете неба у горизонта."""
+    m = L.a > 0
+    L.c[m] = L.c[m] * (1 - k) + P["haze"] * k
+
+
+def day_sky(w, h):
+    L = Layer(w, h)
+    ramp = ["dsky0", "dsky1", "dsky2", "dsky3", "dsky4", "dsky5"]
+    xs = np.arange(w)
+    for y in range(h):
+        f = min(0.999, (y / (h * 0.78))) ** 1.15 * len(ramp)
+        k = min(len(ramp) - 1, int(f))
+        L.c[y] = P[ramp[k]]
+        if k + 1 < len(ramp) and f - k > 0.82:
+            L.c[y, (xs + y) % 2 == 0] = P[ramp[k + 1]]
+    L.a[:] = 1
+    return L
+
+
+def puffy_clouds(width, h, seed, count=None, y0=0.08, y1=0.36, big=1.0):
+    """Пухлые облака в три тона: тень снизу, свет сверху."""
+    L = Layer(width, h)
+    xs, ys = _grid(width, h)
+    count = count or max(2, width // 90)
+    for i in range(count):
+        cx = (i + 0.2 + hsh(seed, i, 1) * 0.6) * width / count
+        cy = h * (y0 + hsh(seed, i, 2) * (y1 - y0))
+        s = (0.8 + hsh(seed, i, 3) * 0.7) * big
+        m = np.zeros((h, width), bool)
+        for j in range(7):
+            dx = (j - 3) * 6.5 * s
+            r = (9 - abs(j - 3) * 1.6) * s + hsh(seed, i, j) * 3 * s
+            m |= disc_mask(width, h, cx + dx, cy - r * 0.35, r, xs, ys)
+        m &= ys < cy + 4 * s
+        base = m & (ys >= cy + 4 * s - 1)
+        L.put(m, P["dcloud1"])
+        L.put(m & ~shift(m, 0, 3), P["dcloud2"])
+        L.put(m & ~shift(m, 0, -3) | base, P["dcloud0"])
+    return L
+
+
+def rolling(width, base, amp, seed, waves=4):
+    """Плавные холмы: сумма синусоид (без резких ступенек по колонкам)."""
+    x = np.arange(width, dtype=np.float32)
+    y = np.zeros(width, np.float32)
+    for k in range(waves):
+        f = (k + 1) * 0.6 / max(width, 1) * math.tau * (2 + hsh(seed, k) * 3)
+        y += math.sin(hsh(seed, k, 1) * 6) * 0 + np.sin(x * f + hsh(seed, k, 2) * 6) / (k + 1)
+    y = y / max(1e-6, np.abs(y).max())
+    return base - (y * 0.5 + 0.5) * amp
+
+
+def terraces(width, h, seed):
+    """Дальние горы (сиреневые, в дымке) и холмы-террасы ступеньками, как на уютных воксельных картах."""
+    L = Layer(width, h)
+    ys = np.arange(h)[:, None]
+    far = rolling(width, h * 0.54, h * 0.14, seed, waves=5)
+    far = far - (np.abs(np.sin(np.arange(width) * 0.09 + seed)) ** 6) * 6          # редкие пики
+    m = ys >= far[None, :]
+    L.put(m, P["lilac0"])
+    L.put(m & ~shift(m, 0, 2), P["lilac1"])
+    _haze(L, 0.45)
+    for band, (base, amp, col, top) in enumerate(((0.56, 0.1, "terr1", "terr2"), (0.6, 0.08, "sand1", "terr2"), (0.64, 0.07, "terr0", "terr1"))):
+        tops = rolling(width, h * base, h * amp, seed + 10 + band, waves=3)
+        tops = np.floor(tops / 3) * 3                                            # ступеньки террас — по высоте
+        mm = ys >= tops[None, :]
+        layer = Layer(width, h)
+        layer.put(mm, P[col])
+        rows = ((ys - tops[None, :]) % 6 == 0) & mm                               # полосы-уступы
+        layer.put(rows, P[top])
+        layer.put(mm & ~shift(mm, 0, 1), P[top])
+        _haze(layer, 0.32 - band * 0.08)
+        a = layer.a[..., None]
+        L.c = L.c * (1 - a) + layer.c * a
+        L.a = np.maximum(L.a, layer.a)
+    return L
+
+
+def _house(L, xs, ys, x, base, w, hgt, roof, seed):
+    """Домик: светлые стены, деревянные балки, ступенчатая крыша с черепицей, окна со светом, ящики с цветами, труба."""
+    wall = (xs >= x) & (xs < x + w) & (ys >= base - hgt) & (ys < base)
+    L.put(outline(wall), P["timber"])
+    L.put(wall, P["wall1"])
+    lit, dark = bevel(wall)
+    L.put(lit, P["wall2"])
+    L.put(dark, P["wall0"])
+    if hsh(seed, 4) > 0.4:                                                       # фахверк
+        for bx in (x, x + w - 2):
+            L.put((xs >= bx) & (xs < bx + 2) & wall, P["timber2"])
+        L.put((ys >= base - hgt) & (ys < base - hgt + 2) & wall, P["timber2"])
+    # крыша: ступенчатый треугольник со свесом
+    rh = int(w * 0.45)
+    top = base - hgt
+    roofm = np.zeros(xs.shape, bool)
+    for k in range(rh):
+        half = (w / 2 + 3) * (1 - k / rh)
+        y = top - k
+        roofm |= (ys == y) & (np.abs(xs - (x + w / 2)) <= np.floor(half / 2) * 2)
+    roofm |= (ys >= top) & (ys < top + 2) & (xs >= x - 3) & (xs < x + w + 3)
+    cx = int(x + w * (0.25 + hsh(seed, 5) * 0.5))
+    chim = (xs >= cx) & (xs < cx + 3) & (ys >= top - rh + 2) & (ys < top - rh * 0.4)
+    L.put(outline(chim), P["ink2"])
+    L.put(chim, P["timber2"])
+    L.put(outline(roofm) & (ys < top + 2), P["ink2"])
+    L.put(roofm, roof[1])
+    L.put(roofm & ((ys - top) % 3 == 0), roof[0])                              # ряды черепицы
+    L.put(roofm & ~shift(roofm, 1, 1), roof[2])
+    L.put(roofm & ~shift(roofm, -1, -1), roof[0])
+    # окна в один-два ряда, тёплый свет; под ними ящики с цветами
+    rows = 2 if hgt > 24 else 1
+    for rr in range(rows):
+        wy = base - hgt + 5 + rr * 11
+        for wx in range(x + 4, x + w - 5, 8):
+            win = (xs >= wx) & (xs < wx + 4) & (ys >= wy) & (ys < wy + 5)
+            L.put(outline(win), P["timber"])
+            L.put(win, P["win1"], emit=0.25)
+            L.put(win & (ys < wy + 2), P["win2"], emit=0.3)
+            L.put(win & (xs == wx + 2), P["win0"])
+            box = (xs >= wx - 1) & (xs < wx + 5) & (ys == wy + 6)
+            L.put(box, P["timber2"])
+            for f in range(4):
+                fx, fy = wx + f, wy + 5
+                if 0 <= fy < L.h and 0 <= fx < L.w:
+                    L.c[fy, fx] = P[FLOWERS[int(hsh(seed, wx, f) * 6)]]
+    door = (xs >= x + w // 2 - 2) & (xs < x + w // 2 + 2) & (ys >= base - 7) & (ys < base)
+    if rows == 1 or hsh(seed, 9) > 0.5:
+        L.put(door, P["timber"])
+        L.put(door & ~shift(door, 1, 0), P["timber2"])
+    # мягкая тень у земли
+    sh = (ys >= base) & (ys < base + 2) & (xs >= x - 2) & (xs < x + w + 4)
+    L.c[sh] = L.c[sh] * 0.75
+
+
+def _sakura(L, xs, ys, x, base, size, seed):
+    """Сакура: ствол с ветками и пышная розовая крона в четыре тона, пятна света."""
+    trunk = seg_mask(xs, ys, (x, base), (x + 1, base - size * 0.9), 1.6) | \
+        seg_mask(xs, ys, (x + 1, base - size * 0.6), (x - size * 0.45, base - size * 1.05), 1.0) | \
+        seg_mask(xs, ys, (x + 1, base - size * 0.7), (x + size * 0.5, base - size * 1.1), 1.0)
+    L.put(outline(trunk), P["ink2"])
+    L.put(trunk, P["bark1"])
+    L.put(trunk & ~shift(trunk, -1, 0), P["bark0"])
+    crown = np.zeros(xs.shape, bool)
+    blobs = []
+    for j in range(7):
+        a = j / 7 * math.tau + hsh(seed, j) * 0.8
+        rr = size * (0.38 + hsh(seed, j, 2) * 0.22)
+        cx = x + math.cos(a) * size * 0.45
+        cy = base - size * 1.15 + math.sin(a) * size * 0.28
+        blobs.append((cx, cy, rr))
+        crown |= disc_mask(0, 0, cx, cy, rr, xs, ys)
+    crown |= disc_mask(0, 0, x, base - size * 1.25, size * 0.5, xs, ys)
+    L.put(outline(crown), P["sak0"] * 0.75)
+    L.put(crown, P["sak1"])
+    for cx, cy, rr in blobs:                                                     # каждый «пучок» — со своим светом
+        b = crown & disc_mask(0, 0, cx - 1, cy - 1, rr * 0.75, xs, ys)
+        L.put(b & ~shift(b, 1, 1), P["sak2"])
+    L.put(crown & ~shift(crown, 0, -2), P["sak0"])
+    L.put(crown & ~shift(crown, 2, 2), P["sak3"])
+    spots = crown & (((xs * 7 + ys * 13 + seed) % 17) == 0)
+    L.put(spots, P["sak3"])
+    sh = (ys >= base) & (ys < base + 2) & (np.abs(xs - x) < size * 0.8)
+    L.c[sh] = L.c[sh] * 0.8
+
+
+def village_layer(width, h, seed, base_y):
+    """Деревня за полем: домики с разными крышами, сакуры, заборчики — на линии base_y."""
+    L = Layer(width, h)
+    xs, ys = _grid(width, h)
+    xs, ys = xs.astype(np.int32), ys.astype(np.int32)
+    meadow = ys >= base_y - 1
+    L.put(meadow, P["lgrass1"])
+    L.put(meadow & (ys < base_y + 1), P["lgrass2"])
+    for i in range(width // 7):                                                  # кусты на лугу перед домами
+        bx, by = int(hsh(seed, i, 61) * width), base_y + 4 + int(hsh(seed, i, 62) * 10)
+        bm = disc_mask(0, 0, bx, by, 2.5 + hsh(seed, i, 63) * 2.5, xs, ys) & (ys <= by + 1)
+        L.put(outline(bm) & (ys <= by + 1), P["lgrass0"] * 0.8)
+        L.put(bm, P["lgrass1"])
+        L.put(bm & ~shift(bm, 1, 1), P["lgrass2"])
+        if hsh(seed, i, 64) > 0.5:
+            L.c[max(0, by - 2), bx] = P[FLOWERS[int(hsh(seed, i, 65) * 6)]]
+    for i in range(width * 2):                                                   # цветы на лугу
+        fx, fy = int(hsh(seed, i, 31) * width), int(base_y + 2 + hsh(seed, i, 32) * (h - base_y - 2))
+        if fy < h:
+            L.c[fy, fx] = P[FLOWERS[int(hsh(seed, i, 33) * 6)]]
+    x = 6
+    i = 0
+    while x < width - 30:
+        kind = hsh(seed, i, 40)
+        if kind < 0.55:
+            w = 26 + int(hsh(seed, i, 41) * 4) * 4
+            hgt = 18 + int(hsh(seed, i, 42) * 3) * 5
+            _house(L, xs, ys, x, base_y, w, hgt, ROOFS[int(hsh(seed, i, 43) * len(ROOFS))], seed * 100 + i)
+            x += w + 6 + int(hsh(seed, i, 44) * 10)
+        else:
+            sz = 14 + hsh(seed, i, 45) * 8
+            _sakura(L, xs, ys, x + sz * 0.7, base_y, sz, seed * 100 + i)
+            x += int(sz * 1.6) + 4
+        if hsh(seed, i, 46) > 0.6:                                               # заборчик
+            fx0 = x - 4
+            for fx in range(fx0, min(width - 1, fx0 + 18), 3):
+                L.put((xs == fx) & (ys >= base_y - 4) & (ys < base_y), P["timber2"])
+            L.put((ys == base_y - 3) & (xs >= fx0) & (xs < fx0 + 18), P["timber2"])
+        i += 1
+    _haze(L, 0.14)
+    return L
+
+
+def sakura_tile(level, c, r, xs, ys):
+    """Земля для «Сакура-деревни»: пышная трава с цветами сверху, тёплая почва с камешками и корешками."""
+    top = not level.solid(c, r - 1)
+    key = ("#sak", top, c % 6, r % 3, level.solid(c, r - 2))
+    if key in _tile_cache:
+        return _tile_cache[key]
+    T = Layer(TILE, TILE)
+    depth = r - level.ground_row
+    T.put(np.ones((TILE, TILE), bool), P["soil1"] if depth < 3 else P["soil0"])
+    for i in range(3):
+        px, py = int(hsh(c, r, i) * 13) + 1, int(hsh(r, c, i + 9) * 13) + 1
+        peb = disc_mask(TILE, TILE, px, py, 1.4, xs, ys)
+        T.put(peb, P["soil2"])
+        T.put(peb & ~shift(peb, 1, 1), P["soil3"])
+    if hsh(c, r, 50) > 0.6:                                                      # корешок
+        y0 = int(hsh(c, r, 51) * 12) + 2
+        for k in range(5):
+            T.c[min(15, y0 + k // 2), (int(hsh(c, r, 52) * 10) + k) % 16] = P["soil0"]
+    if top:
+        edge = np.array([int(4 + hsh(c * 16 + k, 77) * 3) for k in range(TILE)])
+        m = np.arange(TILE)[:, None] < edge[None, :]
+        T.put(m, P["lgrass1"])
+        T.put(m & (np.arange(TILE)[:, None] < 2), P["lgrass2"])
+        T.put(m & (np.arange(TILE)[:, None] == 0), P["lgrass3"])
+        under = outline(m) & (np.arange(TILE)[:, None] > 2)
+        T.put(under, P["lgrass0"])
+        T.put(shift(under, 0, 1) & ~m, P["soil0"])                              # тень травы на почве
+        for k in range(TILE):
+            v = hsh(c, k, 5)
+            if v > 0.7:                                                          # цветок в траве
+                T.c[int(hsh(c, k, 6) * 3), k] = P[FLOWERS[int(hsh(c, k, 7) * 6)]]
+            elif v < 0.12:
+                T.c[0, k] = P["lgrass0"]
+    _tile_cache[key] = T
+    return T
+
+
+class Petals:
+    """Лепестки сакуры: падают и кружатся по всему кадру; часть — перед героем."""
+
+    def __init__(self, n=46, seed=7):
+        self.n, self.seed = n, seed
+
+    def draw(self, L, t, cam_x, front=False):
+        w, h = L.w, L.h
+        for i in range(self.n):
+            fr = hsh(self.seed, i, 9) > 0.7
+            if fr != front:
+                continue
+            par = 1.25 if fr else 0.6
+            vx, vy = -8 - hsh(self.seed, i, 2) * 10, 14 + hsh(self.seed, i, 3) * 16
+            x = (hsh(self.seed, i, 4) * w * 2 + t * vx - cam_x * par + math.sin(t * (1.3 + hsh(self.seed, i, 5)) + i) * 7) % (w + 8) - 4
+            y = (hsh(self.seed, i, 6) * h + t * vy) % (h + 8) - 4
+            xi, yi = int(x), int(y)
+            if not (0 <= xi < w - 2 and 0 <= yi < h - 2):
+                continue
+            flip = math.sin(t * 5 + i) > 0
+            L.c[yi, xi] = P["sak1"]
+            L.c[yi, xi + 1 if flip else xi] = P["sak2"]
+            if fr:
+                L.c[yi + 1, xi + 1] = P["sak0"]
+                L.c[yi + 1, xi] = P["sak2"]
+
+
 # ---------------------------------------------------------------- демо-серия: герой проходит уровень
 class Demo:
     """Сценарий: герой выходит, бежит, перепрыгивает шипы и яму, бьёт блок, собирает монеты, уходит в портал."""
 
-    def __init__(self, w=216, h=384, features=None, length=None):
+    def __init__(self, w=216, h=384, features=None, length=None, theme="sakura"):
         self.w, self.h = w, h
+        self.theme = theme
+        THEME["name"] = theme
         self.features = features or DEMO
         self.level = build_level(self.features, length or DEMO_LEN)
-        self.sky = sky_layer(w, h)
         world_w = self.level.w * TILE
-        self.far = far_layer(max(w * 3, int(world_w * 0.25) + w), h, 3)
-        self.clouds = cloud_layer(max(w * 3, int(world_w * 0.35) + w), h, 4)
-        self.mid = mid_layer(max(w * 3, int(world_w * 0.55) + w), h, 5)
+        if theme == "sakura":                       # день, пастель, деревня с сакурой (планка — воксельные сцены канала)
+            self.sky = day_sky(w, h)
+            self.far = terraces(max(w * 3, int(world_w * 0.12) + w), h, 3)
+            self.clouds = puffy_clouds(max(w * 3, int(world_w * 0.2) + w), h, 4)
+            self.back = village_layer(max(w * 4, int(world_w * 0.3) + w), h, 9, int(h * 0.7))
+            _haze(self.back, 0.38)                                                 # дальний ряд деревни — в дымке
+            self.mid = village_layer(max(w * 4, int(world_w * 0.42) + w), h, 5, int(h * 0.76))
+            self.petals = Petals()
+        else:                                       # ночь: звёзды, луна, горы
+            self.sky = sky_layer(w, h)
+            self.far = far_layer(max(w * 3, int(world_w * 0.25) + w), h, 3)
+            self.clouds = cloud_layer(max(w * 3, int(world_w * 0.35) + w), h, 4)
+            self.mid = mid_layer(max(w * 3, int(world_w * 0.55) + w), h, 5)
+            self.petals = None
         self.parts = Particles()
         self.coins, self.score, self.lives = 0, 0, 3
         self.ground = GROUND_ROW * TILE
@@ -839,12 +1171,20 @@ class Demo:
         L.c[:] = self.sky.c
         x, lift, air, phase, portal_t = self.hero_at(t)
         cam_x = max(0.0, min(x - self.w * 0.36, self.level.w * TILE - self.w))
-        cam_y = self.ground - self.h * 0.72
-        stars(L, t, self.w, self.h, cam_x)
-        moon(L, self.w, self.h, cam_x)
-        compose(L, self.far, cam_x * 0.12)
-        compose(L, self.clouds, cam_x * 0.22 + t * 4)
-        compose(L, self.mid, cam_x * 0.45)
+        cam_y = self.ground - self.h * (0.84 if self.theme == "sakura" else 0.72)
+        THEME["name"] = self.theme
+        if self.theme == "sakura":
+            compose(L, self.clouds, cam_x * 0.08 + t * 3)
+            compose(L, self.far, cam_x * 0.1)
+            compose(L, self.back, cam_x * 0.26)
+            compose(L, self.mid, cam_x * 0.4)
+            self.petals.draw(L, t, cam_x)
+        else:
+            stars(L, t, self.w, self.h, cam_x)
+            moon(L, self.w, self.h, cam_x)
+            compose(L, self.far, cam_x * 0.12)
+            compose(L, self.clouds, cam_x * 0.22 + t * 4)
+            compose(L, self.mid, cam_x * 0.45)
         # события: удар по блоку, монеты, пыль
         hy = self.ground - lift
         head_top = hy - HERO["height"] * 1.02
@@ -900,18 +1240,20 @@ class Demo:
             L.e += P["port3"] * (0.35 - enter) * 1.2
         self.parts.step(dt)
         self.parts.draw(L, cam_x, cam_y)
+        if self.petals:
+            self.petals.draw(L, t, cam_x, front=True)
         draw_hud(L, self.coins, self.score, self.lives)
         if t > portal_t + 0.6:
             k = min(1.0, (t - portal_t - 0.6) / 0.4)
             y = int(self.h * 0.32 - (1 - k) * 20)
             draw_text(L, "УРОВЕНЬ", self.w // 2, y, 22, P["gold2"], emit=0.3)
             draw_text(L, "ПРОЙДЕН!", self.w // 2, y + 26, 22, P["gold2"], emit=0.3)
-        return finish(L)
+        return finish(L, vignette=self.theme != "sakura")
 
 
-def render(out, w=216, h=384, secs=None, fps=FPS, scale=SCALE, crf=18):
-    """Демо-ролик mp4 (вертикальный по умолчанию). Возвращает путь."""
-    demo = Demo(w, h)
+def render(out, w=216, h=384, secs=None, fps=FPS, scale=SCALE, crf=18, theme="sakura"):
+    """Демо-ролик mp4 (вертикальный по умолчанию). theme: sakura (день, деревня) или night. Возвращает путь."""
+    demo = Demo(w, h, theme=theme)
     portal_t = demo.hero_at(0)[4]
     secs = secs or portal_t + 2.4
     out = pathlib.Path(out)
@@ -941,10 +1283,10 @@ def hero_sheet(out, cell=96, scale=4):
     cols = 6
     W, H = cell * cols, cell * ((len(rows) + cols - 1) // cols)
     L = Layer(W, H)
-    L.c[:] = P["sky1"]
+    L.c[:] = P["dsky2"]
     for i, (name, emo, front) in enumerate(rows):
         cx, cy = (i % cols) * cell + cell // 2, (i // cols) * cell + cell - 12
-        L.c[cy:cy + 2, cx - cell // 2 + 6:cx + cell // 2 - 6] = P["grass1"]
+        L.c[cy:cy + 2, cx - cell // 2 + 6:cx + cell // 2 - 6] = P["lgrass1"]
         if name in A.POSES:
             pose = A.pose_of(name)
         else:

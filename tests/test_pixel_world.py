@@ -43,6 +43,23 @@ class PixelWorld(unittest.TestCase):
         self.assertGreaterEqual(d.coins, 8)
         self.assertGreater(d.score, 100)
 
+    def test_both_themes_render(self):
+        for theme in ("sakura", "night"):
+            d = PW.Demo(w=108, h=192, theme=theme)
+            f = d.frame(5.0)
+            self.assertEqual(f.shape, (192, 108, 3))
+            self.assertGreater(len(np.unique(f.reshape(-1, 3), axis=0)), 40)   # детальный кадр, а не заливка
+
+    def test_pit_is_dark(self):
+        d = PW.Demo()
+        gap = next(c for c, k, _ in d.features if k == "gap")
+        x = gap * PW.TILE + 20
+        t = 0.8 + (x - d.start_x) / d.speed
+        f = d.frame(t).astype(int)
+        cam_x = max(0.0, min(x - d.w * 0.36, d.level.w * PW.TILE - d.w))
+        sx = int(gap * PW.TILE + 24 - cam_x)
+        self.assertLess(f[-5, sx].sum(), 120)                                      # дно ямы — тёмное, а не трава
+
     def test_hero_any_animator_move(self):
         from chloe import animator as A
 
