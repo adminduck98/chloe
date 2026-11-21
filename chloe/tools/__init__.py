@@ -10,14 +10,14 @@ from .. import skillbook
 from ..journal import journal
 from ..permissions import permissions
 from ..signals import seen_text, state
-from . import access, calendar, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, youtube as youtube_mod, mediaserver, remind, replay, screen, skill, system, talk, tg, ui, undo, weather, web
+from . import access, calendar, episodes, controls, media, money, selfcheck, links, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, world as world_mod, news as news_mod, social as social_mod, phone, desktop, files, kb, learn, transcribe, projects, remember, youtube as youtube_mod, mediaserver, remind, replay, screen, skill, system, talk, tg, ui, undo, weather, web
 from ..secret import redact
 from .. import usage as usage_mod
 from .. import report as report_mod
 from .. import vision as vision_mod
 
 HANDLERS = {name[5:]: getattr(mod, name)
-            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, report_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, youtube_mod, mediaserver, ui) for name in dir(mod) if name.startswith("tool_")}
+            for mod in (screen, system, controls, desktop, files, undo, web, weather, remind, tg, remember, replay, skill, projects, talk, usage_mod, report_mod, learn, vision_mod, kb, access, transcribe, calendar, phone, media, news_mod, money, social_mod, selfcheck, links, world_mod, sim, sec, improve, center, conn, flows, team, task, goal, hints, myvoice, pics, house, youtube_mod, mediaserver, ui, episodes) for name in dir(mod) if name.startswith("tool_")}
 
 
 # Навыки в мозге для каждого инструмента: (имя, описание, зона)
@@ -71,6 +71,7 @@ SKILLS = {
     "workflows": ("Автоматизации", "Делает сама по расписанию или по событию: новый файл, новое сообщение", "Навыки"),
     "connectors": ("Подключения", "Все подключения: статус, проверка, выключить, забыть", "Система"),
     "actions": ("Действия", "Action Center: что делаю, что ждёт решения, что сделано и где ошибки", "Система"),
+    "episodes": ("Студия", "Идеи серий для канала и доска серий: сценарий, проба, ролик, пакет, Shorts, вышло", "Навыки"),
     "ui": ("Окно Chloe", "Открывает терминал, файлы, проекты и входящие, раскладки экрана, быстрые кнопки", "Система"),
     "safe_mode": ("Безопасный режим", "Одной фразой ставит действия и автоматизации на паузу", "Система"),
     "self_improve": ("Самоулучшение", "Разбирает свои ошибки, предлагает и проверяет улучшения, внедряет после «да»", "Навыки"),
@@ -412,15 +413,21 @@ TOOLS = [
                                             "ключи, подтверждения) лаборатория не меняет никогда.",
      "input_schema": schema({"action": {"type": "string", "enum": ["review", "propose", "list", "show", "apply", "reject", "undo"]},
                              "number": {"type": "integer"}, "id": {"type": "integer"}, "days": {"type": "integer"}})},
+    {"name": "episodes", "description": "Идеи серий для канала мультиков — список в окне «Студия». add_idea: text (или ideas — "
+                                        "несколько) и why — почему зайдёт; «запиши идею серии…», «придумай три идеи серий» (придумай сама, "
+                                        "учитывая, какие серии зашли лучше, и запиши); list — идеи; remove_idea id; board — где сейчас каждая "
+                                        "серия (сценарий, проба, ролик, пакет, Shorts, вышло). Снять серию по идее — make_film.",
+     "input_schema": schema({"action": {"type": "string", "enum": ["add_idea", "list", "remove_idea", "board"]}, "text": S,
+                             "ideas": {"type": "array", "items": S}, "why": S, "id": {"type": "integer"}}, ["action"])},
     {"name": "ui", "description": "Своё окно на компьютере. open/close/toggle window: terminal, files (path — какую папку показать), "
-                                  "projects, inbox (входящие), palette (поиск по функциям) — «открой терминал», «покажи Загрузки», "
+                                  "projects, inbox (входящие), studio (студия: серии канала), palette (поиск по функциям) — «открой терминал», «покажи Загрузки», "
                                   "«закрой проекты»; close_all — «закрой всё лишнее»; layout name — раскладка экрана: Работа "
                                   "(терминал, файлы, проекты), Студия (файлы и входящие), Тишина (только мозг) или сохранённая; "
                                   "save_layout name — запомнить, как стоят окна; add_button label request — быстрая кнопка внизу окна: "
                                   "нажатие передаёт тебе request («сделай кнопку Отчёт: отчёт за неделю»); remove_button label; list_buttons.",
      "input_schema": schema({"action": {"type": "string", "enum": ["open", "close", "toggle", "close_all", "layout", "save_layout",
                                                                   "add_button", "remove_button", "list_buttons"]},
-                             "window": {"type": "string", "enum": ["terminal", "files", "projects", "inbox", "palette"]},
+                             "window": {"type": "string", "enum": ["terminal", "files", "projects", "inbox", "studio", "palette"]},
                              "path": S, "name": S, "label": S, "request": S}, ["action"])},
     {"name": "actions", "description": "Action Center. view: summary — что делаю сейчас, что ждёт решения (вопрос «да/нет», улучшения, "
                                        "посты), что скоро, сколько сделано и ошибок сегодня; now; waiting; today — все шаги за сегодня; "

@@ -990,6 +990,7 @@
     L.push(winItem(files, "файлы папки проводник файловый менеджер"));
     L.push(winItem(proj, "проекты задачи"));
     L.push(winItem(inbox, "входящие уведомления вопросы готово"));
+    L.push(winItem(studio, "студия мультики серии канал youtube shorts ролик идеи"));
     L.push({ g: "Окна", t: "Закрыть всё лишнее", kw: "закрыть все окна панели", run: function () { closePal(); closeAll(); } });
     var PANELS = [["actionsBtn", "Действия", "action center что делает сделано ошибки безопасный режим"], ["projectsBtn", "Проекты — подробно", "цели решения задачи"],
       ["memoryBtn", "Память", "воспоминания что знает запомни забудь"], ["journalBtn", "Журнал", "история события что делала"],
@@ -1007,7 +1008,7 @@
     });
     var all = layouts();
     Object.keys(all).forEach(function (k) {
-      L.push({ g: "Раскладки", t: "Раскладка: " + k, s: all[k].pos ? "сохранённая" : { "Работа": "терминал, файлы, проекты", "Студия": "файлы и входящие", "Тишина": "только мозг" }[k],
+      L.push({ g: "Раскладки", t: "Раскладка: " + k, s: all[k].pos ? "сохранённая" : { "Работа": "терминал, файлы, проекты", "Студия": "серии канала и входящие", "Тишина": "только мозг" }[k],
                kw: "раскладка вид экран", run: function () { closePal(); applyLayout(k); } });
     });
     L.push({ g: "Раскладки", t: "Сохранить текущую раскладку…", kw: "запомнить раскладка", run: function () { setMode("layout"); } });
@@ -1111,8 +1112,208 @@
   findBtn.onclick = function () { openPalette(); };
   dock.insertBefore(findBtn, dock.firstChild);
 
+
+  // ================================================================ СТУДИЯ: серии канала
+  var studio = makeWin("wbStudio", "Студия", "Студия", function () {
+    var w = Math.min(660, vw() - 80);
+    return { x: Math.round((vw() - w) / 2), y: 88, w: w, h: Math.max(320, Math.min(620, vh() - 180)) };
+  });
+  dock.insertBefore(studio.btn, inbox.btn);
+  studio.tools.innerHTML = "<button data-s='ideas3' title='Chloe придумает три идеи серий и запишет сюда'>придумать 3 идеи</button>" +
+    "<button data-s='reload' title='Обновить'>⟳</button>";
+  studio.body.innerHTML = "<div id='wbStTop'></div><div id='wbStBody'></div>";
+  css.textContent += [
+    "#wbStTop { flex: none; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 18px; padding: 8px 14px; border-bottom: 1px solid var(--line);",
+    "  font-size: 12px; color: var(--iron); }",
+    "#wbStTop b { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; } #wbStTop .up { color: #5fb58a; } #wbStTop .dn { color: var(--coral); }",
+    "#wbStTop .warn { color: var(--coral); }",
+    "#wbStBody { flex: 1; min-height: 0; overflow: auto; padding-bottom: 12px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }",
+    ".wbSec { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 14px 14px 4px; }",
+    ".wbSec span:first-child { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--iron); }",
+    ".wbSeg { display: flex; gap: 0; } .wbSeg button { background: transparent; border: 1px solid var(--line); color: var(--iron); font: 400 11px var(--font);",
+    "  padding: 3px 8px; cursor: pointer; margin-left: -1px; } .wbSeg button.on { color: var(--ink); border-color: var(--bone); position: relative; }",
+    ".wbIdea { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid #161616; }",
+    ".wbIdea .t { color: var(--ink); line-height: 1.35; } .wbIdea .w { grid-column: 1; color: var(--iron); font-size: 12px; }",
+    ".wbIdea .src { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--coral); margin-right: 6px; }",
+    ".wbIdea .go { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 4px; align-items: center; }",
+    ".wbIdea .go button, .wbEp .acts button { background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--bone); font: 400 12px var(--font);",
+    "  padding: 3px 0; margin-left: 10px; cursor: pointer; white-space: nowrap; }",
+    ".wbIdea .go button.main, .wbEp .acts button.main { color: var(--ink); border-color: var(--coral); }",
+    ".wbIdea .go button:hover, .wbEp .acts button:hover { color: var(--coral); }",
+    ".wbIdea .go .x { border: 0; color: var(--iron); } .wbIdea .go .x.armed { color: var(--coral); }",
+    ".wbAddIdea { display: flex; gap: 10px; padding: 4px 14px 0; } .wbAddIdea input { flex: 1; font-size: 13px; padding: 7px 0; }",
+    ".wbEp { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #161616; }",
+    ".wbEp .cv { width: 64px; height: 64px; background: #141414 center / cover no-repeat; border: 1px solid var(--line); display: flex;",
+    "  align-items: center; justify-content: center; color: var(--iron); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }",
+    ".wbEp .cv.v { height: 86px; width: 48px; justify-self: center; }",
+    ".wbEp .hd { display: flex; align-items: baseline; gap: 10px; } .wbEp .n { color: var(--ink); font-size: 15px; letter-spacing: -.015em;",
+    "  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; } .wbEp .m { color: var(--iron); font-size: 11px; white-space: nowrap; }",
+    ".wbEp .lg { color: var(--iron); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+    ".wbTrack { display: flex; gap: 3px; margin: 8px 0 4px; } .wbTrack i { flex: 1; height: 3px; background: var(--line); }",
+    ".wbTrack i.d { background: var(--bone); } .wbTrack i.c { background: var(--coral); } .wbTrack i.run { background: var(--coral); animation: wbBlink 1.2s ease-in-out infinite; }",
+    ".wbEp .st { font-size: 12px; color: var(--bone); } .wbEp .st b { color: var(--coral); font-weight: 400; }",
+    ".wbEp .acts { display: flex; flex-wrap: wrap; align-items: center; margin: 6px 0 0 -10px; }",
+    ".wbEp .acts .sm { color: var(--iron); border-color: transparent; }",
+    ".wbEp .pubIn { display: flex; gap: 10px; margin-top: 6px; } .wbEp .pubIn input { flex: 1; font-size: 12px; padding: 5px 0; }",
+    ".wbEp.done { opacity: .62; } .wbEp.done:hover { opacity: 1; }",
+    "@media (max-width: 900px) { #wbStudio { height: calc(100vh - 250px) !important; } }"
+  ].join("\n");
+  var stTop = studio.body.querySelector("#wbStTop"), stBody = studio.body.querySelector("#wbStBody");
+  var S = { eps: [], ideas: [], fmt: store("studioFmt") || "short", mode: store("studioMode") || "anim", armed: null, pub: null, covers: {}, timer: 0, showDone: false };
+  var FMT = { short: { ratio: "9:16", duration: 20, label: "Shorts 9:16 · 20 с" }, film: { ratio: "16:9", duration: 60, label: "Ролик 16:9 · 60 с" } };
+  var MODE = { anim: "мультик · бесплатно", slides: "слайды · Qwen", director: "только раскадровка" };
+  function stApi() { var a = api(); return a && a.studio_board ? a : null; }
+  function stLoad() {
+    var a = stApi();
+    if (!a) { stBody.innerHTML = NOAPP; return; }
+    a.studio_board().then(function (d) {
+      S.eps = d.episodes || []; S.ideas = d.ideas || [];
+      stRender();
+      clearTimeout(S.timer);
+      if (studio.el.classList.contains("open")) S.timer = setTimeout(stLoad, S.eps.some(function (e) { return e.job; }) ? 4000 : 30000);
+    }).catch(function (e) { stBody.innerHTML = "<div class='wbEmpty wbErr'>" + esc(e && e.message || e) + "</div>"; });
+  }
+  function stChannel(fresh) {
+    var a = stApi(); if (!a) { stTop.innerHTML = ""; return; }
+    a.studio_channel(!!fresh).then(function (c) {
+      var L = [], R = [];
+      if (c.youtube) {
+        var y = c.youtube, d = y.views28_before ? Math.round((y.views28 - y.views28_before) / y.views28_before * 100) : null;
+        L.push("<span>«" + esc(y.title) + "» · <b>" + (y.subscribers == null ? "—" : fmtN(y.subscribers)) + "</b> подписчиков</span>");
+        L.push("<span>за 28 дней <b>" + fmtN(y.views28) + "</b> просмотров" + (d == null ? "" : " <span class='" + (d >= 0 ? "up" : "dn") + "'>" + (d >= 0 ? "+" : "") + d + " %</span>") +
+          (y.subs28 ? " · " + (y.subs28 > 0 ? "+" : "") + y.subs28 + " подп." : "") + "</span>");
+      } else L.push("<span>" + esc(c.youtube_error || "") + "</span>");
+      if (c.budget != null) R.push("<span" + (c.budget >= 80 ? " class='warn'" : "") + ">Qwen за месяц <b>" + String(c.budget).replace(".", ",") + " %</b></span>");
+      if (c.week_limit != null) R.push("<span" + (c.week_videos >= c.week_limit ? " class='warn'" : "") + ">видео на неделе <b>" + c.week_videos + "/" + c.week_limit + "</b></span>");
+      stTop.innerHTML = "<div>" + L.join(" · ") + "</div><div>" + R.join(" · ") + "</div>";
+    }).catch(function () {});
+  }
+  function fmtN(n) { return Math.round(n || 0).toLocaleString("ru-RU"); }
+  var ORDER = ["script", "preview", "film", "package", "shorts", "published"];
+  var NEXT = {
+    script: [{ a: "continue", l: "Снять ролик" }], preview: [{ a: "continue", l: "Делать весь ролик" }],
+    film: [{ a: "publish_pack", l: "Собрать пакет" }], package: [{ a: "shorts", l: "Нарезать Shorts", wide: true }, { a: "upload", l: "Загрузить в YouTube" }],
+    shorts: [{ a: "upload", l: "Загрузить в YouTube" }], published: []
+  };
+  function track(e) {
+    var steps = ORDER.filter(function (s) { return s !== "shorts" || e.ratio === "16:9"; }), at = steps.indexOf(e.stage);
+    return "<div class='wbTrack' title='" + steps.map(function (s) { return { script: "сценарий", preview: "проба", film: "ролик", package: "пакет", shorts: "Shorts", published: "вышло" }[s]; }).join(" → ") + "'>" +
+      steps.map(function (s, i) { return "<i class='" + (i < at || e.stage === "published" ? "d" : i === at ? (e.job ? "run" : "c") : "") + "'></i>"; }).join("") + "</div>";
+  }
+  function stRender() {
+    var h = [];
+    h.push("<div class='wbSec'><span>Идеи серий</span><span class='wbSeg' data-seg='fmt'>" + Object.keys(FMT).map(function (k) {
+      return "<button data-v='" + k + "' class='" + (S.fmt === k ? "on" : "") + "'>" + FMT[k].label + "</button>"; }).join("") + "</span></div>");
+    h.push("<div class='wbSec' style='margin-top:2px'><span></span><span class='wbSeg' data-seg='mode'>" + Object.keys(MODE).map(function (k) {
+      return "<button data-v='" + k + "' class='" + (S.mode === k ? "on" : "") + "'>" + MODE[k] + "</button>"; }).join("") + "</span></div>");
+    if (!S.ideas.length) h.push("<div class='wbEmpty' style='padding:8px 14px'>Идей пока нет. Впишите свою или нажмите «придумать 3 идеи» — Chloe учтёт, какие серии зашли.</div>");
+    S.ideas.slice().reverse().forEach(function (i) {
+      h.push("<div class='wbIdea' data-id='" + i.id + "'><div class='t'>" + (i.source === "Chloe" ? "<span class='src'>Chloe</span>" : "") + esc(i.text) + "</div>" +
+        (i.why ? "<div class='w'>" + esc(i.why) + "</div>" : "") + "<div class='go'><button class='main' data-make>Снять →</button>" +
+        "<button class='x" + (S.armed === i.id ? " armed" : "") + "' data-del title='Убрать идею'>" + (S.armed === i.id ? "убрать?" : "×") + "</button></div></div>");
+    });
+    h.push("<div class='wbAddIdea'><input id='wbIdeaIn' placeholder='Своя идея серии — Enter'></div>");
+    var active = S.eps.filter(function (e) { return e.stage !== "published"; }), done = S.eps.filter(function (e) { return e.stage === "published"; });
+    h.push("<div class='wbSec'><span>Серии в работе" + (active.length ? " · " + active.length : "") + "</span></div>");
+    if (!active.length) h.push("<div class='wbEmpty' style='padding:8px 14px'>Пока ничего не снимается. Нажмите «Снять →» у идеи — сценарий, проба и ролик появятся здесь.</div>");
+    active.forEach(function (e) { h.push(epHtml(e)); });
+    if (done.length) {
+      h.push("<div class='wbSec'><span>Вышли · " + done.length + "</span><span class='wbSeg'><button data-showdone class='" + (S.showDone ? "on" : "") + "'>" + (S.showDone ? "скрыть" : "показать") + "</button></span></div>");
+      if (S.showDone) done.forEach(function (e) { h.push(epHtml(e)); });
+    }
+    var keep = document.activeElement && document.activeElement.id === "wbIdeaIn" ? document.activeElement.value : null;
+    stBody.innerHTML = h.join("");
+    if (keep !== null) { var ii = stBody.querySelector("#wbIdeaIn"); ii.value = keep; ii.focus(); }
+    stBody.querySelectorAll(".cv[data-f]").forEach(function (cv) { loadCover(cv); });
+    var pi = stBody.querySelector(".pubIn input"); if (pi) pi.focus();
+  }
+  function epHtml(e) {
+    var vert = e.ratio === "9:16", job = e.job, k = S.eps.indexOf(e);
+    var st = job ? "<b>● " + esc({ preview: "проба", film: "ролик", shorts: "Shorts" }[job.kind] || "работаю") + "</b> · " + esc(job.step) :
+      e.stage === "published" ? "вышла " + ago(e.published) + (e.link ? " · <a style='color:var(--bone)' href='#' data-link>" + esc(e.link.replace(/^https?:\/\//, "").slice(0, 40)) + "</a>" : "") :
+      { script: "сценарий готов · " + e.scenes + " " + plural(e.scenes, "сцена", "сцены", "сцен"),
+        preview: "проба готова: " + e.clips + " из " + e.scenes + " сцен" + (e.cost_rest ? " · весь ролик ≈ " + String(e.cost_rest).replace(".", ",") + " % пакета Qwen" : ""),
+        film: "ролик готов · пакет к публикации ещё не собран", package: "пакет готов: " + (e.covers ? e.covers + " " + plural(e.covers, "обложка", "обложки", "обложек") + ", " : "") + "название, описание, теги",
+        shorts: "пакет и " + e.shorts + " Shorts готовы — можно загружать" }[e.stage];
+    var acts = job ? [] : (NEXT[e.stage] || []).filter(function (x) { return !x.wide || e.ratio === "16:9"; });
+    var h = "<div class='wbEp" + (e.stage === "published" ? " done" : "") + "' data-k='" + k + "'><div class='cv" + (vert ? " v" : "") + "'" +
+      (e.covers ? " data-f='" + esc(e.folder) + "'" : "") + ">" + (e.covers ? "" : esc(e.mode_ru.slice(0, 5))) + "</div><div>" +
+      "<div class='hd'><span class='n'>" + esc(e.title) + "</span><span class='m'>" + esc(e.mode_ru) + " · " + esc(e.ratio) + " · " + ago(e.created) + "</span></div>" +
+      (e.logline ? "<div class='lg' title='" + esc(e.logline) + "'>" + esc(e.logline) + "</div>" : "") + track(e) + "<div class='st'>" + st + "</div>";
+    if (S.pub === e.folder) {
+      h += "<div class='pubIn'><input placeholder='Ссылка на ролик (можно пусто) — Enter'><button class='wbTool' data-a='pub-cancel'>отмена</button></div>";
+    } else {
+      h += "<div class='acts'>" + acts.map(function (x, i) { return "<button class='" + (i ? "" : "main") + "' data-a='" + x.a + "'>" + esc(x.l) + "</button>"; }).join("") +
+        (e.video ? "<button class='sm' data-a='open_video'>смотреть</button>" : "") +
+        (e.text ? "<button class='sm' data-a='open_text'>описание</button>" : "") +
+        "<button class='sm' data-a='open_folder'>папка</button>" +
+        (e.video && e.stage !== "published" ? "<button class='sm' data-a='pub'>вышло ✓</button>" : "") +
+        (e.stage === "published" ? "<button class='sm' data-a='unpublished'>вернуть в работу</button>" : "") + "</div>";
+    }
+    return h + "</div></div>";
+  }
+  function loadCover(cv) {
+    var f = cv.dataset.f;
+    if (S.covers[f]) { cv.style.backgroundImage = "url(" + S.covers[f] + ")"; return; }
+    var a = stApi(); if (!a) return;
+    a.studio_cover(f, 1).then(function (d) { if (d) { S.covers[f] = d; cv.style.backgroundImage = "url(" + d + ")"; } });
+  }
+  function stAct(e, what, arg) {
+    var a = stApi(); if (!a) return;
+    a.studio_action(e.folder, what, arg || "").then(function (r) {
+      if (r && r.error) toast(r.error, true); else if (r && r.message) toast(r.message);
+      setTimeout(stLoad, what === "continue" || what === "shorts" || what === "publish_pack" ? 1500 : 200);
+    });
+  }
+  stBody.addEventListener("click", function (ev) {
+    var seg = ev.target.closest(".wbSeg[data-seg] button");
+    if (seg) { var which = seg.parentNode.dataset.seg; S[which] = seg.dataset.v; store(which === "fmt" ? "studioFmt" : "studioMode", seg.dataset.v); stRender(); return; }
+    if (ev.target.closest("[data-showdone]")) { S.showDone = !S.showDone; stRender(); return; }
+    var idea = ev.target.closest(".wbIdea"), a = stApi();
+    if (idea && a) {
+      var id = +idea.dataset.id;
+      if (ev.target.closest("[data-del]")) {
+        if (S.armed === id) { S.armed = null; a.studio_idea_remove(id).then(stLoad); } else { S.armed = id; stRender(); }
+        return;
+      }
+      if (ev.target.closest("[data-make]")) {
+        var f = FMT[S.fmt];
+        a.studio_make(id, S.mode, f.ratio, f.duration).then(function (r) { if (r.error) toast(r.error, true); else toast(r.message); setTimeout(stLoad, 2000); });
+        ev.target.closest("[data-make]").textContent = "пишу сценарий…";
+      }
+      return;
+    }
+    var card = ev.target.closest(".wbEp"); if (!card) return;
+    var ep = S.eps[+card.dataset.k], b = ev.target.closest("[data-a]");
+    if (ev.target.closest("[data-link]")) { ev.preventDefault(); ask("открой ссылку " + ep.link); return; }
+    if (!b) return;
+    var w = b.dataset.a;
+    if (w === "pub") { S.pub = ep.folder; stRender(); return; }
+    if (w === "pub-cancel") { S.pub = null; stRender(); return; }
+    if (w === "continue" && ep.cost_rest >= 0.5) toast("Chloe спросит про цену — ответьте голосом или во «Входящих»");
+    stAct(ep, w);
+  });
+  stBody.addEventListener("keydown", function (ev) {
+    ev.stopPropagation();
+    var t = ev.target, a = stApi();
+    if (t.id === "wbIdeaIn" && ev.key === "Enter" && t.value.trim() && a) { var v = t.value.trim(); t.value = ""; a.studio_idea_add(v).then(stLoad); }
+    if (t.closest(".pubIn")) {
+      if (ev.key === "Escape") { S.pub = null; stRender(); }
+      if (ev.key === "Enter") { var ep = S.eps.filter(function (e) { return e.folder === S.pub; })[0]; S.pub = null; if (ep) stAct(ep, "published", t.value.trim()); }
+    }
+  });
+  studio.tools.onclick = function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.s === "reload") { stLoad(); stChannel(true); }
+    if (b.dataset.s === "ideas3") ask("придумай три идеи серий для моего канала мультиков: учти, какие серии зашли лучше, и запиши их в Студию (episodes add_idea, с причиной why)");
+  };
+  studio.onOpen = function () { stLoad(); stChannel(false); };
+  window.chloeStudio = function () { if (studio.el.classList.contains("open")) stLoad(); };
+  hook("chloeState", function (state) { if (state === "idle") window.chloeStudio(); });
+  LAYOUTS["Студия"] = { open: ["wbStudio", "wbInbox"], clean: null };
+
   // ================================================================ ОКНО ГОЛОСОМ: Python → chloeUI
-  var WIN_BY = { terminal: term, files: files, projects: proj, inbox: inbox };
+  var WIN_BY = { terminal: term, files: files, projects: proj, inbox: inbox, studio: studio };
   window.chloeUI = function (o) {
     o = o || {};
     if (o.action === "buttons") { qState.items = o.items || []; qRender(); return; }
