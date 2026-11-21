@@ -701,6 +701,80 @@ class Api:
         journal.add("memory", "Память", "Вы удалили: " + m["text"], {"id": m["id"], "text": m["text"], "by": "окно"})
         return True
 
+    # мини-окна на главном экране: терминал и файлы — только на компьютере (в remote.ALLOWED их нет)
+    def term_state(self):
+        from .workbench import terminal
+
+        return terminal.state()
+
+    def term_start(self, cmd):
+        from .workbench import terminal
+
+        return terminal.start(cmd)
+
+    def term_poll(self, jid, offset=0):
+        from .workbench import terminal
+
+        return terminal.poll(jid, offset)
+
+    def term_stop(self, jid):
+        from .workbench import terminal
+
+        return terminal.stop(jid)
+
+    def term_cd(self, path):
+        from .workbench import terminal
+
+        return terminal.cd(path)
+
+    def files_dir(self, path="", hidden=False):
+        from .workbench import list_dir
+
+        return list_dir(str(path or ""), bool(hidden))
+
+    def files_open(self, path):
+        from .workbench import open_path
+
+        return open_path(str(path))
+
+    def files_mkdir(self, folder, name):
+        from .workbench import make_dir
+
+        return make_dir(str(folder), str(name))
+
+    def files_rename(self, path, name):
+        from .workbench import rename
+
+        return rename(str(path), str(name))
+
+    def files_trash(self, path):
+        from .workbench import trash
+
+        return trash(str(path))
+
+    # входящие, быстрые кнопки, «отменить последнее» — лента и значки на главном экране
+    def inbox(self):
+        from . import inbox
+
+        return inbox.collect()
+
+    def quick_buttons_get(self):
+        from .tools.ui import buttons
+
+        return buttons()
+
+    def quick_buttons_save(self, items):
+        from .tools.ui import save_buttons
+
+        return save_buttons(items if isinstance(items, list) else [])
+
+    def undo_last(self):
+        """Отменить последнее изменение файлов (кнопка в ленте «Сейчас»)."""
+        for c in changes.list(20):
+            if not c.get("undone"):
+                return self.change_undo(c["id"])
+        return {"ok": False, "message": "нечего отменять"}
+
 
 def serve_ui():
     """Локальный сервер для страницы мозга (только для этого компьютера)."""
@@ -838,8 +912,21 @@ def main():
                 brain._run("window.chloeView && window.chloeView({}, {})".format(json.dumps(st), json.dumps(full)))
                 return True
             watching.append(window_watch.start(send_view))
+        if not dropping:                      # файл, брошенный в окно: полный путь знает только pywebview — передаём его странице
+            try:
+                from webview.dom import DOMEventHandler
 
-    watching = []
+                def on_drop(e):
+                    files = (e.get("dataTransfer") or {}).get("files") or []
+                    paths = [f["pywebviewFullPath"] for f in files if isinstance(f, dict) and f.get("pywebviewFullPath")]
+                    if paths:
+                        brain.js("chloeDropped", paths)
+                window.dom.document.events.drop += DOMEventHandler(on_drop, True, True)
+                dropping.append(True)
+            except Exception as e:            # старый pywebview — перетаскивание просто покажет подсказку
+                print("[перетаскивание файлов недоступно: {}]".format(type(e).__name__))
+
+    watching, dropping = [], []
     window = webview.create_window("Chloe", serve_ui(), js_api=api, width=520, height=900,
                                    background_color="#04101a", fullscreen=args.fullscreen)
     brain.window = window
