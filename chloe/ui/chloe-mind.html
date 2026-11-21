@@ -38,7 +38,13 @@
     backdrop-filter: blur(8px); font-size: 14px; pointer-events: auto; }
   header b { color: var(--ink); font-weight: 500; font-size: 20px; letter-spacing: -.03em; }
   header > span { display: flex; align-items: center; gap: 10px; color: var(--bone); }
-  #dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); transition: background .8s; }
+  #dot { position: relative; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--iron); transition: background .6s; }
+  #dot.live { background: var(--coral); }
+  #dot.sleep { background: #3a3a3a; }
+  /* слушает — от точки расходится тихое кольцо: видно, что микрофон её */
+  #dot.listening::after { content: ""; position: absolute; inset: -1px; border-radius: 50%; border: 1px solid var(--coral);
+    animation: dotRing 1.6s ease-out infinite; }
+  @keyframes dotRing { from { transform: scale(1); opacity: .9; } to { transform: scale(3.2); opacity: 0; } }
   #statusTxt { letter-spacing: -.01em; }
   /* постоянное зрение: что Chloe сейчас видит на экране */
   #seeBtn { display: inline-flex; align-items: center; gap: 8px; max-width: 320px; background: transparent; border: 0; border-left: 1px solid var(--line);
@@ -346,11 +352,16 @@
 
   /* чистый вид: только мозг, имя и ответ; всё остальное — по кнопке «Все функции» */
   body.clean #stats, body.clean #filters, body.clean #search, body.clean #zoom,
-  body.clean #eeg, body.clean #timeRow, body.clean #bottom, body.clean #cmd,
+  body.clean #eeg, body.clean #timeRow, body.clean #bottom,
   body.clean .zone { display: none !important; }
+  /* в чистом виде строка ввода остаётся — тихая, по центру; ярче при наведении и наборе */
+  body.clean #cmd { left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 80px)); bottom: 28px;
+    text-align: center; opacity: .5; transition: opacity .25s, border-color .15s; }
+  body.clean #cmd:hover, body.clean #cmd:focus { opacity: 1; }
+  body.clean #cmd:focus { text-align: left; }
   body.clean .region { opacity: .7; }
   body.clean #core { cursor: default; }
-  body.clean #reply { bottom: 56px; max-width: min(900px, calc(100% - 80px)); font-size: 56px; }
+  body.clean #reply { bottom: 104px; max-width: min(900px, calc(100% - 80px)); font-size: 56px; }
 
   /* ===== мобильная версия: телефон-пульт и узкое окно =====
      Снизу вверх: панель ввода → разделы → активность → ответ Chloe. Мозг — за всем этим, на весь экран. */
@@ -377,6 +388,9 @@
     #filters { left: 0; right: 0; top: calc(94px + env(safe-area-inset-top, 0px)); padding: 0 20px; flex-wrap: nowrap;
       overflow-x: auto; scrollbar-width: none; gap: 0 20px; }
     #filters::-webkit-scrollbar { display: none; }
+    #filters { -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent);
+      mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 48px), transparent); padding-right: 48px; }
+    body.clean #cmd { left: 20px; right: 20px; width: auto; transform: none; bottom: calc(var(--sa) + 16px); }
     .chip { min-height: 40px; }
     #search { left: 20px; right: 20px; top: calc(140px + env(safe-area-inset-top, 0px)); }
     #search input { flex: 1; width: auto; }
@@ -392,7 +406,7 @@
     #eegCanvas { height: 28px; }
     #eegInfo { font-size: 10px; }
     #reply, body.clean #reply { left: 20px; right: 20px; max-width: none; bottom: calc(var(--sa) + 200px); font-size: 30px; line-height: 1.02; }
-    body.clean #reply { bottom: calc(var(--sa) + 104px); font-size: 34px; }
+    body.clean #reply { bottom: calc(var(--sa) + 96px); font-size: 34px; }
 
     /* разделы открываются на весь экран */
     .panel { top: calc(56px + env(safe-area-inset-top, 0px)); width: 100%; border-left: 0; z-index: 7;
@@ -436,6 +450,7 @@
   @media (prefers-reduced-motion: reduce) {
     #reply .w { animation: none; opacity: 1; filter: none; transform: none; }
     #statusTxt.shimmer { animation: none; color: var(--ink); background: none; }
+    #dot.listening::after { animation: none; opacity: 0; }
     #tabPill { transition: opacity .2s; }
   }
 </style>
@@ -501,7 +516,7 @@
       </div>
     </div>
   </div>
-  <input id="cmd" placeholder="Команда или «запомни …» — Chloe вырастит нейрон" autocomplete="off">
+  <input id="cmd" placeholder="Напишите Chloe или «запомни …»" autocomplete="off">
 </div>
 
 <script src="remote.js"></script>
@@ -718,7 +733,8 @@
     statusTxt.textContent = { sleeping: "спит", thinking: "думает", listening: "слушает", speaking: "говорит" }[name] || "онлайн";
     statusTxt.classList.toggle("shimmer", name === "thinking");
     statusTxt.classList.toggle("live", name === "listening" || name === "speaking");
-    dot.style.background = name === "sleeping" ? "#3a3a3a" : "#FF7777";
+    // коралл — только «сейчас»: слушает, думает, говорит. Просто онлайн — спокойная серая точка
+    dot.className = name === "sleeping" ? "sleep" : (name === "listening" || name === "thinking" || name === "speaking") ? "live " + name : "";
   }
   function touch() {
     lastActivity = now();
@@ -2308,6 +2324,7 @@
     wrap.classList.add("drag");
   });
   el.addEventListener("pointermove", function (e) {
+    var r0 = el.getBoundingClientRect(); hoverX = e.clientX - r0.left; hoverY = e.clientY - r0.top;
     if (e.buttons) lastHands = performance.now();
     if (pointers[e.pointerId]) { pointers[e.pointerId].x = e.clientX; pointers[e.pointerId].y = e.clientY; }
     if (pinch) {
@@ -2978,6 +2995,7 @@
       cb.onchange = function () { pApi().goal_step_set(+cb.getAttribute("data-step"), cb.checked ? "done" : "todo").then(loadProjects); };
     });
   }
+  window.chloeOpenProject = function (name) { projName = name; loadProjects(); };   // из мини-окна «Проекты»
   function loadProjects() {
     var api = pApi(); if (!api) return;
     if (projName) { api.project_get(projName).then(renderProject); return; }
@@ -4005,7 +4023,13 @@
     labelPool.push(le);
   }
   // размер окна читается один раз за кадр: чтение после записи стилей заставляло браузер пересчитывать раскладку (4 мс на кадр)
-  var viewW = 1, viewH = 1, topicPos = {}, topicAt = 0;
+  var viewW = 1, viewH = 1, topicPos = {}, topicAt = 0, hoverX = -1e4, hoverY = -1e4, coreR = 0, coreCX = 0, coreCY = 0;
+  wrap.addEventListener("pointerleave", function () { hoverX = hoverY = -1e4; });
+  // настоящая ширина подписи (буквы разной ширины, разрядка у заглавных) — меряется один раз, когда меняется текст
+  function widthOf(el, fallback) {
+    if (el._mt !== el.textContent) { el._mt = el.textContent; el._mw = el.offsetWidth || 0; }
+    return el._mw || fallback;
+  }
   // пишет в элемент, только если значение изменилось. textContent и className — свойства самого элемента, а не стиля:
   // раньше они уходили в el.style и терялись — счётчики стояли на нуле, а подписи мыслей и ошибок не окрашивались
   function put(el, key, val) {
@@ -4053,7 +4077,7 @@
         if (free(sp.x, sp.y + SHIFTS[s2], w2)) spot = SHIFTS[s2];
       }
       if (spot === null) { put(le2, "opacity", 0); continue; }
-      placed.push({ x: sp.x, y: sp.y + spot, w: w2 });
+      placed.push({ x: sp.x, y: sp.y + spot, w: w2, t: n2.name.toLowerCase() });
       if (le2.textContent !== n2.name) le2.textContent = n2.name;
       var kind = neur2Data[n2.id * 4] > 0.3 ? " err" : (n2.labelKind === "think" && t < n2.labelUntil ? " think" :
         (n2.labelKind === "recall" && t < n2.labelUntil ? " recall" : (n2.type === "memory" ? " mem" : "")));
@@ -4064,11 +4088,13 @@
     }
     var zp = new THREE.Vector3();
     // подпись отдела или темы (бледная, по центру) уступает место подписи нейрона (она выше точки на ~19 px)
-    function underLabel(x0, y0, text) {
-      var w0 = String(text || "").length * 7.5;
+    function underLabel(x0, y0, text, w0) {
+      w0 = w0 || String(text || "").length * 8.5;
+      var key = String(text || "").toLowerCase();
       for (var p = 0; p < placed.length; p++) {
         var q = placed[p];
-        if (Math.abs(x0 - q.x) * 2 < w0 + q.w && Math.abs(y0 - (q.y - 19)) < 14) return true;
+        if (q.t && q.t === key) return true;                      // одно и то же слово дважды — второе не пишем
+        if (Math.abs(x0 - q.x) * 2 < w0 + q.w + 8 && Math.abs(y0 - (q.y - 19)) < 17) return true;
       }
       return false;
     }
@@ -4091,8 +4117,9 @@
       var zx = (zp.x + 1) / 2 * viewW, zy = (1 - zp.y) / 2 * viewH;
       put(z.el, "left", Math.round(zx) + "px");
       put(z.el, "top", Math.round(zy) + "px");
-      var zShow = zp.z < 1 && !underLabel(zx, zy, z.name);
-      if (zShow) placed.push({ x: zx, y: zy + 19, w: z.name.length * 7.5 });   // темы тоже не налезают друг на друга
+      var zw = widthOf(z.el, z.name.length * 8.5);
+      var zShow = zp.z < 1 && !underLabel(zx, zy, z.name, zw);
+      if (zShow) placed.push({ x: zx, y: zy + 19, w: zw, t: z.name.toLowerCase() });   // темы тоже не налезают друг на друга
       put(z.el, "opacity", zShow ? (0.35 + 0.65 * front).toFixed(2) : 0);
     });
     placeCoreLabels(placed, wall);   // ядро и слои — до отделов: отделы уступают им место
@@ -4102,10 +4129,17 @@
       var front = clamp((camera.position.z - zp.distanceTo(camera.position)) / 1.2 + 0.5, 0, 1);
       zp.project(camera);
       var rx = (zp.x + 1) / 2 * viewW, ry = (1 - zp.y) / 2 * viewH;
+      // отдел, который проецируется на ядро, подписан у края ядра, а не поверх его свечения и колец
+      var ddx = rx - coreCX, ddy = ry - coreCY, dd = Math.hypot(ddx, ddy), edge = coreR + 14;
+      if (coreR > 0 && dd < edge) {
+        if (dd < 4) { ddx = 0; ddy = 1; dd = 1; }
+        rx = coreCX + ddx / dd * edge; ry = coreCY + ddy / dd * edge;
+      }
       put(el, "left", Math.round(rx) + "px");
       put(el, "top", Math.round(ry) + "px");
-      var rShow = !wall && zp.z < 1 && !underLabel(rx, ry, el.textContent);
-      if (rShow) placed.push({ x: rx, y: ry + 19, w: el.textContent.length * 7.5 });   // и подписи отделов не налезают друг на друга
+      var rw = widthOf(el, el.textContent.length * 8.5);
+      var rShow = !wall && zp.z < 1 && !underLabel(rx, ry, el.textContent, rw);
+      if (rShow) placed.push({ x: rx, y: ry + 19, w: rw, t: el.textContent.toLowerCase() });   // и подписи отделов не налезают друг на друга
       put(el, "opacity", rShow ? (0.25 + 0.75 * front).toFixed(2) : 0);
       put(el, "pointerEvents", rShow ? "auto" : "none");   // спрятанная подпись не ловит клики
     });
@@ -4782,7 +4816,7 @@
   coreLabel.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
   coreLabel.addEventListener("click", function (e) { e.stopPropagation(); openLayer("core"); });
   wrap.appendChild(coreLabel);
-  var _lp = new THREE.Vector3();
+  var _lp = new THREE.Vector3(), _lc = new THREE.Vector3();
   function placeCoreLabels(placed, wall) {
     var clean = document.body.classList.contains("clean");
     _lp.copy(CORE_POS).applyMatrix4(group.matrixWorld).project(camera);
@@ -4791,19 +4825,27 @@
     put(coreLabel, "top", Math.round(cy + 18) + "px");
     put(coreLabel, "opacity", wall ? 0 : 1);
     placed.push({ x: cx, y: cy + 46, w: 50 });
+    // радиус ядра на экране (по внешней орбите «Данные») — чтобы подписи отделов не ложились на него
+    _lp.set(0.56, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(group.matrixWorld.getMaxScaleOnAxis());
+    _lp.add(_lc.copy(CORE_POS).applyMatrix4(group.matrixWorld)).project(camera);
+    coreCX = cx; coreCY = cy; coreR = Math.abs((_lp.x + 1) / 2 * viewW - cx);
+    var nearCore = Math.hypot(hoverX - cx, hoverY - cy) < coreR * 1.25;
     LAYERS.forEach(function (L, i) {
       var b = layerEls[i];
       if (wall || clean) { put(b, "opacity", 0); put(b, "pointerEvents", "none"); return; }
       L.holder.updateMatrixWorld();
       _lp.copy(L.anchor); L.holder.localToWorld(_lp); _lp.project(camera);
-      var x = (_lp.x + 1) / 2 * viewW, y = (1 - _lp.y) / 2 * viewH, w = L.name.length * 8;
-      var hidden = _lp.z > 1 || placed.some(function (q) { return Math.abs(x - q.x) * 2 < w + q.w && Math.abs(y - (q.y - 19)) < 14; });
+      var x = (_lp.x + 1) / 2 * viewW, y = (1 - _lp.y) / 2 * viewH, w = widthOf(b, L.name.length * 9);
+      var hot = L.uni.uAct.value > 0.35;
+      // слои ядра подписаны, только когда на ядро навели мышь или слой сейчас работает — иначе в центре каша из слов
+      var hidden = _lp.z > 1 || !(nearCore || hot) ||
+        placed.some(function (q) { return Math.abs(x - q.x) * 2 < w + q.w + 8 && Math.abs(y - (q.y - 19)) < 17; });
       put(b, "left", Math.round(x) + "px");
       put(b, "top", Math.round(y) + "px");
       put(b, "opacity", hidden ? 0 : 1);
       put(b, "pointerEvents", hidden ? "none" : "auto");
-      put(b, "className", "layer" + (L.uni.uAct.value > 0.35 ? " hot" : ""));
-      if (!hidden) placed.push({ x: x, y: y + 19, w: w });
+      put(b, "className", "layer" + (hot ? " hot" : ""));
+      if (!hidden) placed.push({ x: x, y: y + 19, w: w, t: L.name.toLowerCase() });
     });
   }
 
@@ -4881,5 +4923,6 @@
     if (api()) init(); else window.addEventListener("pywebviewready", init);
   })();
 </script>
+<script src="workbench.js"></script>
 </body>
 </html>
